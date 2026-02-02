@@ -23,7 +23,7 @@
         .char-level { color: #f1c40f; font-size: 14px; }
         .char-name { font-size: 20px; font-weight: bold; margin: 10px 0; }
         
-        /* Botão de Deletar */
+        /* NOVO: Botão de Deletar */
         .btn-delete {
             position: absolute; top: 10px; right: 10px;
             background: #c0392b; color: white; width: 30px; height: 30px;
@@ -73,7 +73,6 @@
                 div.className = charData ? "slot-card" : "slot-card empty";
                 
                 if(charData) {
-                    // Adiciona botão de delete com stopPropagation para não clicar no card ao clicar no X
                     div.innerHTML = `
                         <div class="btn-delete" onclick="deleteChar(${i}, event)">X</div>
                         <div class="char-level">Lvl ${charData.lvl}</div>
@@ -81,8 +80,6 @@
                         <div style="font-size: 12px">Berries: ${charData.gold}</div>
                     `;
                     div.onclick = () => selectChar(i);
-                    // Mostra o botão de delete apenas ao passar o mouse via CSS ou sempre visível? 
-                    // Aqui deixei display block direto na classe se tiver char.
                     div.querySelector('.btn-delete').style.display = 'block';
                 } else {
                     div.innerHTML = `<div class="slot-plus">+</div><div>Criar Novo</div>`;
@@ -93,7 +90,7 @@
         }
 
         function deleteChar(slot, event) {
-            event.stopPropagation(); // Impede que selecione o personagem ao clicar em deletar
+            event.stopPropagation(); 
             if(confirm("Tem certeza que deseja deletar este personagem? Essa ação não tem volta!")) {
                 window.location.href = `byond://?src=${BYOND_REF}&action=delete_char&slot=${slot}`;
             }

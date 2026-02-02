@@ -44,58 +44,51 @@
         dirLight.castShadow = true;
         scene.add(dirLight);
 
-        const MAP_SIZE = 60;
-        const MAP_LIMIT = MAP_SIZE / 2;
+        const MAP_SIZE = 60; const MAP_LIMIT = MAP_SIZE / 2;
         const road = new THREE.Mesh(new THREE.PlaneGeometry(MAP_SIZE, MAP_SIZE), new THREE.MeshPhongMaterial({ color: 0x333333 }));
-        road.rotation.x = -Math.PI / 2;
-        road.receiveShadow = true;
-        scene.add(road);
-        scene.add(new THREE.GridHelper(MAP_SIZE, MAP_SIZE));
+        road.rotation.x = -Math.PI / 2; road.receiveShadow = true;
+        scene.add(road); scene.add(new THREE.GridHelper(MAP_SIZE, MAP_SIZE));
 
         // --- PLAYER RIG ---
         const playerGroup = new THREE.Group();
-        playerGroup.visible = false; // <--- ADICIONE ISSO PARA SUMIR COM O FANTASMA
+        playerGroup.visible = false; // COMEÇA INVISÍVEL (Correção do Fantasma)
+        
         let matSkin = new THREE.MeshPhongMaterial({ color: 0xFFCCAA }); 
         let matClothes = new THREE.MeshPhongMaterial({ color: 0xCC0000 }); 
 
         const torso = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.7, 0.3), matClothes);
-        torso.position.y = 1.1; torso.castShadow = true;
-        playerGroup.add(torso);
-
+        torso.position.y = 1.1; torso.castShadow = true; playerGroup.add(torso);
         const head = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.35, 0.35), matSkin);
         head.position.y = 0.55; torso.add(head);
 
-        const eyeGeo = new THREE.BoxGeometry(0.05, 0.05, 0.05);
-        const matEye = new THREE.MeshBasicMaterial({color: 0x000000});
+        const eyeGeo = new THREE.BoxGeometry(0.05, 0.05, 0.05); const matEye = new THREE.MeshBasicMaterial({color: 0x000000});
         const eyeL = new THREE.Mesh(eyeGeo, matEye); eyeL.position.set(0.1, 0.05, 0.18); head.add(eyeL);
         const eyeR = new THREE.Mesh(eyeGeo, matEye); eyeR.position.set(-0.1, 0.05, 0.18); head.add(eyeR);
 
         function createLimb(w, h, d, mat, x, y, z) {
             const pivot = new THREE.Group(); pivot.position.set(x, y, z);
             const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
-            mesh.position.y = -h/2; mesh.castShadow = true;
-            pivot.add(mesh); return { pivot, mesh };
+            mesh.position.y = -h/2; mesh.castShadow = true; pivot.add(mesh); return { pivot, mesh };
         }
-
-        const leftArm = createLimb(0.15, 0.7, 0.15, matSkin, 0.35, 0.3, 0);
-        const rightArm = createLimb(0.15, 0.7, 0.15, matSkin, -0.35, 0.3, 0);
-        const leftLeg = createLimb(0.18, 0.8, 0.18, matClothes, 0.12, -0.35, 0);
-        const rightLeg = createLimb(0.18, 0.8, 0.18, matClothes, -0.12, -0.35, 0);
-
-        torso.add(leftArm.pivot); torso.add(rightArm.pivot);
-        torso.add(leftLeg.pivot); torso.add(rightLeg.pivot);
+        const leftArm = createLimb(0.15, 0.7, 0.15, matSkin, 0.35, 0.3, 0); const rightArm = createLimb(0.15, 0.7, 0.15, matSkin, -0.35, 0.3, 0);
+        const leftLeg = createLimb(0.18, 0.8, 0.18, matClothes, 0.12, -0.35, 0); const rightLeg = createLimb(0.18, 0.8, 0.18, matClothes, -0.12, -0.35, 0);
+        torso.add(leftArm.pivot); torso.add(rightArm.pivot); torso.add(leftLeg.pivot); torso.add(rightLeg.pivot);
         scene.add(playerGroup);
 
+        // --- CONTROLES E TRAVA DE SAVE ---
         const keys = { w: false, a: false, s: false, d: false, " ": false };
-        let isJumping = false; let verticalVelocity = 0; const gravity = -0.015; const jumpForce = 0.3;
+        let blockSync = false; // Trava para impedir conflito de comandos
 
         document.addEventListener('keydown', e => { 
             const k = e.key.toLowerCase();
             if(keys.hasOwnProperty(k)) keys[k] = true;
             
-            // --- NOVO: SALVAR COM 'P' ---
-            if(k === 'p') {
-                window.location.href = "byond://?src={{BYOND_REF}}&action=force_save";
+            // CORREÇÃO SAVE (Tecla P)
+            if(k === 'p' && !blockSync) {
+                blockSync = true; // Pausa o envio de posição
+                window.location.href = "byond://?src=" + BYOND_REF + "&action=force_save";
+                // Libera o tráfego depois de 500ms
+                setTimeout(() => { blockSync = false; }, 500);
             }
         });
         document.addEventListener('keyup', e => { if(keys.hasOwnProperty(e.key.toLowerCase())) keys[e.key.toLowerCase()] = false; });
@@ -109,36 +102,39 @@
 
         let isAttacking = false; let attackTimer = 0;
         function performAttack() {
-            if(isAttacking) return;
-            isAttacking = true; attackTimer = 0;
-            window.location.href = "byond://?src={{BYOND_REF}}&action=attack";
+            if(isAttacking) return; isAttacking = true; attackTimer = 0;
+            // Pausa sync brevemente para garantir que o ataque seja registrado
+            blockSync = true;
+            window.location.href = "byond://?src=" + BYOND_REF + "&action=attack";
+            setTimeout(() => { blockSync = false; }, 200);
         }
 
         const BYOND_REF = "{{BYOND_REF}}";
-        let firstLoad = true;
+        let firstLoad = true; 
+        let isCharacterReady = false;
 
-        // --- CORREÇÃO BUG 1: POSIÇÃO DO SAVE ---
         function receberDados(json) {
             const data = JSON.parse(json).data;
             
             if(data.skin) {
                 matSkin.color.setHex("0x" + data.skin);
                 matClothes.color.setHex("0x" + data.cloth);
-                playerGroup.visible = true; // <--- E AQUI ELE VOLTA A APARECER
             }
 
-            // MUDANÇA: Removemos a checagem de != 0. 
-            // Se for a primeira carga, ele obedece o servidor cegamente.
-            if(firstLoad) {
-                playerGroup.position.x = data.x;
-                playerGroup.position.z = data.z;
-                
-                // Força a câmera a ir para o lugar certo imediatamente
-                const camDist = 7;
-                camera.position.x = playerGroup.position.x + Math.sin(camAngle)*camDist;
-                camera.position.z = playerGroup.position.z + Math.cos(camAngle)*camDist;
-                
-                firstLoad = false;
+            // CORREÇÃO FANTASMA: Só mostra e move se o servidor disser "loaded"
+            if (data.loaded == 1) {
+                isCharacterReady = true;
+                playerGroup.visible = true; // Agora pode aparecer!
+
+                if (firstLoad) {
+                    playerGroup.position.x = data.x;
+                    playerGroup.position.z = data.z;
+                    // Reseta câmera
+                    const camDist = 7;
+                    camera.position.x = playerGroup.position.x + Math.sin(camAngle)*camDist;
+                    camera.position.z = playerGroup.position.z + Math.cos(camAngle)*camDist;
+                    firstLoad = false;
+                }
             }
 
             document.getElementById('name-display').innerText = data.name;
@@ -155,8 +151,8 @@
         }
 
         setInterval(() => {
-            // Só envia posição se já carregou, para não sobrescrever o save com 0,0 sem querer
-            if(!firstLoad) {
+            // Só envia posição se estiver carregado E se não estivermos salvando/atacando (blockSync)
+            if(!firstLoad && !blockSync && isCharacterReady) {
                 const x = playerGroup.position.x.toFixed(2);
                 const z = playerGroup.position.z.toFixed(2);
                 const rot = playerGroup.rotation.y.toFixed(2);
@@ -164,47 +160,46 @@
             }
         }, 200);
 
-        let animTime = 0;
+        // --- GAME LOOP ---
+        let animTime = 0; let isJumping = false; let verticalVelocity = 0; const gravity = -0.015; const jumpForce = 0.3;
         function animate() {
             requestAnimationFrame(animate);
             animTime += 0.1;
 
             const speed = 0.15;
             let moveX = 0, moveZ = 0, moving = false;
-            const sin = Math.sin(camAngle); const cos = Math.cos(camAngle);
-            if(keys.w) { moveX -= sin*speed; moveZ -= cos*speed; moving = true; }
-            if(keys.s) { moveX += sin*speed; moveZ += cos*speed; moving = true; }
-            if(keys.a) { moveX -= cos*speed; moveZ += sin*speed; moving = true; }
-            if(keys.d) { moveX += cos*speed; moveZ -= sin*speed; moving = true; }
+            
+            // Só move se estiver pronto
+            if (isCharacterReady) {
+                const sin = Math.sin(camAngle); const cos = Math.cos(camAngle);
+                if(keys.w) { moveX -= sin*speed; moveZ -= cos*speed; moving = true; }
+                if(keys.s) { moveX += sin*speed; moveZ += cos*speed; moving = true; }
+                if(keys.a) { moveX -= cos*speed; moveZ += sin*speed; moving = true; }
+                if(keys.d) { moveX += cos*speed; moveZ -= sin*speed; moving = true; }
 
-            playerGroup.position.x += moveX; playerGroup.position.z += moveZ;
+                playerGroup.position.x += moveX; playerGroup.position.z += moveZ;
 
-            if(playerGroup.position.x > MAP_LIMIT-1) playerGroup.position.x = MAP_LIMIT-1;
-            if(playerGroup.position.x < -MAP_LIMIT+1) playerGroup.position.x = -MAP_LIMIT+1;
-            if(playerGroup.position.z > MAP_LIMIT-1) playerGroup.position.z = MAP_LIMIT-1;
-            if(playerGroup.position.z < -MAP_LIMIT+1) playerGroup.position.z = -MAP_LIMIT+1;
+                if(playerGroup.position.x > MAP_LIMIT-1) playerGroup.position.x = MAP_LIMIT-1;
+                if(playerGroup.position.x < -MAP_LIMIT+1) playerGroup.position.x = -MAP_LIMIT+1;
+                if(playerGroup.position.z > MAP_LIMIT-1) playerGroup.position.z = MAP_LIMIT-1;
+                if(playerGroup.position.z < -MAP_LIMIT+1) playerGroup.position.z = -MAP_LIMIT+1;
 
-            // --- CORREÇÃO BUG 2: ROTAÇÃO ---
-            // Removemos o "+ Math.PI". Agora ele deve olhar para frente.
-            if(moving) playerGroup.rotation.y = Math.atan2(moveX, moveZ);
+                if(moving) playerGroup.rotation.y = Math.atan2(moveX, moveZ);
 
-            if(keys[" "] && !isJumping) { verticalVelocity = jumpForce; isJumping = true; }
-            playerGroup.position.y += verticalVelocity; verticalVelocity += gravity;
-            if(playerGroup.position.y < 0) { playerGroup.position.y = 0; isJumping = false; verticalVelocity = 0; }
+                if(keys[" "] && !isJumping) { verticalVelocity = jumpForce; isJumping = true; }
+                playerGroup.position.y += verticalVelocity; verticalVelocity += gravity;
+                if(playerGroup.position.y < 0) { playerGroup.position.y = 0; isJumping = false; verticalVelocity = 0; }
 
-            if(moving && !isJumping) {
-                leftLeg.pivot.rotation.x = Math.sin(animTime)*0.8;
-                rightLeg.pivot.rotation.x = -Math.sin(animTime)*0.8; 
-                leftArm.pivot.rotation.x = -Math.sin(animTime)*0.8; 
-                rightArm.pivot.rotation.x = Math.sin(animTime)*0.8; 
-            } else if (!isAttacking) {
-                leftLeg.pivot.rotation.x = 0; rightLeg.pivot.rotation.x = 0;
-                leftArm.pivot.rotation.x = 0; rightArm.pivot.rotation.x = 0;
+                if(moving && !isJumping) {
+                    leftLeg.pivot.rotation.x = Math.sin(animTime)*0.8; rightLeg.pivot.rotation.x = -Math.sin(animTime)*0.8; 
+                    leftArm.pivot.rotation.x = -Math.sin(animTime)*0.8; rightArm.pivot.rotation.x = Math.sin(animTime)*0.8; 
+                } else if (!isAttacking) {
+                    leftLeg.pivot.rotation.x = 0; rightLeg.pivot.rotation.x = 0; leftArm.pivot.rotation.x = 0; rightArm.pivot.rotation.x = 0;
+                }
             }
 
             if(isAttacking) {
-                attackTimer += 0.2;
-                rightArm.pivot.rotation.x = -Math.sin(attackTimer) * 2; 
+                attackTimer += 0.2; rightArm.pivot.rotation.x = -Math.sin(attackTimer) * 2; 
                 if(attackTimer > Math.PI) { isAttacking = false; rightArm.pivot.rotation.x = 0; }
             }
 
