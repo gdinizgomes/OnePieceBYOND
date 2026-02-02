@@ -1,123 +1,141 @@
-/*
-    BYOND 3D MMO: Core Systems (Save, Stats, Movement)
-*/
-
-// Definições de Save
 #define SAVE_DIR "saves/"
 
 mob
-    // --- 1. ATRIBUTOS RPG ---
+    // Dados de Sessão (Temporários)
+    var/current_slot = 0
+
+    // Atributos RPG
     var/level = 1
     var/experience = 0
-    var/max_experience = 100
+    var/strength = 5; var/vitality = 5; var/agility = 5; var/wisdom = 5
+    var/current_hp = 50; var/max_hp = 50; var/gold = 0
 
-    // Status (Base Neutra)
-    var/strength = 5    // Dano Físico
-    var/vitality = 5    // Vida (HP)
-    var/agility = 5     // Velocidade de Movimento/Ataque
-    var/wisdom = 5      // Mana/Habilidade (Akuma no Mi)
+    // Customização Visual (Hex Codes)
+    var/skin_color = "FFCCAA"
+    var/cloth_color = "FF0000"
 
-    var/current_hp = 50
-    var/max_hp = 50
-    var/gold = 0
+    // Sistema 3D
+    var/real_x = 0; var/real_z = 0; var/real_rot = 0
 
-    // Variáveis do Sistema 3D
-    var/real_x = 0
-    var/real_z = 0
-    var/real_rot = 0
+    // Controle de estado
+    var/in_game = 0
 
-    // --- 2. SISTEMA DE LOGIN E SAVE ---
     Login()
         ..()
-        // Tenta carregar o personagem
-        if(!LoadCharacter())
-            // Se não existir save, inicializa posição neutra
-            real_x = 0
-            real_z = 0
-            world << "[src] entrou no mundo pela primeira vez!"
+        in_game = 0
+        ShowCharacterMenu()
 
-        // Inicia o jogo visual
-        Run3DGame()
-        // Inicia o loop de dados
+    proc/ShowCharacterMenu()
+        // 1. Ler os 3 slots de save
+        var/list/slots_data = list()
+
+        for(var/i=1 to 3)
+            if(fexists("[SAVE_DIR][src.ckey]_slot[i].sav"))
+                var/savefile/F = new("[SAVE_DIR][src.ckey]_slot[i].sav")
+                var/n; var/l; var/g
+                F["name"] >> n
+                F["level"] >> l
+                F["gold"] >> g
+                slots_data["slot[i]"] = list("name"=n, "lvl"=l, "gold"=g)
+            else
+                slots_data["slot[i]"] = null
+
+        // 2. Carregar o HTML do Menu
+        var/page = file2text('menu.html')
+        page = replacetext(page, "{{BYOND_REF}}", "\ref[src]")
+        src << browse(page, "window=map3d")
+
+        // 3. Enviar os dados dos slots para o JS desenhar
+        sleep(2) // Pequeno delay para o navegador carregar
+        src << output(json_encode(slots_data), "map3d:loadSlots")
+
+    proc/StartGame(slot_index)
+        current_slot = slot_index
+        LoadCharacter(slot_index)
+
+        in_game = 1
+        world << "[src] entrou no mundo (Slot [slot_index])."
+
+        // Carrega o HTML do Jogo 3D
+        var/page = file2text('game.html')
+        page = replacetext(page, "{{BYOND_REF}}", "\ref[src]")
+        src << browse(page, "window=map3d")
+
         spawn(10) UpdateLoop()
-        // Auto-save a cada 60 segundos
         spawn(600) AutoSaveLoop()
 
-    Logout()
-        SaveCharacter() // Salva ao sair
-        ..()
-
-    proc/AutoSaveLoop()
-        while(src)
-            SaveCharacter()
-            sleep(600) // 1 minuto
-
     proc/SaveCharacter()
-        if(!src.ckey) return
-        var/savefile/F = new("[SAVE_DIR][src.ckey].sav")
-
-        // O que vamos salvar?
+        if(!current_slot) return
+        var/savefile/F = new("[SAVE_DIR][src.ckey]_slot[current_slot].sav")
+        F["name"] << src.name
         F["level"] << src.level
-        F["exp"] << src.experience
-        F["str"] << src.strength
-        F["vit"] << src.vitality
-        F["agi"] << src.agility
-        F["wis"] << src.wisdom
+        F["gold"] << src.gold
+        F["hp"] << src.current_hp
+        F["max_hp"] << src.max_hp
         F["pos_x"] << src.real_x
         F["pos_z"] << src.real_z
-        F["gold"] << src.gold
+        F["skin"] << src.skin_color
+        F["cloth"] << src.cloth_color
 
-        src << output("Jogo Salvo!", "map3d:mostrarNotificacao") // Feedback visual
-
-    proc/LoadCharacter()
-        if(!fexists("[SAVE_DIR][src.ckey].sav")) return 0 // Retorna falso se não tem save
-
-        var/savefile/F = new("[SAVE_DIR][src.ckey].sav")
+    proc/LoadCharacter(slot)
+        var/savefile/F = new("[SAVE_DIR][src.ckey]_slot[slot].sav")
+        F["name"] >> src.name
         F["level"] >> src.level
-        F["exp"] >> src.experience
-        F["str"] >> src.strength
-        F["vit"] >> src.vitality
-        F["agi"] >> src.agility
-        F["wis"] >> src.wisdom
+        F["gold"] >> src.gold
+        F["hp"] >> src.current_hp
+        F["max_hp"] >> src.max_hp
         F["pos_x"] >> src.real_x
         F["pos_z"] >> src.real_z
-        F["gold"] >> src.gold
-        return 1 // Sucesso
+        F["skin"] >> src.skin_color
+        F["cloth"] >> src.cloth_color
 
-    // --- 3. LOOP DE DADOS (AGORA COM STATUS) ---
     proc/UpdateLoop()
-        while(src)
+        while(src && in_game)
             var/list/packet = list(
                 "data" = list(
-                    "x" = src.real_x,
-                    "z" = src.real_z,
-                    "rot" = src.real_rot,
-                    "hp" = src.current_hp,
-                    "max_hp" = src.max_hp,
-                    "lvl" = src.level,
-                    "gold" = src.gold,
-                    "name" = src.name
+                    "x" = src.real_x, "z" = src.real_z, "rot" = src.real_rot,
+                    "hp" = src.current_hp, "max_hp" = src.max_hp,
+                    "lvl" = src.level, "gold" = src.gold, "name" = src.name,
+                    "skin" = src.skin_color, "cloth" = src.cloth_color // Envia cores pro JS
                 )
             )
             src << output(json_encode(packet), "map3d:receberDados")
-            sleep(1) // 10 ticks por segundo
+            sleep(1)
 
-    // --- 4. RECEBENDO INPUTS ---
+    proc/AutoSaveLoop()
+        while(src && in_game)
+            SaveCharacter()
+            sleep(600)
+
     Topic(href, href_list[])
         ..()
-        if(href_list["action"] == "update_pos")
+        var/action = href_list["action"]
+
+        // Ações do MENU
+        if(action == "select_char")
+            StartGame(text2num(href_list["slot"]))
+
+        if(action == "create_char")
+            var/slot = text2num(href_list["slot"])
+            src.name = href_list["name"]
+            src.skin_color = href_list["skin"]
+            src.cloth_color = href_list["cloth"]
+
+            // Inicializa valores padrão
+            src.level = 1
+            src.gold = 0
+            src.real_x = 0; src.real_z = 0
+
+            // Cria o save imediatamente
+            current_slot = slot
+            SaveCharacter()
+            StartGame(slot)
+
+        // Ações do JOGO
+        if(action == "update_pos" && in_game)
             real_x = text2num(href_list["x"])
             real_z = text2num(href_list["z"])
             real_rot = text2num(href_list["rot"])
 
-        if(href_list["action"] == "attack")
-            // Lógica de ataque será processada aqui no futuro
-            // Ex: Verificar colisão com inimigos próximos
-            src << output("Ataque registrado!", "map3d:mostrarNotificacao")
-
-    verb
-        Run3DGame()
-            set category = "3D"
-            var/page = file2text('game.html')
-            page = replacetext(page, "{{BYOND_REF}}", "\ref[src]")
-            src << browse(page, "window=map3d")
+        if(action == "attack" && in_game)
+            src << output("Ataque!", "map3d:mostrarNotificacao")
