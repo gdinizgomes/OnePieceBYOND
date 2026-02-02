@@ -21,6 +21,13 @@
         #notif-area { position: absolute; bottom: 100px; left: 50%; transform: translateX(-50%); text-align: center; }
         .toast { background: rgba(0,0,0,0.8); color: white; padding: 10px 20px; border-radius: 20px; margin-top: 5px; animation: fadeout 3s forwards; }
         @keyframes fadeout { 0% { opacity: 1; } 80% { opacity: 1; } 100% { opacity: 0; } }
+        
+        /* Nomes flutuantes */
+        .name-label {
+            position: absolute; color: white; background: rgba(0,0,0,0.5); padding: 2px 5px; 
+            border-radius: 4px; font-size: 10px; pointer-events: none;
+            text-shadow: 1px 1px 0 #000; display: none; /* Controlado pelo JS */
+        }
     </style>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 </head>
@@ -33,11 +40,12 @@
             <div style="margin-top:5px; color:#f1c40f">💰 <span id="gold-display">0</span> Berries</div>
         </div>
         <div id="notif-area"></div>
-        <div id="combat-log">System: Combat Log Initialized.<br></div>
+        <div id="combat-log">System: Multiplayer Core Active.<br></div>
+        <div id="labels-container"></div>
     </div>
 
     <script>
-        // --- 1. CONFIGURAÇÃO THREE.JS ---
+        // --- 1. CONFIGURAÇÃO BÁSICA ---
         const scene = new THREE.Scene();
         scene.background = new THREE.Color(0x87CEEB);
         scene.fog = new THREE.Fog(0x87CEEB, 15, 60);
@@ -63,63 +71,144 @@
         // --- 2. TRONCO DE TREINO ---
         const dummyGroup = new THREE.Group();
         dummyGroup.position.set(5, 0, 5);
-        
-        const trunkGeo = new THREE.CylinderGeometry(0.4, 0.4, 1.8, 12);
-        const trunkMat = new THREE.MeshPhongMaterial({ color: 0x8B4513 });
-        const trunk = new THREE.Mesh(trunkGeo, trunkMat);
+        const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.4, 1.8, 12), new THREE.MeshPhongMaterial({ color: 0x8B4513 }));
         trunk.position.y = 0.9; trunk.castShadow = true;
-        
-        const targetGeo = new THREE.CylinderGeometry(0.41, 0.41, 0.4, 12);
-        const targetMat = new THREE.MeshBasicMaterial({ color: 0xFFFFFF });
-        const target = new THREE.Mesh(targetGeo, targetMat);
+        const target = new THREE.Mesh(new THREE.CylinderGeometry(0.41, 0.41, 0.4, 12), new THREE.MeshBasicMaterial({ color: 0xFFFFFF }));
         target.position.y = 1.3;
-        
-        const targetCenterGeo = new THREE.CylinderGeometry(0.42, 0.42, 0.2, 12);
-        const targetCenterMat = new THREE.MeshBasicMaterial({ color: 0xFF0000 });
-        const targetCenter = new THREE.Mesh(targetCenterGeo, targetCenterMat);
+        const targetCenter = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.42, 0.2, 12), new THREE.MeshBasicMaterial({ color: 0xFF0000 }));
         targetCenter.position.y = 1.3;
-
         dummyGroup.add(trunk); dummyGroup.add(target); dummyGroup.add(targetCenter);
         scene.add(dummyGroup);
 
-        // --- 3. PLAYER RIG ---
-        const playerGroup = new THREE.Group();
-        playerGroup.visible = false; 
-        
-        let matSkin = new THREE.MeshPhongMaterial({ color: 0xFFCCAA }); 
-        let matClothes = new THREE.MeshPhongMaterial({ color: 0xCC0000 }); 
+        // --- 3. FÁBRICA DE PERSONAGENS (Reutilizável) ---
+        function createCharacterMesh(skinColorHex, clothColorHex) {
+            const group = new THREE.Group();
+            
+            const matSkin = new THREE.MeshPhongMaterial({ color: parseInt("0x" + skinColorHex) }); 
+            const matClothes = new THREE.MeshPhongMaterial({ color: parseInt("0x" + clothColorHex) }); 
+            const matEye = new THREE.MeshBasicMaterial({color: 0x000000});
 
-        const torso = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.7, 0.3), matClothes);
-        torso.position.y = 1.1; torso.castShadow = true; playerGroup.add(torso);
-        const head = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.35, 0.35), matSkin);
-        head.position.y = 0.55; torso.add(head);
+            const torso = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.7, 0.3), matClothes);
+            torso.position.y = 1.1; torso.castShadow = true; group.add(torso);
+            
+            const head = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.35, 0.35), matSkin);
+            head.position.y = 0.55; torso.add(head);
 
-        const eyeGeo = new THREE.BoxGeometry(0.05, 0.05, 0.05); const matEye = new THREE.MeshBasicMaterial({color: 0x000000});
-        const eyeL = new THREE.Mesh(eyeGeo, matEye); eyeL.position.set(0.1, 0.05, 0.18); head.add(eyeL);
-        const eyeR = new THREE.Mesh(eyeGeo, matEye); eyeR.position.set(-0.1, 0.05, 0.18); head.add(eyeR);
+            const eyeL = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.05, 0.05), matEye); eyeL.position.set(0.1, 0.05, 0.18); head.add(eyeL);
+            const eyeR = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.05, 0.05), matEye); eyeR.position.set(-0.1, 0.05, 0.18); head.add(eyeR);
 
-        function createLimb(w, h, d, mat, x, y, z) {
-            const pivot = new THREE.Group(); pivot.position.set(x, y, z);
-            const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
-            mesh.position.y = -h/2; mesh.castShadow = true; pivot.add(mesh); return { pivot, mesh };
+            function createLimb(w, h, d, mat, x, y, z) {
+                const pivot = new THREE.Group(); pivot.position.set(x, y, z);
+                const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+                mesh.position.y = -h/2; mesh.castShadow = true; pivot.add(mesh); return { pivot, mesh };
+            }
+            const leftArm = createLimb(0.15, 0.7, 0.15, matSkin, 0.35, 0.3, 0); 
+            const rightArm = createLimb(0.15, 0.7, 0.15, matSkin, -0.35, 0.3, 0);
+            const leftLeg = createLimb(0.18, 0.8, 0.18, matClothes, 0.12, -0.35, 0); 
+            const rightLeg = createLimb(0.18, 0.8, 0.18, matClothes, -0.12, -0.35, 0);
+
+            torso.add(leftArm.pivot); torso.add(rightArm.pivot); torso.add(leftLeg.pivot); torso.add(rightLeg.pivot);
+
+            // Guardamos referências para animação dentro do objeto userData do grupo
+            group.userData.limbs = { leftArm: leftArm.pivot, rightArm: rightArm.pivot, leftLeg: leftLeg.pivot, rightLeg: rightLeg.pivot };
+            
+            return group;
         }
-        const leftArm = createLimb(0.15, 0.7, 0.15, matSkin, 0.35, 0.3, 0); const rightArm = createLimb(0.15, 0.7, 0.15, matSkin, -0.35, 0.3, 0);
-        const leftLeg = createLimb(0.18, 0.8, 0.18, matClothes, 0.12, -0.35, 0); const rightLeg = createLimb(0.18, 0.8, 0.18, matClothes, -0.12, -0.35, 0);
-        torso.add(leftArm.pivot); torso.add(rightArm.pivot); torso.add(leftLeg.pivot); torso.add(rightLeg.pivot);
-        scene.add(playerGroup);
 
-        // --- 4. INPUTS ---
+        // --- 4. GERENCIAMENTO MULTIPLAYER ---
+        let playerGroup = null; // Meu personagem (Local)
+        const otherPlayers = {}; // Lista de outros personagens { id: mesh }
+        let myID = null;
+        let isCharacterReady = false;
+        let firstLoad = true;
+
+        const BYOND_REF = "{{BYOND_REF}}";
+
+        // Função Principal de Rede
+        function receberDadosMultiplayer(json) {
+            const packet = JSON.parse(json);
+            
+            // A. Meus Dados (HUD e Controle Local)
+            const me = packet.me;
+            myID = packet.my_id;
+
+            if(me.loaded == 1 && !isCharacterReady) {
+                // Primeira vez carregando: Precisamos descobrir nossas cores
+                // Como as cores vêm na lista "others" (onde eu também estou), pegamos de lá
+                if(packet.others[myID]) {
+                    const myData = packet.others[myID];
+                    playerGroup = createCharacterMesh(myData.skin, myData.cloth);
+                    playerGroup.visible = true;
+                    playerGroup.position.set(myData.x, 0, myData.z);
+                    scene.add(playerGroup);
+                    
+                    isCharacterReady = true;
+                    camAngle = myData.rot + Math.PI; 
+                }
+            }
+
+            if(isCharacterReady) {
+                document.getElementById('name-display').innerText = packet.others[myID] ? packet.others[myID].name : "Loading";
+                document.getElementById('lvl-display').innerText = me.lvl;
+                document.getElementById('gold-display').innerText = me.gold;
+                document.getElementById('hp-bar-fill').style.width = ((me.hp / me.max_hp) * 100) + "%";
+            }
+
+            // B. Sincronização de Outros Players
+            const serverPlayers = packet.others;
+            
+            // 1. Criar ou Atualizar
+            for (const id in serverPlayers) {
+                if (id === myID) continue; // Ignora a mim mesmo (eu uso controle local)
+
+                const pData = serverPlayers[id];
+
+                if (!otherPlayers[id]) {
+                    // NOVO JOGADOR DETECTADO: Criar boneco
+                    const newChar = createCharacterMesh(pData.skin, pData.cloth);
+                    newChar.position.set(pData.x, 0, pData.z);
+                    scene.add(newChar);
+                    
+                    // Label de Nome
+                    const label = document.createElement('div');
+                    label.className = 'name-label';
+                    label.innerText = pData.name;
+                    document.getElementById('labels-container').appendChild(label);
+
+                    otherPlayers[id] = { mesh: newChar, label: label, targetX: pData.x, targetZ: pData.z, targetRot: pData.rot };
+                    addLog(pData.name + " entrou na área.", "log-miss");
+                } else {
+                    // JOGADOR EXISTENTE: Atualizar Alvo (para interpolação)
+                    const other = otherPlayers[id];
+                    other.targetX = pData.x;
+                    other.targetZ = pData.z;
+                    other.targetRot = pData.rot;
+                }
+            }
+
+            // 2. Remover quem saiu (Garbage Collection)
+            for (const id in otherPlayers) {
+                if (!serverPlayers[id]) {
+                    // Jogador sumiu do pacote do servidor -> Deletar
+                    scene.remove(otherPlayers[id].mesh);
+                    otherPlayers[id].label.remove();
+                    delete otherPlayers[id];
+                }
+            }
+        }
+
+        // --- 5. INPUTS E CONTROLE ---
         const keys = { arrowup: false, arrowdown: false, arrowleft: false, arrowright: false, " ": false };
         let blockSync = false;
 
         document.addEventListener('keydown', e => { 
             const k = e.key.toLowerCase();
             if(keys.hasOwnProperty(k)) keys[k] = true;
-            if(k === 'a') { performAttack(); }
+            if(k === 'a') performAttack();
             if(k === 'p' && !blockSync) {
                 blockSync = true; 
                 window.location.href = "byond://?src=" + BYOND_REF + "&action=force_save";
-                addLog("System: Saving game...", "log-miss");
+                addLog("Salvando...", "log-miss");
                 setTimeout(() => { blockSync = false; }, 500);
             }
         });
@@ -130,62 +219,12 @@
         document.addEventListener('mousedown', e => { if(e.button===2){mouseRight=true; lastMouseX=e.clientX;} });
         document.addEventListener('mouseup', e => { if(e.button===2) mouseRight=false; });
         document.addEventListener('mousemove', e => { 
-            if(mouseRight) { 
-                camAngle -= (e.clientX - lastMouseX)*0.005; 
-                lastMouseX=e.clientX; 
-            } 
+            if(mouseRight) { camAngle -= (e.clientX - lastMouseX)*0.005; lastMouseX=e.clientX; } 
         });
 
-        let isAttacking = false; let attackTimer = 0;
-        function addLog(msg, cssClass) {
-            const log = document.getElementById('combat-log');
-            log.innerHTML += `<span class="${cssClass}">${msg}</span><br>`;
-            log.scrollTop = log.scrollHeight;
-        }
-
-        function performAttack() {
-            if(isAttacking) return; isAttacking = true; attackTimer = 0;
-            const dist = playerGroup.position.distanceTo(dummyGroup.position);
-            if(dist < 2.5) {
-                addLog(`> HIT! (Dist: ${dist.toFixed(1)}m)`, "log-hit");
-                targetCenter.material.color.setHex(0x550000);
-                setTimeout(() => { targetCenter.material.color.setHex(0xFF0000); }, 150);
-            } else {
-                addLog(`> Miss. (Dist: ${dist.toFixed(1)}m)`, "log-miss");
-            }
-            blockSync = true;
-            window.location.href = "byond://?src=" + BYOND_REF + "&action=attack";
-            setTimeout(() => { blockSync = false; }, 200);
-        }
-
-        const BYOND_REF = "{{BYOND_REF}}";
-        let firstLoad = true; let isCharacterReady = false;
-
-        function receberDados(json) {
-            const data = JSON.parse(json).data;
-            if(data.skin) {
-                matSkin.color.setHex("0x" + data.skin);
-                matClothes.color.setHex("0x" + data.cloth);
-            }
-            if (data.loaded == 1) {
-                isCharacterReady = true;
-                playerGroup.visible = true;
-                if (firstLoad) {
-                    playerGroup.position.x = data.x;
-                    playerGroup.position.z = data.z;
-                    camAngle = data.rot + Math.PI; 
-                    firstLoad = false;
-                }
-            }
-            document.getElementById('name-display').innerText = data.name;
-            document.getElementById('lvl-display').innerText = data.lvl;
-            document.getElementById('gold-display').innerText = data.gold;
-            const hpPercent = (data.hp / data.max_hp) * 100;
-            document.getElementById('hp-bar-fill').style.width = hpPercent + "%";
-        }
-
+        // Loop de Envio (Só envia meus dados)
         setInterval(() => {
-            if(!firstLoad && !blockSync && isCharacterReady) {
+            if(isCharacterReady && !blockSync) {
                 const x = playerGroup.position.x.toFixed(2);
                 const z = playerGroup.position.z.toFixed(2);
                 const rot = playerGroup.rotation.y.toFixed(2);
@@ -193,23 +232,54 @@
             }
         }, 200);
 
+        // --- 6. GAME LOOP & ANIMAÇÃO ---
+        let animTime = 0; let isJumping = false; let verticalVelocity = 0; const gravity = -0.015; const jumpForce = 0.3;
+        
+        // Combate
+        let isAttacking = false; let attackTimer = 0;
+        function addLog(msg, css) { 
+            const d = document.getElementById('combat-log'); 
+            d.innerHTML += `<span class="${css}">${msg}</span><br>`; d.scrollTop=d.scrollHeight; 
+        }
+        function performAttack() {
+            if(isAttacking || !isCharacterReady) return; isAttacking = true; attackTimer = 0;
+            const dist = playerGroup.position.distanceTo(dummyGroup.position);
+            if(dist < 2.5) { 
+                addLog("HIT! Dano causado.", "log-hit"); 
+                targetCenter.material.color.setHex(0x550000); setTimeout(()=>targetCenter.material.color.setHex(0xFF0000),150);
+            } else addLog("Errou o alvo.", "log-miss");
+            blockSync = true; window.location.href = "byond://?src=" + BYOND_REF + "&action=attack"; setTimeout(()=>{blockSync=false},200);
+        }
+
+        function lerp(start, end, t) { return start * (1 - t) + end * t; }
         function lerpAngle(start, end, t) {
             const diff = end - start;
             const shortestDiff = ((diff + Math.PI) % (Math.PI * 2)) - Math.PI;
             return start + shortestDiff * t;
         }
 
-        // --- GAME LOOP ---
-        let animTime = 0; let isJumping = false; let verticalVelocity = 0; const gravity = -0.015; const jumpForce = 0.3;
-        
+        // Animação Procedural (Genérica para qualquer boneco)
+        function animateLimb(limbs, moving, time, attacking, attackTimer) {
+            if(moving) {
+                limbs.leftLeg.rotation.x = Math.sin(time)*0.8; limbs.rightLeg.rotation.x = -Math.sin(time)*0.8;
+                limbs.leftArm.rotation.x = -Math.sin(time)*0.8; limbs.rightArm.rotation.x = Math.sin(time)*0.8;
+            } else if (!attacking) {
+                limbs.leftLeg.rotation.x = 0; limbs.rightLeg.rotation.x = 0;
+                limbs.leftArm.rotation.x = 0; limbs.rightArm.rotation.x = 0;
+            }
+            if(attacking) {
+                limbs.rightArm.rotation.x = -Math.sin(attackTimer)*2;
+            }
+        }
+
         function animate() {
             requestAnimationFrame(animate);
             animTime += 0.1;
 
-            const speed = 0.15;
-            let moveX = 0, moveZ = 0, moving = false;
-            
+            // 1. Lógica do Jogador Local
             if (isCharacterReady) {
+                const speed = 0.15;
+                let moveX = 0, moveZ = 0, moving = false;
                 const sin = Math.sin(camAngle); const cos = Math.cos(camAngle);
                 
                 if(keys.arrowup)    { moveX -= sin*speed; moveZ -= cos*speed; moving = true; }
@@ -218,52 +288,62 @@
                 if(keys.arrowright) { moveX += cos*speed; moveZ -= sin*speed; moving = true; }
 
                 playerGroup.position.x += moveX; playerGroup.position.z += moveZ;
-
-                if(playerGroup.position.x > MAP_LIMIT-1) playerGroup.position.x = MAP_LIMIT-1;
-                if(playerGroup.position.x < -MAP_LIMIT+1) playerGroup.position.x = -MAP_LIMIT+1;
-                if(playerGroup.position.z > MAP_LIMIT-1) playerGroup.position.z = MAP_LIMIT-1;
-                if(playerGroup.position.z < -MAP_LIMIT+1) playerGroup.position.z = -MAP_LIMIT+1;
+                // Clamp Limites
+                if(playerGroup.position.x > 30) playerGroup.position.x = 30; if(playerGroup.position.x < -30) playerGroup.position.x = -30;
+                if(playerGroup.position.z > 30) playerGroup.position.z = 30; if(playerGroup.position.z < -30) playerGroup.position.z = -30;
 
                 if(moving) {
                     const targetCharRot = Math.atan2(moveX, moveZ);
                     playerGroup.rotation.y = targetCharRot;
-
-                    // --- CÂMERA HÍBRIDA ---
-                    if(!keys.arrowdown && !mouseRight) {
-                        const targetCamAngle = targetCharRot + Math.PI;
-                        
-                        // SE ANDAR PRA FRENTE: Rápido (0.02)
-                        // SE ANDAR PRO LADO (Strafe): Muito Lento (0.005) -> Evita tontura
-                        let turnSpeed = 0.005; 
-                        if(keys.arrowup) turnSpeed = 0.02;
-
-                        camAngle = lerpAngle(camAngle, targetCamAngle, turnSpeed); 
+                    if(keys.arrowup && !mouseRight) {
+                         camAngle = lerpAngle(camAngle, targetCharRot + Math.PI, 0.02);
                     }
                 }
 
+                // Pulo Local
                 if(keys[" "] && !isJumping) { verticalVelocity = jumpForce; isJumping = true; }
                 playerGroup.position.y += verticalVelocity; verticalVelocity += gravity;
                 if(playerGroup.position.y < 0) { playerGroup.position.y = 0; isJumping = false; verticalVelocity = 0; }
 
-                if(moving && !isJumping) {
-                    leftLeg.pivot.rotation.x = Math.sin(animTime)*0.8; rightLeg.pivot.rotation.x = -Math.sin(animTime)*0.8; 
-                    leftArm.pivot.rotation.x = -Math.sin(animTime)*0.8; rightArm.pivot.rotation.x = Math.sin(animTime)*0.8; 
-                } else if (!isAttacking) {
-                    leftLeg.pivot.rotation.x = 0; rightLeg.pivot.rotation.x = 0; leftArm.pivot.rotation.x = 0; rightArm.pivot.rotation.x = 0;
-                }
+                // Animação Local
+                if(isAttacking) { attackTimer += 0.2; if(attackTimer > Math.PI) isAttacking = false; }
+                animateLimb(playerGroup.userData.limbs, moving && !isJumping, animTime, isAttacking, attackTimer);
+
+                // Câmera
+                const camDist = 7; const camH = 5;
+                camera.position.x = playerGroup.position.x + Math.sin(camAngle)*camDist;
+                camera.position.z = playerGroup.position.z + Math.cos(camAngle)*camDist;
+                camera.position.y = playerGroup.position.y + camH;
+                camera.lookAt(playerGroup.position.x, playerGroup.position.y + 1.5, playerGroup.position.z);
             }
 
-            if(isAttacking) {
-                attackTimer += 0.2; rightArm.pivot.rotation.x = -Math.sin(attackTimer) * 2; 
-                if(attackTimer > Math.PI) { isAttacking = false; rightArm.pivot.rotation.x = 0; }
+            // 2. Lógica dos Outros Jogadores (INTERPOLAÇÃO)
+            for(const id in otherPlayers) {
+                const other = otherPlayers[id];
+                const mesh = other.mesh;
+                
+                // Move suavemente (Lerp) da posição atual para a posição que o servidor mandou
+                const dist = Math.sqrt(Math.pow(other.targetX - mesh.position.x, 2) + Math.pow(other.targetZ - mesh.position.z, 2));
+                const isMoving = dist > 0.1;
+
+                mesh.position.x = lerp(mesh.position.x, other.targetX, 0.1);
+                mesh.position.z = lerp(mesh.position.z, other.targetZ, 0.1);
+                mesh.rotation.y = lerpAngle(mesh.rotation.y, other.targetRot, 0.1);
+                
+                // Animação Remota
+                animateLimb(mesh.userData.limbs, isMoving, animTime, false, 0);
+
+                // Atualiza label do nome (Projeta posição 3D na tela 2D)
+                const tempV = new THREE.Vector3(mesh.position.x, mesh.position.y + 2, mesh.position.z);
+                tempV.project(camera);
+                const x = (tempV.x * .5 + .5) * window.innerWidth;
+                const y = (-(tempV.y * .5) + .5) * window.innerHeight;
+                
+                other.label.style.display = (Math.abs(tempV.z) > 1) ? 'none' : 'block';
+                other.label.style.left = x + 'px';
+                other.label.style.top = y + 'px';
             }
-
-            const camDist = 7; const camH = 5;
-            camera.position.x = playerGroup.position.x + Math.sin(camAngle)*camDist;
-            camera.position.z = playerGroup.position.z + Math.cos(camAngle)*camDist;
-            camera.position.y = playerGroup.position.y + camH;
-            camera.lookAt(playerGroup.position.x, playerGroup.position.y + 1.5, playerGroup.position.z);
-
+            
             renderer.render(scene, camera);
         }
         animate();

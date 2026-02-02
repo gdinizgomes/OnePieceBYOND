@@ -73,17 +73,39 @@ mob
 
     proc/UpdateLoop()
         while(src && in_game)
+            // 1. Coleta dados de TODOS os jogadores visíveis (no futuro usaremos view())
+            var/list/players_list = list()
+            
+            for(var/mob/M in world)
+                if(M.client && M.in_game) // Só envia quem está logado e jogando
+                    // Usamos a REF (ID único do BYOND) como chave
+                    var/pid = "\ref[M]"
+                    players_list[pid] = list(
+                        "name" = M.name,
+                        "x" = M.real_x,
+                        "z" = M.real_z,
+                        "rot" = M.real_rot,
+                        "skin" = M.skin_color,
+                        "cloth" = M.cloth_color,
+                        "hp" = M.current_hp,
+                        "max_hp" = M.max_hp
+                    )
+
+            // 2. Prepara o pacote com MEUS dados (privados) e a lista GERAL (pública)
             var/list/packet = list(
-                "data" = list(
-                    "loaded" = src.char_loaded, // Crucial para o Fantasma
-                    "x" = src.real_x, "z" = src.real_z, "rot" = src.real_rot,
-                    "hp" = src.current_hp, "max_hp" = src.max_hp,
-                    "lvl" = src.level, "gold" = src.gold, "name" = src.name,
-                    "skin" = src.skin_color, "cloth" = src.cloth_color
-                )
+                "my_id" = "\ref[src]", // Para o JS saber quem sou eu na lista e me ignorar
+                "me" = list(
+                    "loaded" = src.char_loaded,
+                    "lvl" = src.level,
+                    "gold" = src.gold,
+                    "hp" = src.current_hp,
+                    "max_hp" = src.max_hp
+                ),
+                "others" = players_list
             )
-            src << output(json_encode(packet), "map3d:receberDados")
-            sleep(1)
+            
+            src << output(json_encode(packet), "map3d:receberDadosMultiplayer")
+            sleep(1) // 10 updates por segundo
 
     proc/AutoSaveLoop()
         while(src && in_game)
