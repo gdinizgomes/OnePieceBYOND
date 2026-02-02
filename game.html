@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <style>
+        body { margin: 0; overflow: hidden; user-select: none; font-family: 'Segoe UI', sans-serif; }
+        
+        /* HUD - Interface do Usuário */
+        #ui-layer { position: absolute; width: 100%; height: 100%; pointer-events: none; }
+        
+        .char-info { 
+            position: absolute; top: 20px; left: 20px; 
+            background: rgba(0,0,0,0.6); padding: 15px; 
+            border-radius: 8px; color: white; border: 2px solid #d4af37;
+        }
+        .bar-container { width: 200px; height: 10px; background: #333; margin-top: 5px; border-radius: 5px; overflow: hidden; }
+        .hp-bar { width: 100%; height: 100%; background: #e74c3c; transition: width 0.2s; }
+        .gold-display { color: #f1c40f; font-weight: bold; margin-top: 5px; }
+        
+        /* Notificações */
+        #notif-area { position: absolute; bottom: 100px; left: 50%; transform: translateX(-50%); text-align: center; }
+        .toast { background: rgba(0,0,0,0.8); color: white; padding: 10px 20px; border-radius: 20px; margin-top: 5px; animation: fadeout 3s forwards; }
+        
+        @keyframes fadeout { 0% { opacity: 1; } 80% { opacity: 1; } 100% { opacity: 0; } }
+    </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+</head>
+<body>
+    <div id="ui-layer">
+        <div class="char-info">
+            <div id="name-display" style="font-size: 18px; font-weight: bold;">Player</div>
+            <div style="font-size: 12px; color: #aaa;">Lvl <span id="lvl-display">1</span></div>
+            
+            <div class="bar-container"><div id="hp-bar-fill" class="hp-bar"></div></div>
+            
+            <div class="gold-display">💰 <span id="gold-display">0</span> Berries</div>
+        </div>
+        <div id="notif-area"></div>
+    </div>
+
+    <script>
+        // --- 1. CONFIGURAÇÃO THREE.JS ---
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x87CEEB);
+        scene.fog = new THREE.Fog(0x87CEEB, 15, 60);
+
+        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.shadowMap.enabled = true; // Sombras ativadas
+        document.body.appendChild(renderer.domElement);
+
+        // Luzes
+        const ambientLight = new THREE.AmbientLight(0xFFFFFF, 0.7);
+        scene.add(ambientLight);
+        const dirLight = new THREE.DirectionalLight(0xffffff, 0.6);
+        dirLight.position.set(20, 50, 20);
+        dirLight.castShadow = true;
+        scene.add(dirLight);
+
+        // Chão
+        const MAP_SIZE = 60;
+        const road = new THREE.Mesh(new THREE.PlaneGeometry(MAP_SIZE, MAP_SIZE), new THREE.MeshPhongMaterial({ color: 0x333333 }));
+        road.rotation.x = -Math.PI / 2;
+        road.receiveShadow = true;
+        scene.add(road);
+        scene.add(new THREE.GridHelper(MAP_SIZE, MAP_SIZE));
+
+        // --- 2. O NOVO RIG DO PERSONAGEM (Proporções Humanas) ---
+        const playerGroup = new THREE.Group();
+        
+        // Materiais
+        const matSkin = new THREE.MeshPhongMaterial({ color: 0xFFCCAA }); 
+        const matClothes = new THREE.MeshPhongMaterial({ color: 0xCC0000 }); // Vermelho Base
+        const matPants = new THREE.MeshPhongMaterial({ color: 0x2222FF }); // Azul Jeans
+
+        // Ajuste de Escala Global: O boneco agora é mais fino
+        // Torso (Mais estreito)
+        const torso = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.7, 0.3), matClothes);
+        torso.position.y = 1.1; 
+        torso.castShadow = true;
+        playerGroup.add(torso);
+
+        // Cabeça (Proporcional)
+        const head = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.35, 0.35), matSkin);
+        head.position.y = 0.55; 
+        torso.add(head);
+
+        // Exemplo de Chapéu "Encaixado" (Item 2 da sua lista)
+        // Note que ele é filho da cabeça e levemente maior (0.4 vs 0.35 da cabeça)
+        const hat = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.1, 0.5), new THREE.MeshPhongMaterial({color: 0xFFAA00}));
+        hat.position.y = 0.2; // Topo da cabeça
+        head.add(hat); // Se a cabeça girar, o chapéu gira junto
+
+        // Membros (Pivôs)
+        function createLimb(w, h, d, mat, x, y, z) {
+            const pivot = new THREE.Group();
+            pivot.position.set(x, y, z);
+            const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+            mesh.position.y = -h/2; // Ajuste para girar pelo topo
+            mesh.castShadow = true;
+            pivot.add(mesh);
+            return { pivot, mesh };
+        }
+
+        const leftArm = createLimb(0.18, 0.7, 0.18, matSkin, 0.35, 0.3, 0);
+        const rightArm = createLimb(0.18, 0.7, 0.18, matSkin, -0.35, 0.3, 0);
+        const leftLeg = createLimb(0.2, 0.8, 0.2, matPants, 0.12, -0.35, 0);
+        const rightLeg = createLimb(0.2, 0.8, 0.2, matPants, -0.12, -0.35, 0);
+
+        torso.add(leftArm.pivot); torso.add(rightArm.pivot);
+        torso.add(leftLeg.pivot); torso.add(rightLeg.pivot);
+
+        scene.add(playerGroup);
+
+        // --- 3. LÓGICA DE JOGO (Movimento e Ação) ---
+        const keys = { w: false, a: false, s: false, d: false, " ": false };
+        let isJumping = false;
+        let verticalVelocity = 0;
+        const gravity = -0.015;
+        const jumpForce = 0.3;
+
+        document.addEventListener('keydown', e => { if(keys.hasOwnProperty(e.key.toLowerCase())) keys[e.key.toLowerCase()] = true; });
+        document.addEventListener('keyup', e => { if(keys.hasOwnProperty(e.key.toLowerCase())) keys[e.key.toLowerCase()] = false; });
+        
+        // Input Mouse (Ataque)
+        document.addEventListener('mousedown', e => {
+            if(e.button === 0) performAttack(); // Botão Esquerdo
+        });
+
+        // Mouse Look (Câmera)
+        let camAngle = Math.PI; let mouseRight = false; let lastMouseX = 0;
+        document.addEventListener('contextmenu', e => e.preventDefault());
+        document.addEventListener('mousedown', e => { if(e.button===2){mouseRight=true; lastMouseX=e.clientX;} });
+        document.addEventListener('mouseup', e => { if(e.button===2) mouseRight=false; });
+        document.addEventListener('mousemove', e => { if(mouseRight) { camAngle -= (e.clientX - lastMouseX)*0.005; lastMouseX=e.clientX; } });
+
+        // Ação de Ataque (Animação Simples)
+        let isAttacking = false;
+        let attackTimer = 0;
+        
+        function performAttack() {
+            if(isAttacking) return;
+            isAttacking = true;
+            attackTimer = 0;
+            
+            // Envia para o servidor processar o dano
+            window.location.href = "byond://?src=" + BYOND_REF + "&action=attack";
+        }
+
+        // --- 4. COMUNICAÇÃO (HUD UPDATE) ---
+        const BYOND_REF = "{{BYOND_REF}}";
+        
+        function receberDados(json) {
+            const data = JSON.parse(json).data;
+            
+            // Atualiza HUD
+            document.getElementById('name-display').innerText = data.name;
+            document.getElementById('lvl-display').innerText = data.lvl;
+            document.getElementById('gold-display').innerText = data.gold;
+            
+            const hpPercent = (data.hp / data.max_hp) * 100;
+            document.getElementById('hp-bar-fill').style.width = hpPercent + "%";
+        }
+        
+        function mostrarNotificacao(msg) {
+            const area = document.getElementById('notif-area');
+            const div = document.createElement('div');
+            div.className = 'toast';
+            div.innerText = msg;
+            area.appendChild(div);
+            setTimeout(() => div.remove(), 3000); // Remove após 3s
+        }
+
+        // Loop de Sync
+        setInterval(() => {
+            const x = playerGroup.position.x.toFixed(2);
+            const z = playerGroup.position.z.toFixed(2);
+            const rot = playerGroup.rotation.y.toFixed(2);
+            window.location.href = `byond://?src=${BYOND_REF}&action=update_pos&x=${x}&z=${z}&rot=${rot}`;
+        }, 200);
+
+        // --- 5. GAME LOOP & ANIMAÇÃO ---
+        let animTime = 0;
+        
+        function animate() {
+            requestAnimationFrame(animate);
+            animTime += 0.1;
+
+            // Movimento
+            const speed = 0.15;
+            let moveX = 0, moveZ = 0, moving = false;
+            
+            const sin = Math.sin(camAngle); const cos = Math.cos(camAngle);
+            if(keys.w) { moveX -= sin*speed; moveZ -= cos*speed; moving = true; }
+            if(keys.s) { moveX += sin*speed; moveZ += cos*speed; moving = true; }
+            if(keys.a) { moveX -= cos*speed; moveZ += sin*speed; moving = true; }
+            if(keys.d) { moveX += cos*speed; moveZ -= sin*speed; moving = true; }
+
+            playerGroup.position.x += moveX;
+            playerGroup.position.z += moveZ;
+
+            // Rotação do Personagem
+            if(moving) playerGroup.rotation.y = Math.atan2(moveX, moveZ) + Math.PI;
+
+            // Pulo / Gravidade
+            if(keys[" "] && !isJumping) { verticalVelocity = jumpForce; isJumping = true; }
+            
+            playerGroup.position.y += verticalVelocity;
+            verticalVelocity += gravity;
+
+            // Colisão Chão (Chão está em Y=0, mas o pivô do boneco está no centro, então ajustamos)
+            if(playerGroup.position.y < 0) {
+                playerGroup.position.y = 0;
+                isJumping = false;
+                verticalVelocity = 0;
+            }
+
+            // Animação Procedural (Andar)
+            if(moving && !isJumping) {
+                leftLeg.pivot.rotation.x = Math.sin(animTime)*0.8;
+                rightLeg.pivot.rotation.x = Math.cos(animTime)*0.8;
+                leftArm.pivot.rotation.x = Math.cos(animTime)*0.8;
+                rightArm.pivot.rotation.x = Math.sin(animTime)*0.8;
+            } else if (!isAttacking) {
+                // Reset Pose
+                leftLeg.pivot.rotation.x = 0; rightLeg.pivot.rotation.x = 0;
+                leftArm.pivot.rotation.x = 0; rightArm.pivot.rotation.x = 0;
+            }
+
+            // Animação de Ataque (Corte simples de braço direito)
+            if(isAttacking) {
+                attackTimer += 0.2;
+                // Faz o braço descer rápido
+                rightArm.pivot.rotation.x = -Math.sin(attackTimer) * 2; 
+                if(attackTimer > Math.PI) {
+                    isAttacking = false;
+                    rightArm.pivot.rotation.x = 0;
+                }
+            }
+
+            // Câmera Follow
+            const camDist = 7;
+            const camH = 5;
+            camera.position.x = playerGroup.position.x + Math.sin(camAngle)*camDist;
+            camera.position.z = playerGroup.position.z + Math.cos(camAngle)*camDist;
+            camera.position.y = playerGroup.position.y + camH;
+            camera.lookAt(playerGroup.position.x, playerGroup.position.y + 1, playerGroup.position.z);
+
+            renderer.render(scene, camera);
+        }
+
+        animate();
+        window.onresize = () => {
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            camera.aspect = window.innerWidth/window.innerHeight;
+            camera.updateProjectionMatrix();
+        };
+    </script>
+</body>
+</html>
