@@ -26,6 +26,7 @@
     </div>
 
     <script>
+        // --- 1. CONFIGURAÇÃO THREE.JS ---
         const scene = new THREE.Scene();
         scene.background = new THREE.Color(0x87CEEB);
         scene.fog = new THREE.Fog(0x87CEEB, 15, 60);
@@ -43,7 +44,6 @@
         dirLight.castShadow = true;
         scene.add(dirLight);
 
-        // CORREÇÃO LIMITES DO MAPA
         const MAP_SIZE = 60;
         const MAP_LIMIT = MAP_SIZE / 2;
         const road = new THREE.Mesh(new THREE.PlaneGeometry(MAP_SIZE, MAP_SIZE), new THREE.MeshPhongMaterial({ color: 0x333333 }));
@@ -54,7 +54,7 @@
 
         // --- PLAYER RIG ---
         const playerGroup = new THREE.Group();
-        // Materiais Temporários (serão pintados pelo servidor)
+        playerGroup.visible = false; // <--- ADICIONE ISSO PARA SUMIR COM O FANTASMA
         let matSkin = new THREE.MeshPhongMaterial({ color: 0xFFCCAA }); 
         let matClothes = new THREE.MeshPhongMaterial({ color: 0xCC0000 }); 
 
@@ -65,7 +65,6 @@
         const head = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.35, 0.35), matSkin);
         head.position.y = 0.55; torso.add(head);
 
-        // CORREÇÃO VISUAL: ROSTO (Para saber onde é a frente)
         const eyeGeo = new THREE.BoxGeometry(0.05, 0.05, 0.05);
         const matEye = new THREE.MeshBasicMaterial({color: 0x000000});
         const eyeL = new THREE.Mesh(eyeGeo, matEye); eyeL.position.set(0.1, 0.05, 0.18); head.add(eyeL);
@@ -90,7 +89,15 @@
         const keys = { w: false, a: false, s: false, d: false, " ": false };
         let isJumping = false; let verticalVelocity = 0; const gravity = -0.015; const jumpForce = 0.3;
 
-        document.addEventListener('keydown', e => { if(keys.hasOwnProperty(e.key.toLowerCase())) keys[e.key.toLowerCase()] = true; });
+        document.addEventListener('keydown', e => { 
+            const k = e.key.toLowerCase();
+            if(keys.hasOwnProperty(k)) keys[k] = true;
+            
+            // --- NOVO: SALVAR COM 'P' ---
+            if(k === 'p') {
+                window.location.href = "byond://?src={{BYOND_REF}}&action=force_save";
+            }
+        });
         document.addEventListener('keyup', e => { if(keys.hasOwnProperty(e.key.toLowerCase())) keys[e.key.toLowerCase()] = false; });
         document.addEventListener('mousedown', e => { if(e.button === 0) performAttack(); });
 
@@ -110,19 +117,27 @@
         const BYOND_REF = "{{BYOND_REF}}";
         let firstLoad = true;
 
+        // --- CORREÇÃO BUG 1: POSIÇÃO DO SAVE ---
         function receberDados(json) {
             const data = JSON.parse(json).data;
             
-            // CORREÇÃO: Aplica cores salvas (vindo do Hex code sem #)
             if(data.skin) {
                 matSkin.color.setHex("0x" + data.skin);
                 matClothes.color.setHex("0x" + data.cloth);
+                playerGroup.visible = true; // <--- E AQUI ELE VOLTA A APARECER
             }
 
-            // CORREÇÃO: Força posição na primeira carga (Resolver bug de posição resetada)
-            if(firstLoad && (data.x != 0 || data.z != 0)) {
+            // MUDANÇA: Removemos a checagem de != 0. 
+            // Se for a primeira carga, ele obedece o servidor cegamente.
+            if(firstLoad) {
                 playerGroup.position.x = data.x;
                 playerGroup.position.z = data.z;
+                
+                // Força a câmera a ir para o lugar certo imediatamente
+                const camDist = 7;
+                camera.position.x = playerGroup.position.x + Math.sin(camAngle)*camDist;
+                camera.position.z = playerGroup.position.z + Math.cos(camAngle)*camDist;
+                
                 firstLoad = false;
             }
 
@@ -140,10 +155,13 @@
         }
 
         setInterval(() => {
-            const x = playerGroup.position.x.toFixed(2);
-            const z = playerGroup.position.z.toFixed(2);
-            const rot = playerGroup.rotation.y.toFixed(2);
-            window.location.href = `byond://?src=${BYOND_REF}&action=update_pos&x=${x}&z=${z}&rot=${rot}`;
+            // Só envia posição se já carregou, para não sobrescrever o save com 0,0 sem querer
+            if(!firstLoad) {
+                const x = playerGroup.position.x.toFixed(2);
+                const z = playerGroup.position.z.toFixed(2);
+                const rot = playerGroup.rotation.y.toFixed(2);
+                window.location.href = `byond://?src=${BYOND_REF}&action=update_pos&x=${x}&z=${z}&rot=${rot}`;
+            }
         }, 200);
 
         let animTime = 0;
@@ -161,25 +179,23 @@
 
             playerGroup.position.x += moveX; playerGroup.position.z += moveZ;
 
-            // CORREÇÃO LIMITES DO MAPA
             if(playerGroup.position.x > MAP_LIMIT-1) playerGroup.position.x = MAP_LIMIT-1;
             if(playerGroup.position.x < -MAP_LIMIT+1) playerGroup.position.x = -MAP_LIMIT+1;
             if(playerGroup.position.z > MAP_LIMIT-1) playerGroup.position.z = MAP_LIMIT-1;
             if(playerGroup.position.z < -MAP_LIMIT+1) playerGroup.position.z = -MAP_LIMIT+1;
 
-            if(moving) playerGroup.rotation.y = Math.atan2(moveX, moveZ) + Math.PI;
+            // --- CORREÇÃO BUG 2: ROTAÇÃO ---
+            // Removemos o "+ Math.PI". Agora ele deve olhar para frente.
+            if(moving) playerGroup.rotation.y = Math.atan2(moveX, moveZ);
 
             if(keys[" "] && !isJumping) { verticalVelocity = jumpForce; isJumping = true; }
             playerGroup.position.y += verticalVelocity; verticalVelocity += gravity;
             if(playerGroup.position.y < 0) { playerGroup.position.y = 0; isJumping = false; verticalVelocity = 0; }
 
-            // CORREÇÃO ANIMAÇÃO DE ANDAR (INVERTIDA)
             if(moving && !isJumping) {
-                // Braço esquerdo oposto à perna esquerda
                 leftLeg.pivot.rotation.x = Math.sin(animTime)*0.8;
-                rightLeg.pivot.rotation.x = -Math.sin(animTime)*0.8; // Invertido
-                
-                leftArm.pivot.rotation.x = -Math.sin(animTime)*0.8; // Oposto à perna
+                rightLeg.pivot.rotation.x = -Math.sin(animTime)*0.8; 
+                leftArm.pivot.rotation.x = -Math.sin(animTime)*0.8; 
                 rightArm.pivot.rotation.x = Math.sin(animTime)*0.8; 
             } else if (!isAttacking) {
                 leftLeg.pivot.rotation.x = 0; rightLeg.pivot.rotation.x = 0;

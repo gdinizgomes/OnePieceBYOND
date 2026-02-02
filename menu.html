@@ -1,14 +1,14 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <meta charset="UTF-8"> <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <style>
         body { 
             background-color: #1a1a1a; color: white; font-family: 'Segoe UI', sans-serif; 
             display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0;
         }
         h1 { color: #f1c40f; margin-bottom: 30px; }
-        
         .slots-container { display: flex; gap: 20px; }
         
         .slot-card {
@@ -20,43 +20,38 @@
         .slot-card.empty { border-style: dashed; opacity: 0.7; }
         
         .slot-plus { font-size: 60px; color: #7f8c8d; }
-        .slot-info { text-align: center; }
         .char-level { color: #f1c40f; font-size: 14px; }
         .char-name { font-size: 20px; font-weight: bold; margin: 10px 0; }
         
-        /* Modal de Criação */
-        #create-modal {
-            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0,0,0,0.85); display: none; align-items: center; justify-content: center;
+        /* Botão de Deletar */
+        .btn-delete {
+            position: absolute; top: 10px; right: 10px;
+            background: #c0392b; color: white; width: 30px; height: 30px;
+            border-radius: 50%; text-align: center; line-height: 30px; font-weight: bold;
+            display: none; transition: 0.2s; z-index: 10;
         }
+        .btn-delete:hover { background: #e74c3c; transform: scale(1.1); }
+
+        /* Modal Criação */
+        #create-modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); display: none; align-items: center; justify-content: center; }
         .modal-box { background: #2c3e50; padding: 30px; border-radius: 10px; width: 300px; text-align: center; border: 2px solid #f1c40f; }
         input, select { width: 90%; padding: 10px; margin: 10px 0; border-radius: 5px; border: none; }
         .btn-confirm { background: #27ae60; color: white; padding: 10px 20px; border: none; cursor: pointer; border-radius: 5px; font-weight: bold; }
         .btn-cancel { background: #c0392b; color: white; padding: 10px 20px; border: none; cursor: pointer; border-radius: 5px; margin-left: 10px; }
-        
         .color-preview { width: 50px; height: 50px; border-radius: 50%; margin: 10px auto; border: 2px solid white; }
     </style>
 </head>
 <body>
-
     <h1>SELECIONE SEU PERSONAGEM</h1>
-
-    <div class="slots-container" id="container">
-        </div>
+    <div class="slots-container" id="container"></div>
 
     <div id="create-modal">
         <div class="modal-box">
             <h2>Novo Pirata</h2>
-            <input type="text" id="new-name" placeholder="Nome do Personagem" maxlength="12">
-            
-            <label>Cor da Pele</label>
-            <input type="color" id="skin-color" value="#FFCCAA" onchange="updatePreview()">
-            
-            <label>Cor da Roupa</label>
-            <input type="color" id="clothes-color" value="#FF0000" onchange="updatePreview()">
-            
+            <input type="text" id="new-name" placeholder="Nome (Máx 12)" maxlength="12">
+            <label>Cor da Pele</label> <input type="color" id="skin-color" value="#FFCCAA" onchange="updatePreview()">
+            <label>Cor da Roupa</label> <input type="color" id="clothes-color" value="#FF0000" onchange="updatePreview()">
             <div class="color-preview" id="preview-box" style="background: #FFCCAA"></div>
-
             <br><br>
             <button class="btn-confirm" onclick="confirmCreation()">CRIAR</button>
             <button class="btn-cancel" onclick="closeModal()">CANCELAR</button>
@@ -64,9 +59,9 @@
     </div>
 
     <script>
+        const BYOND_REF = "{{BYOND_REF}}";
         let selectedSlot = 0;
 
-        // Função chamada pelo BYOND com os dados dos slots
         function loadSlots(jsonSlots) {
             const data = JSON.parse(jsonSlots);
             const container = document.getElementById('container');
@@ -78,12 +73,17 @@
                 div.className = charData ? "slot-card" : "slot-card empty";
                 
                 if(charData) {
+                    // Adiciona botão de delete com stopPropagation para não clicar no card ao clicar no X
                     div.innerHTML = `
+                        <div class="btn-delete" onclick="deleteChar(${i}, event)">X</div>
                         <div class="char-level">Lvl ${charData.lvl}</div>
                         <div class="char-name">${charData.name}</div>
                         <div style="font-size: 12px">Berries: ${charData.gold}</div>
                     `;
                     div.onclick = () => selectChar(i);
+                    // Mostra o botão de delete apenas ao passar o mouse via CSS ou sempre visível? 
+                    // Aqui deixei display block direto na classe se tiver char.
+                    div.querySelector('.btn-delete').style.display = 'block';
                 } else {
                     div.innerHTML = `<div class="slot-plus">+</div><div>Criar Novo</div>`;
                     div.onclick = () => openCreateModal(i);
@@ -92,33 +92,24 @@
             }
         }
 
-        function selectChar(slot) {
-            window.location.href = "byond://?src={{BYOND_REF}}&action=select_char&slot=" + slot;
+        function deleteChar(slot, event) {
+            event.stopPropagation(); // Impede que selecione o personagem ao clicar em deletar
+            if(confirm("Tem certeza que deseja deletar este personagem? Essa ação não tem volta!")) {
+                window.location.href = `byond://?src=${BYOND_REF}&action=delete_char&slot=${slot}`;
+            }
         }
 
-        function openCreateModal(slot) {
-            selectedSlot = slot;
-            document.getElementById('create-modal').style.display = 'flex';
-        }
-
-        function closeModal() {
-            document.getElementById('create-modal').style.display = 'none';
-        }
-
-        function updatePreview() {
-            document.getElementById('preview-box').style.background = document.getElementById('skin-color').value;
-        }
-
+        function selectChar(slot) { window.location.href = `byond://?src=${BYOND_REF}&action=select_char&slot=${slot}`; }
+        function openCreateModal(slot) { selectedSlot = slot; document.getElementById('create-modal').style.display = 'flex'; }
+        function closeModal() { document.getElementById('create-modal').style.display = 'none'; }
+        function updatePreview() { document.getElementById('preview-box').style.background = document.getElementById('skin-color').value; }
+        
         function confirmCreation() {
             const name = document.getElementById('new-name').value;
             const skin = document.getElementById('skin-color').value;
             const cloth = document.getElementById('clothes-color').value;
-            
             if(!name) return alert("Digite um nome!");
-
-            // Envia dados para o BYOND criar o save
-            // Importante: Substituímos o # das cores por %23 para não quebrar a URL
-            window.location.href = `byond://?src={{BYOND_REF}}&action=create_char&slot=${selectedSlot}&name=${name}&skin=${skin.replace('#','')}&cloth=${cloth.replace('#','')}`;
+            window.location.href = `byond://?src=${BYOND_REF}&action=create_char&slot=${selectedSlot}&name=${name}&skin=${skin.replace('#','')}&cloth=${cloth.replace('#','')}`;
         }
     </script>
 </body>

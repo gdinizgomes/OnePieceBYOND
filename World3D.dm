@@ -105,13 +105,23 @@ mob
     proc/AutoSaveLoop()
         while(src && in_game)
             SaveCharacter()
-            sleep(600)
+            sleep(300)
 
     Topic(href, href_list[])
         ..()
         var/action = href_list["action"]
 
-        // Ações do MENU
+        // --- MENU: DELETAR PERSONAGEM ---
+        if(action == "delete_char")
+            var/slot = text2num(href_list["slot"])
+            var/path = "[SAVE_DIR][src.ckey]_slot[slot].sav"
+
+            if(fexists(path))
+                fdel(path) // Deleta o arquivo
+                src << output("Personagem deletado.", "map3d:mostrarNotificacao") // Feedback (opcional no menu)
+                ShowCharacterMenu() // Recarrega o menu para atualizar os slots vazios
+
+        // --- MENU: SELEÇÃO/CRIAÇÃO ---
         if(action == "select_char")
             StartGame(text2num(href_list["slot"]))
 
@@ -121,17 +131,18 @@ mob
             src.skin_color = href_list["skin"]
             src.cloth_color = href_list["cloth"]
 
-            // Inicializa valores padrão
-            src.level = 1
-            src.gold = 0
-            src.real_x = 0; src.real_z = 0
+            src.level = 1; src.gold = 0; src.real_x = 0; src.real_z = 0
 
-            // Cria o save imediatamente
             current_slot = slot
             SaveCharacter()
             StartGame(slot)
 
-        // Ações do JOGO
+        // --- GAME: SAVE MANUAL (TECLA P) ---
+        if(action == "force_save" && in_game)
+            SaveCharacter()
+            // A proc SaveCharacter já manda a notificação "Jogo Salvo!", não precisa mandar de novo aqui.
+
+        // --- GAME: ATUALIZAÇÃO E AÇÕES ---
         if(action == "update_pos" && in_game)
             real_x = text2num(href_list["x"])
             real_z = text2num(href_list["z"])

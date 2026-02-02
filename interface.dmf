@@ -39,29 +39,35 @@ menu "menu"
 window "default"
 	elem "default"
 		type = MAIN
-		pos = 0,0
+		pos = 291,0
 		size = 640x480
 		anchor1 = -1,-1
 		anchor2 = -1,-1
-		is-default = true
+		background-color = none
+		is-visible = false
 		saved-params = "pos;size;is-minimized;is-maximized"
 		macro = "macro"
 		menu = "menu"
+		outer-size = 656x558
+		outer-pos = 291,0
+		inner-pos = 8,51
+		screen-size = 3440x1392
 
 window "mainwindow"
 	elem "mainwindow"
 		type = MAIN
-		pos = 527,0
+		pos = 291,0
 		size = 1297x906
 		anchor1 = -1,-1
 		anchor2 = -1,-1
 		background-color = none
+		is-default = true
 		saved-params = "pos;size;is-minimized;is-maximized"
-		outer-size = 1321x998
-		outer-pos = 527,0
+		outer-size = 1313x964
+		outer-pos = 291,0
 		inner-size = 1297x906
-		inner-pos = 12,52
-		screen-size = 2880x1716
+		inner-pos = 8,31
+		screen-size = 3440x1392
 	elem "map3d"
 		type = BROWSER
 		pos = 0,0
