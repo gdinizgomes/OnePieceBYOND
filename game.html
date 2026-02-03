@@ -131,12 +131,11 @@
                     label.className = 'name-label';
                     label.innerText = pData.name;
                     document.getElementById('labels-container').appendChild(label);
-                    // MUDANÇA PONTUAL: Adicionado 'attacking' ao objeto local do player
                     otherPlayers[id] = { mesh: newChar, label: label, targetX: pData.x, targetZ: pData.z, targetRot: pData.rot, attacking: pData.attacking };
                 } else {
                     const other = otherPlayers[id];
                     other.targetX = pData.x; other.targetZ = pData.z; other.targetRot = pData.rot;
-                    other.attacking = pData.attacking; // Atualiza estado de ataque vindo do servidor
+                    other.attacking = pData.attacking;
                 }
             }
             for (const id in otherPlayers) {
@@ -256,15 +255,17 @@
             for(const id in otherPlayers) {
                 const other = otherPlayers[id];
                 const mesh = other.mesh;
-                const dist = Math.sqrt(Math.pow(other.targetX - mesh.position.x, 2) + Math.pow(other.targetZ - mesh.position.z, 2));
-                const isMoving = dist > 0.1;
-                mesh.position.x = lerp(mesh.position.x, other.targetX, 0.1);
-                mesh.position.z = lerp(mesh.position.z, other.targetZ, 0.1);
-                mesh.rotation.y = lerpAngle(mesh.rotation.y, other.targetRot, 0.1);
                 
-                // MUDANÇA PONTUAL: Animação de ataque para outros jogadores baseada no dado do servidor
-                let otherAttackTimer = other.attacking ? Math.PI / 2 : 0; 
-                animateLimb(mesh.userData.limbs, isMoving, animTime, other.attacking, otherAttackTimer);
+                // MUDANÇA PONTUAL: Interpolação para suavizar o movimento "foto a foto"
+                const dist = Math.sqrt(Math.pow(other.targetX - mesh.position.x, 2) + Math.pow(other.targetZ - mesh.position.z, 2));
+                const isMoving = dist > 0.05;
+
+                mesh.position.x = lerp(mesh.position.x, other.targetX, 0.15); // Suaviza posição X
+                mesh.position.z = lerp(mesh.position.z, other.targetZ, 0.15); // Suaviza posição Z
+                mesh.rotation.y = lerpAngle(mesh.rotation.y, other.targetRot, 0.15); // Suaviza rotação
+                
+                // Animação dos membros para outros jogadores baseada na velocidade da interpolação
+                animateLimb(mesh.userData.limbs, isMoving, animTime, other.attacking, other.attacking ? Math.PI/2 : 0);
 
                 const tempV = new THREE.Vector3(mesh.position.x, mesh.position.y + 2, mesh.position.z);
                 tempV.project(camera);
