@@ -2,7 +2,7 @@
 
 mob
     var/current_slot = 0
-    var/char_loaded = 0 // Variável que controla se o boneco aparece
+    var/char_loaded = 0 
 
     var/level = 1;
     var/experience = 0
@@ -15,19 +15,19 @@ mob
     var/real_x = 0;
     var/real_z = 0; var/real_rot = 0
     var/in_game = 0
+    var/is_attacking = 0 // MUDANÇA PONTUAL: Estado de ataque para rede
 
     Login()
         ..()
         in_game = 0
         ShowCharacterMenu()
 
-    // --- MELHORIA PONTUAL: Controle de Desconexão ---
     Logout()
         if(in_game)
-            SaveCharacter() // Garante o salvamento final ao sair
-            in_game = 0     // Encerra os loops de processamento
-            char_loaded = 0 // Remove visualmente para os outros players
-        del(src)            // Limpa o objeto mob da memória do servidor
+            SaveCharacter()
+            in_game = 0     
+            char_loaded = 0 
+        del(src)            
         ..()
 
     proc/ShowCharacterMenu()
@@ -95,13 +95,13 @@ mob
         while(src && in_game)
             var/list/players_list = list()
             for(var/mob/M in world)
-                // Enviamos jogadores E NPCs ativos
                 if(M.in_game && M.char_loaded) 
                     var/pid = "\ref[M]"
                     players_list[pid] = list(
                         "name" = M.name, "x" = M.real_x, "z" = M.real_z, 
                         "rot" = M.real_rot, "skin" = M.skin_color, "cloth" = M.cloth_color,
-                        "hp" = M.current_hp, "max_hp" = M.max_hp
+                        "hp" = M.current_hp, "max_hp" = M.max_hp,
+                        "attacking" = M.is_attacking // MUDANÇA PONTUAL: Enviando estado de ataque
                     )
 
             var/list/packet = list(
@@ -134,37 +134,35 @@ mob
         if(action == "force_save" && in_game) SaveCharacter()
         if(action == "update_pos" && in_game)
             real_x = text2num(href_list["x"]); real_z = text2num(href_list["z"]); real_rot = text2num(href_list["rot"])
-        if(action == "attack" && in_game) src << output("Ataque!", "map3d:mostrarNotificacao")
+        
+        if(action == "attack" && in_game) 
+            is_attacking = 1 // Ativa estado de ataque
+            src << output("Ataque!", "map3d:mostrarNotificacao")
+            spawn(3) is_attacking = 0 // Reseta após 300ms (tempo da animação JS)
 
-// --- NOVO: Definição de NPCs ---
 mob/npc
     in_game = 1
     char_loaded = 1
-    skin_color = "00FF00" // NPCs terão pele verde por padrão para teste
+    skin_color = "00FF00" 
     cloth_color = "0000FF"
 
     New()
         ..()
-        real_x = rand(-10, 10)
-        real_z = rand(-10, 10)
+        real_x = rand(-10, 10); real_z = rand(-10, 10)
         spawn(5) AI_Loop()
 
     proc/AI_Loop()
         while(src)
-            // Movimento aleatório simples
             var/dir = pick(0, 90, 180, 270)
             real_rot = (dir * 3.14159 / 180)
-            
             for(var/i=1 to 10)
                 if(dir == 0) real_z -= 0.1
                 if(dir == 180) real_z += 0.1
                 if(dir == 90) real_x += 0.1
                 if(dir == 270) real_x -= 0.1
                 sleep(1)
-            
             sleep(rand(20, 50))
 
-// Instanciar um NPC ao iniciar o mundo
 world/New()
     ..()
     new /mob/npc() { name = "Pirata de Teste" }

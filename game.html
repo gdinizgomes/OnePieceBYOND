@@ -4,29 +4,17 @@
     <meta charset="UTF-8"> <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <style>
         body { margin: 0; overflow: hidden; user-select: none; font-family: 'Segoe UI', sans-serif; }
-        
         #ui-layer { position: absolute; width: 100%; height: 100%; pointer-events: none; }
         .char-info { position: absolute; top: 20px; left: 20px; background: rgba(0,0,0,0.6); padding: 15px; border-radius: 8px; color: white; border: 2px solid #d4af37; }
         .hp-bar { width: 100%; height: 100%; background: #e74c3c; transition: width 0.2s; }
         .bar-container { width: 200px; height: 10px; background: #333; margin-top: 5px; overflow: hidden; }
-        
-        #combat-log { 
-            position: absolute; bottom: 20px; right: 20px; width: 300px; height: 150px; 
-            background: rgba(0,0,0,0.5); color: #fff; font-size: 12px; overflow-y: auto; 
-            padding: 10px; border-radius: 5px; font-family: monospace; pointer-events: auto;
-        }
+        #combat-log { position: absolute; bottom: 20px; right: 20px; width: 300px; height: 150px; background: rgba(0,0,0,0.5); color: #fff; font-size: 12px; overflow-y: auto; padding: 10px; border-radius: 5px; font-family: monospace; pointer-events: auto; }
         .log-hit { color: #e74c3c; font-weight: bold; } 
         .log-miss { color: #95a5a6; } 
-
         #notif-area { position: absolute; bottom: 100px; left: 50%; transform: translateX(-50%); text-align: center; }
         .toast { background: rgba(0,0,0,0.8); color: white; padding: 10px 20px; border-radius: 20px; margin-top: 5px; animation: fadeout 3s forwards; }
         @keyframes fadeout { 0% { opacity: 1; } 80% { opacity: 1; } 100% { opacity: 0; } }
-        
-        .name-label {
-            position: absolute; color: white; background: rgba(0,0,0,0.5); padding: 2px 5px; 
-            border-radius: 4px; font-size: 10px; pointer-events: none;
-            text-shadow: 1px 1px 0 #000; display: none;
-        }
+        .name-label { position: absolute; color: white; background: rgba(0,0,0,0.5); padding: 2px 5px; border-radius: 4px; font-size: 10px; pointer-events: none; text-shadow: 1px 1px 0 #000; display: none; }
     </style>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 </head>
@@ -61,8 +49,7 @@
         dirLight.castShadow = true;
         scene.add(dirLight);
 
-        const MAP_SIZE = 60; const MAP_LIMIT = MAP_SIZE / 2;
-        const road = new THREE.Mesh(new THREE.PlaneGeometry(MAP_SIZE, MAP_SIZE), new THREE.MeshPhongMaterial({ color: 0x333333 }));
+        const MAP_SIZE = 60; const road = new THREE.Mesh(new THREE.PlaneGeometry(MAP_SIZE, MAP_SIZE), new THREE.MeshPhongMaterial({ color: 0x333333 }));
         road.rotation.x = -Math.PI / 2; road.receiveShadow = true;
         scene.add(road); scene.add(new THREE.GridHelper(MAP_SIZE, MAP_SIZE));
 
@@ -82,7 +69,6 @@
             const matSkin = new THREE.MeshPhongMaterial({ color: parseInt("0x" + skinColorHex) }); 
             const matClothes = new THREE.MeshPhongMaterial({ color: parseInt("0x" + clothColorHex) }); 
             const matEye = new THREE.MeshBasicMaterial({color: 0x000000});
-
             const torso = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.7, 0.3), matClothes);
             torso.position.y = 1.1; torso.castShadow = true; group.add(torso);
             const head = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.35, 0.35), matSkin);
@@ -100,18 +86,16 @@
             const leftLeg = createLimb(0.18, 0.8, 0.18, matClothes, 0.12, -0.35, 0); 
             const rightLeg = createLimb(0.18, 0.8, 0.18, matClothes, -0.12, -0.35, 0);
             torso.add(leftArm.pivot); torso.add(rightArm.pivot); torso.add(leftLeg.pivot); torso.add(rightLeg.pivot);
-
             group.userData.limbs = { leftArm: leftArm.pivot, rightArm: rightArm.pivot, leftLeg: leftLeg.pivot, rightLeg: rightLeg.pivot };
             return group;
         }
 
         let playerGroup = null; const otherPlayers = {}; let myID = null; let isCharacterReady = false;
-        let lastPacketTime = Date.now(); // Heartbeat tracker
-
+        let lastPacketTime = Date.now();
         const BYOND_REF = "{{BYOND_REF}}";
 
         function receberDadosMultiplayer(json) {
-            lastPacketTime = Date.now(); // Reset do Heartbeat
+            lastPacketTime = Date.now();
             const packet = JSON.parse(json);
             const me = packet.me;
             myID = packet.my_id;
@@ -147,12 +131,12 @@
                     label.className = 'name-label';
                     label.innerText = pData.name;
                     document.getElementById('labels-container').appendChild(label);
-                    otherPlayers[id] = { mesh: newChar, label: label, targetX: pData.x, targetZ: pData.z, targetRot: pData.rot };
+                    // MUDANÇA PONTUAL: Adicionado 'attacking' ao objeto local do player
+                    otherPlayers[id] = { mesh: newChar, label: label, targetX: pData.x, targetZ: pData.z, targetRot: pData.rot, attacking: pData.attacking };
                 } else {
                     const other = otherPlayers[id];
-                    other.targetX = pData.x;
-                    other.targetZ = pData.z;
-                    other.targetRot = pData.rot;
+                    other.targetX = pData.x; other.targetZ = pData.z; other.targetRot = pData.rot;
+                    other.attacking = pData.attacking; // Atualiza estado de ataque vindo do servidor
                 }
             }
             for (const id in otherPlayers) {
@@ -164,13 +148,10 @@
             }
         }
 
-        // Monitor de Conexão (Heartbeat)
         setInterval(() => {
-            if(isCharacterReady) {
-                if(Date.now() - lastPacketTime > 4000) { 
-                    addLog("AVISO: Conexão com o servidor perdida.", "log-hit");
-                    isCharacterReady = false; 
-                }
+            if(isCharacterReady && Date.now() - lastPacketTime > 4000) { 
+                addLog("AVISO: Conexão com o servidor perdida.", "log-hit");
+                isCharacterReady = false; 
             }
         }, 1000);
 
@@ -178,8 +159,7 @@
         let blockSync = false;
 
         document.addEventListener('keydown', e => { 
-            const k = e.key.toLowerCase();
-            if(keys.hasOwnProperty(k)) keys[k] = true;
+            const k = e.key.toLowerCase(); if(keys.hasOwnProperty(k)) keys[k] = true;
             if(k === 'a') performAttack();
             if(k === 'p' && !blockSync) {
                 blockSync = true; 
@@ -194,9 +174,7 @@
         document.addEventListener('contextmenu', e => e.preventDefault());
         document.addEventListener('mousedown', e => { if(e.button===2){mouseRight=true; lastMouseX=e.clientX;} });
         document.addEventListener('mouseup', e => { if(e.button===2) mouseRight=false; });
-        document.addEventListener('mousemove', e => { 
-            if(mouseRight) { camAngle -= (e.clientX - lastMouseX)*0.005; lastMouseX=e.clientX; } 
-        });
+        document.addEventListener('mousemove', e => { if(mouseRight) { camAngle -= (e.clientX - lastMouseX)*0.005; lastMouseX=e.clientX; } });
 
         setInterval(() => {
             if(isCharacterReady && !blockSync) {
@@ -210,10 +188,7 @@
         let animTime = 0; let isJumping = false; let verticalVelocity = 0; const gravity = -0.015; const jumpForce = 0.3;
         let isAttacking = false; let attackTimer = 0;
 
-        function addLog(msg, css) { 
-            const d = document.getElementById('combat-log'); 
-            d.innerHTML += `<span class="${css}">${msg}</span><br>`; d.scrollTop=d.scrollHeight; 
-        }
+        function addLog(msg, css) { const d = document.getElementById('combat-log'); d.innerHTML += `<span class="${css}">${msg}</span><br>`; d.scrollTop=d.scrollHeight; }
 
         function performAttack() {
             if(isAttacking || !isCharacterReady) return; isAttacking = true; attackTimer = 0;
@@ -226,7 +201,6 @@
         }
 
         function lerp(start, end, t) { return start * (1 - t) + end * t; }
-
         function mod(n, m) { return ((n % m) + m) % m; }
         function lerpAngle(start, end, t) {
             const diff = end - start;
@@ -242,23 +216,19 @@
                 limbs.leftLeg.rotation.x = 0; limbs.rightLeg.rotation.x = 0;
                 limbs.leftArm.rotation.x = 0; limbs.rightArm.rotation.x = 0;
             }
-            if(attacking) {
-                limbs.rightArm.rotation.x = -Math.sin(attackTimer)*2;
-            }
+            if(attacking) limbs.rightArm.rotation.x = -Math.sin(attackTimer)*2;
         }
 
         function animate() {
             requestAnimationFrame(animate);
             animTime += 0.1;
-
             if (isCharacterReady) {
                 const speed = 0.15;
                 let moveX = 0, moveZ = 0, moving = false;
                 const sin = Math.sin(camAngle); const cos = Math.cos(camAngle);
-                
-                if(keys.arrowup)    { moveX -= sin*speed; moveZ -= cos*speed; moving = true; }
-                if(keys.arrowdown)  { moveX += sin*speed; moveZ += cos*speed; moving = true; }
-                if(keys.arrowleft)  { moveX -= cos*speed; moveZ += sin*speed; moving = true; }
+                if(keys.arrowup) { moveX -= sin*speed; moveZ -= cos*speed; moving = true; }
+                if(keys.arrowdown) { moveX += sin*speed; moveZ += cos*speed; moving = true; }
+                if(keys.arrowleft) { moveX -= cos*speed; moveZ += sin*speed; moving = true; }
                 if(keys.arrowright) { moveX += cos*speed; moveZ -= sin*speed; moving = true; }
 
                 playerGroup.position.x += moveX; playerGroup.position.z += moveZ;
@@ -268,9 +238,7 @@
                 if(moving) {
                     const targetCharRot = Math.atan2(moveX, moveZ);
                     playerGroup.rotation.y = targetCharRot;
-                    if(!keys.arrowdown && !mouseRight) {
-                         camAngle = lerpAngle(camAngle, targetCharRot + Math.PI, 0.02);
-                    }
+                    if(!keys.arrowdown && !mouseRight) camAngle = lerpAngle(camAngle, targetCharRot + Math.PI, 0.02);
                 }
 
                 if(keys[" "] && !isJumping) { verticalVelocity = jumpForce; isJumping = true; }
@@ -281,9 +249,7 @@
                 animateLimb(playerGroup.userData.limbs, moving && !isJumping, animTime, isAttacking, attackTimer);
 
                 const camDist = 7; const camH = 5;
-                camera.position.x = playerGroup.position.x + Math.sin(camAngle)*camDist;
-                camera.position.z = playerGroup.position.z + Math.cos(camAngle)*camDist;
-                camera.position.y = playerGroup.position.y + camH;
+                camera.position.set(playerGroup.position.x + Math.sin(camAngle)*camDist, playerGroup.position.y + camH, playerGroup.position.z + Math.cos(camAngle)*camDist);
                 camera.lookAt(playerGroup.position.x, playerGroup.position.y + 1.5, playerGroup.position.z);
             }
 
@@ -292,23 +258,20 @@
                 const mesh = other.mesh;
                 const dist = Math.sqrt(Math.pow(other.targetX - mesh.position.x, 2) + Math.pow(other.targetZ - mesh.position.z, 2));
                 const isMoving = dist > 0.1;
-
                 mesh.position.x = lerp(mesh.position.x, other.targetX, 0.1);
                 mesh.position.z = lerp(mesh.position.z, other.targetZ, 0.1);
                 mesh.rotation.y = lerpAngle(mesh.rotation.y, other.targetRot, 0.1);
                 
-                animateLimb(mesh.userData.limbs, isMoving, animTime, false, 0);
+                // MUDANÇA PONTUAL: Animação de ataque para outros jogadores baseada no dado do servidor
+                let otherAttackTimer = other.attacking ? Math.PI / 2 : 0; 
+                animateLimb(mesh.userData.limbs, isMoving, animTime, other.attacking, otherAttackTimer);
 
                 const tempV = new THREE.Vector3(mesh.position.x, mesh.position.y + 2, mesh.position.z);
                 tempV.project(camera);
-                const x = (tempV.x * .5 + .5) * window.innerWidth;
-                const y = (-(tempV.y * .5) + .5) * window.innerHeight;
-                
                 other.label.style.display = (Math.abs(tempV.z) > 1) ? 'none' : 'block';
-                other.label.style.left = x + 'px';
-                other.label.style.top = y + 'px';
+                other.label.style.left = (tempV.x * .5 + .5) * window.innerWidth + 'px';
+                other.label.style.top = (-(tempV.y * .5) + .5) * window.innerHeight + 'px';
             }
-            
             renderer.render(scene, camera);
         }
         animate();
