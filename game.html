@@ -295,7 +295,11 @@
                 if(moving) {
                     const targetCharRot = Math.atan2(moveX, moveZ);
                     playerGroup.rotation.y = targetCharRot;
-                    if(keys.arrowup && !mouseRight) {
+
+                    // --- AJUSTE: Câmera gira em Frente, Esquerda e Direita ---
+                    // A regra é: Gira sempre, EXCETO se estiver segurando "Para Trás" (ArrowDown)
+                    if(!keys.arrowdown && !mouseRight) {
+                         // Mantemos o 0.02 que é uma velocidade suave e segura
                          camAngle = lerpAngle(camAngle, targetCharRot + Math.PI, 0.02);
                     }
                 }
