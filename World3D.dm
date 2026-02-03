@@ -35,9 +35,7 @@ mob
         for(var/i=1 to 3)
             if(fexists("[SAVE_DIR][src.ckey]_slot[i].sav"))
                 var/savefile/F = new("[SAVE_DIR][src.ckey]_slot[i].sav")
-     
-                var/n; var/l;
-                var/g
+                var/n; var/l; var/g
                 F["name"] >> n;
                 F["level"] >> l; F["gold"] >> g
                 slots_data["slot[i]"] = list("name"=n, "lvl"=l, "gold"=g)
@@ -48,22 +46,18 @@ mob
         page = replacetext(page, "{{BYOND_REF}}", "\ref[src]")
         src << browse(page, "window=map3d")
         sleep(2)
-    
         src << output(json_encode(slots_data), "map3d:loadSlots")
 
     proc/StartGame(slot_index)
         current_slot = slot_index
-
         if(LoadCharacter(slot_index))
             src << output("Personagem carregado!", "map3d:mostrarNotificacao")
         else
-            real_x = 0;
-            real_z = 0
+            real_x = 0; real_z = 0
             src << output("Novo personagem!", "map3d:mostrarNotificacao")
 
         char_loaded = 1 
         in_game = 1
-
         var/page = file2text('game.html')
         page = replacetext(page, "{{BYOND_REF}}", "\ref[src]")
         src << browse(page, "window=map3d")
@@ -100,33 +94,21 @@ mob
     proc/UpdateLoop()
         while(src && in_game)
             var/list/players_list = list()
-
             for(var/mob/M in world)
-                if(M.client && M.in_game) 
+                // Enviamos jogadores E NPCs ativos
+                if(M.in_game && M.char_loaded) 
                     var/pid = "\ref[M]"
                     players_list[pid] = list(
-                        "name" = M.name,
-                        "x" = M.real_x,
-                        "z" = M.real_z,
-                        "rot" = M.real_rot,
-                        "skin" = M.skin_color,
-                        "cloth" = M.cloth_color,
-                        "hp" = M.current_hp,
-                        "max_hp" = M.max_hp
+                        "name" = M.name, "x" = M.real_x, "z" = M.real_z, 
+                        "rot" = M.real_rot, "skin" = M.skin_color, "cloth" = M.cloth_color,
+                        "hp" = M.current_hp, "max_hp" = M.max_hp
                     )
 
             var/list/packet = list(
                 "my_id" = "\ref[src]",
-                "me" = list(
-                    "loaded" = src.char_loaded,
-                    "lvl" = src.level,
-                    "gold" = src.gold,
-                    "hp" = src.current_hp,
-                    "max_hp" = src.max_hp
-                ),
+                "me" = list("loaded" = src.char_loaded, "lvl" = src.level, "gold" = src.gold, "hp" = src.current_hp, "max_hp" = src.max_hp),
                 "others" = players_list
             )
-
             src << output(json_encode(packet), "map3d:receberDadosMultiplayer")
             sleep(1) 
 
@@ -138,30 +120,51 @@ mob
     Topic(href, href_list[])
         ..()
         var/action = href_list["action"]
-
         if(action == "delete_char")
             var/slot = text2num(href_list["slot"])
             var/path = "[SAVE_DIR][src.ckey]_slot[slot].sav"
             if(fexists(path)) fdel(path)
             ShowCharacterMenu()
-
         if(action == "select_char") StartGame(text2num(href_list["slot"]))
-
         if(action == "create_char")
             var/slot = text2num(href_list["slot"])
-            src.name = href_list["name"]
-            src.skin_color = href_list["skin"];
-            src.cloth_color = href_list["cloth"]
-            src.level = 1; src.gold = 0;
-            src.real_x = 0; src.real_z = 0
-            current_slot = slot;
-            SaveCharacter(); StartGame(slot)
-
+            src.name = href_list["name"]; src.skin_color = href_list["skin"]; src.cloth_color = href_list["cloth"]
+            src.level = 1; src.gold = 0; src.real_x = 0; src.real_z = 0
+            current_slot = slot; SaveCharacter(); StartGame(slot)
         if(action == "force_save" && in_game) SaveCharacter()
-
         if(action == "update_pos" && in_game)
-            real_x = text2num(href_list["x"])
-            real_z = text2num(href_list["z"])
-            real_rot = text2num(href_list["rot"])
-
+            real_x = text2num(href_list["x"]); real_z = text2num(href_list["z"]); real_rot = text2num(href_list["rot"])
         if(action == "attack" && in_game) src << output("Ataque!", "map3d:mostrarNotificacao")
+
+// --- NOVO: Definição de NPCs ---
+mob/npc
+    in_game = 1
+    char_loaded = 1
+    skin_color = "00FF00" // NPCs terão pele verde por padrão para teste
+    cloth_color = "0000FF"
+
+    New()
+        ..()
+        real_x = rand(-10, 10)
+        real_z = rand(-10, 10)
+        spawn(5) AI_Loop()
+
+    proc/AI_Loop()
+        while(src)
+            // Movimento aleatório simples
+            var/dir = pick(0, 90, 180, 270)
+            real_rot = (dir * 3.14159 / 180)
+            
+            for(var/i=1 to 10)
+                if(dir == 0) real_z -= 0.1
+                if(dir == 180) real_z += 0.1
+                if(dir == 90) real_x += 0.1
+                if(dir == 270) real_x -= 0.1
+                sleep(1)
+            
+            sleep(rand(20, 50))
+
+// Instanciar um NPC ao iniciar o mundo
+world/New()
+    ..()
+    new /mob/npc() { name = "Pirata de Teste" }

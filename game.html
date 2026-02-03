@@ -106,12 +106,12 @@
         }
 
         let playerGroup = null; const otherPlayers = {}; let myID = null; let isCharacterReady = false;
-        let lastPacketTime = Date.now(); // MELHORIA PONTUAL: Heartbeat tracker
+        let lastPacketTime = Date.now(); // Heartbeat tracker
 
         const BYOND_REF = "{{BYOND_REF}}";
 
         function receberDadosMultiplayer(json) {
-            lastPacketTime = Date.now(); // Reset do Heartbeat ao receber dados
+            lastPacketTime = Date.now(); // Reset do Heartbeat
             const packet = JSON.parse(json);
             const me = packet.me;
             myID = packet.my_id;
@@ -148,7 +148,6 @@
                     label.innerText = pData.name;
                     document.getElementById('labels-container').appendChild(label);
                     otherPlayers[id] = { mesh: newChar, label: label, targetX: pData.x, targetZ: pData.z, targetRot: pData.rot };
-                    addLog(pData.name + " entrou na área.", "log-miss");
                 } else {
                     const other = otherPlayers[id];
                     other.targetX = pData.x;
@@ -165,10 +164,10 @@
             }
         }
 
-        // MELHORIA PONTUAL: Monitor de Conexão (Heartbeat)
+        // Monitor de Conexão (Heartbeat)
         setInterval(() => {
             if(isCharacterReady) {
-                if(Date.now() - lastPacketTime > 4000) { // Se 4s sem dados, conexão perdida
+                if(Date.now() - lastPacketTime > 4000) { 
                     addLog("AVISO: Conexão com o servidor perdida.", "log-hit");
                     isCharacterReady = false; 
                 }
