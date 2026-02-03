@@ -133,8 +133,6 @@
             myID = packet.my_id;
 
             if(me.loaded == 1 && !isCharacterReady) {
-                // Primeira vez carregando: Precisamos descobrir nossas cores
-                // Como as cores vêm na lista "others" (onde eu também estou), pegamos de lá
                 if(packet.others[myID]) {
                     const myData = packet.others[myID];
                     playerGroup = createCharacterMesh(myData.skin, myData.cloth);
@@ -157,19 +155,16 @@
             // B. Sincronização de Outros Players
             const serverPlayers = packet.others;
             
-            // 1. Criar ou Atualizar
             for (const id in serverPlayers) {
-                if (id === myID) continue; // Ignora a mim mesmo (eu uso controle local)
+                if (id === myID) continue;
 
                 const pData = serverPlayers[id];
 
                 if (!otherPlayers[id]) {
-                    // NOVO JOGADOR DETECTADO: Criar boneco
                     const newChar = createCharacterMesh(pData.skin, pData.cloth);
                     newChar.position.set(pData.x, 0, pData.z);
                     scene.add(newChar);
                     
-                    // Label de Nome
                     const label = document.createElement('div');
                     label.className = 'name-label';
                     label.innerText = pData.name;
@@ -178,7 +173,6 @@
                     otherPlayers[id] = { mesh: newChar, label: label, targetX: pData.x, targetZ: pData.z, targetRot: pData.rot };
                     addLog(pData.name + " entrou na área.", "log-miss");
                 } else {
-                    // JOGADOR EXISTENTE: Atualizar Alvo (para interpolação)
                     const other = otherPlayers[id];
                     other.targetX = pData.x;
                     other.targetZ = pData.z;
@@ -186,10 +180,8 @@
                 }
             }
 
-            // 2. Remover quem saiu (Garbage Collection)
             for (const id in otherPlayers) {
                 if (!serverPlayers[id]) {
-                    // Jogador sumiu do pacote do servidor -> Deletar
                     scene.remove(otherPlayers[id].mesh);
                     otherPlayers[id].label.remove();
                     delete otherPlayers[id];
@@ -222,7 +214,7 @@
             if(mouseRight) { camAngle -= (e.clientX - lastMouseX)*0.005; lastMouseX=e.clientX; } 
         });
 
-        // Loop de Envio (Só envia meus dados)
+        // Loop de Envio
         setInterval(() => {
             if(isCharacterReady && !blockSync) {
                 const x = playerGroup.position.x.toFixed(2);
@@ -235,7 +227,6 @@
         // --- 6. GAME LOOP & ANIMAÇÃO ---
         let animTime = 0; let isJumping = false; let verticalVelocity = 0; const gravity = -0.015; const jumpForce = 0.3;
         
-        // Combate
         let isAttacking = false; let attackTimer = 0;
         function addLog(msg, css) { 
             const d = document.getElementById('combat-log'); 
@@ -252,13 +243,15 @@
         }
 
         function lerp(start, end, t) { return start * (1 - t) + end * t; }
+
+        // --- PONTO 2: Correção lerpAngle com função mod real ---
+        function mod(n, m) { return ((n % m) + m) % m; }
         function lerpAngle(start, end, t) {
             const diff = end - start;
-            const shortestDiff = ((diff + Math.PI) % (Math.PI * 2)) - Math.PI;
+            const shortestDiff = mod(diff + Math.PI, Math.PI * 2) - Math.PI;
             return start + shortestDiff * t;
         }
 
-        // Animação Procedural (Genérica para qualquer boneco)
         function animateLimb(limbs, moving, time, attacking, attackTimer) {
             if(moving) {
                 limbs.leftLeg.rotation.x = Math.sin(time)*0.8; limbs.rightLeg.rotation.x = -Math.sin(time)*0.8;
@@ -276,7 +269,6 @@
             requestAnimationFrame(animate);
             animTime += 0.1;
 
-            // 1. Lógica do Jogador Local
             if (isCharacterReady) {
                 const speed = 0.15;
                 let moveX = 0, moveZ = 0, moving = false;
@@ -288,7 +280,6 @@
                 if(keys.arrowright) { moveX += cos*speed; moveZ -= sin*speed; moving = true; }
 
                 playerGroup.position.x += moveX; playerGroup.position.z += moveZ;
-                // Clamp Limites
                 if(playerGroup.position.x > 30) playerGroup.position.x = 30; if(playerGroup.position.x < -30) playerGroup.position.x = -30;
                 if(playerGroup.position.z > 30) playerGroup.position.z = 30; if(playerGroup.position.z < -30) playerGroup.position.z = -30;
 
@@ -296,24 +287,18 @@
                     const targetCharRot = Math.atan2(moveX, moveZ);
                     playerGroup.rotation.y = targetCharRot;
 
-                    // --- AJUSTE: Câmera gira em Frente, Esquerda e Direita ---
-                    // A regra é: Gira sempre, EXCETO se estiver segurando "Para Trás" (ArrowDown)
                     if(!keys.arrowdown && !mouseRight) {
-                         // Mantemos o 0.02 que é uma velocidade suave e segura
                          camAngle = lerpAngle(camAngle, targetCharRot + Math.PI, 0.02);
                     }
                 }
 
-                // Pulo Local
                 if(keys[" "] && !isJumping) { verticalVelocity = jumpForce; isJumping = true; }
                 playerGroup.position.y += verticalVelocity; verticalVelocity += gravity;
                 if(playerGroup.position.y < 0) { playerGroup.position.y = 0; isJumping = false; verticalVelocity = 0; }
 
-                // Animação Local
                 if(isAttacking) { attackTimer += 0.2; if(attackTimer > Math.PI) isAttacking = false; }
                 animateLimb(playerGroup.userData.limbs, moving && !isJumping, animTime, isAttacking, attackTimer);
 
-                // Câmera
                 const camDist = 7; const camH = 5;
                 camera.position.x = playerGroup.position.x + Math.sin(camAngle)*camDist;
                 camera.position.z = playerGroup.position.z + Math.cos(camAngle)*camDist;
@@ -321,12 +306,9 @@
                 camera.lookAt(playerGroup.position.x, playerGroup.position.y + 1.5, playerGroup.position.z);
             }
 
-            // 2. Lógica dos Outros Jogadores (INTERPOLAÇÃO)
             for(const id in otherPlayers) {
                 const other = otherPlayers[id];
                 const mesh = other.mesh;
-                
-                // Move suavemente (Lerp) da posição atual para a posição que o servidor mandou
                 const dist = Math.sqrt(Math.pow(other.targetX - mesh.position.x, 2) + Math.pow(other.targetZ - mesh.position.z, 2));
                 const isMoving = dist > 0.1;
 
@@ -334,10 +316,8 @@
                 mesh.position.z = lerp(mesh.position.z, other.targetZ, 0.1);
                 mesh.rotation.y = lerpAngle(mesh.rotation.y, other.targetRot, 0.1);
                 
-                // Animação Remota
                 animateLimb(mesh.userData.limbs, isMoving, animTime, false, 0);
 
-                // Atualiza label do nome (Projeta posição 3D na tela 2D)
                 const tempV = new THREE.Vector3(mesh.position.x, mesh.position.y + 2, mesh.position.z);
                 tempV.project(camera);
                 const x = (tempV.x * .5 + .5) * window.innerWidth;
