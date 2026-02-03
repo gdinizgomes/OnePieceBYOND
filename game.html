@@ -22,11 +22,10 @@
         .toast { background: rgba(0,0,0,0.8); color: white; padding: 10px 20px; border-radius: 20px; margin-top: 5px; animation: fadeout 3s forwards; }
         @keyframes fadeout { 0% { opacity: 1; } 80% { opacity: 1; } 100% { opacity: 0; } }
         
-        /* Nomes flutuantes */
         .name-label {
             position: absolute; color: white; background: rgba(0,0,0,0.5); padding: 2px 5px; 
             border-radius: 4px; font-size: 10px; pointer-events: none;
-            text-shadow: 1px 1px 0 #000; display: none; /* Controlado pelo JS */
+            text-shadow: 1px 1px 0 #000; display: none;
         }
     </style>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -45,7 +44,6 @@
     </div>
 
     <script>
-        // --- 1. CONFIGURAÇÃO BÁSICA ---
         const scene = new THREE.Scene();
         scene.background = new THREE.Color(0x87CEEB);
         scene.fog = new THREE.Fog(0x87CEEB, 15, 60);
@@ -68,32 +66,27 @@
         road.rotation.x = -Math.PI / 2; road.receiveShadow = true;
         scene.add(road); scene.add(new THREE.GridHelper(MAP_SIZE, MAP_SIZE));
 
-        // --- 2. TRONCO DE TREINO ---
         const dummyGroup = new THREE.Group();
         dummyGroup.position.set(5, 0, 5);
         const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.4, 1.8, 12), new THREE.MeshPhongMaterial({ color: 0x8B4513 }));
         trunk.position.y = 0.9; trunk.castShadow = true;
-        const target = new THREE.Mesh(new THREE.CylinderGeometry(0.41, 0.41, 0.4, 12), new THREE.MeshBasicMaterial({ color: 0xFFFFFF }));
+        const target = new THREE.Mesh(new THREE.CylinderGeometry(0.41, 0.41, 0.4, 12), new THREE.MeshBasicMaterial({ color: 0xFF0000 }));
         target.position.y = 1.3;
         const targetCenter = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.42, 0.2, 12), new THREE.MeshBasicMaterial({ color: 0xFF0000 }));
         targetCenter.position.y = 1.3;
         dummyGroup.add(trunk); dummyGroup.add(target); dummyGroup.add(targetCenter);
         scene.add(dummyGroup);
 
-        // --- 3. FÁBRICA DE PERSONAGENS (Reutilizável) ---
         function createCharacterMesh(skinColorHex, clothColorHex) {
             const group = new THREE.Group();
-            
             const matSkin = new THREE.MeshPhongMaterial({ color: parseInt("0x" + skinColorHex) }); 
             const matClothes = new THREE.MeshPhongMaterial({ color: parseInt("0x" + clothColorHex) }); 
             const matEye = new THREE.MeshBasicMaterial({color: 0x000000});
 
             const torso = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.7, 0.3), matClothes);
             torso.position.y = 1.1; torso.castShadow = true; group.add(torso);
-            
             const head = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.35, 0.35), matSkin);
             head.position.y = 0.55; torso.add(head);
-
             const eyeL = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.05, 0.05), matEye); eyeL.position.set(0.1, 0.05, 0.18); head.add(eyeL);
             const eyeR = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.05, 0.05), matEye); eyeR.position.set(-0.1, 0.05, 0.18); head.add(eyeR);
 
@@ -106,29 +99,20 @@
             const rightArm = createLimb(0.15, 0.7, 0.15, matSkin, -0.35, 0.3, 0);
             const leftLeg = createLimb(0.18, 0.8, 0.18, matClothes, 0.12, -0.35, 0); 
             const rightLeg = createLimb(0.18, 0.8, 0.18, matClothes, -0.12, -0.35, 0);
-
             torso.add(leftArm.pivot); torso.add(rightArm.pivot); torso.add(leftLeg.pivot); torso.add(rightLeg.pivot);
 
-            // Guardamos referências para animação dentro do objeto userData do grupo
             group.userData.limbs = { leftArm: leftArm.pivot, rightArm: rightArm.pivot, leftLeg: leftLeg.pivot, rightLeg: rightLeg.pivot };
-            
             return group;
         }
 
-        // --- 4. GERENCIAMENTO MULTIPLAYER ---
-        let playerGroup = null; // Meu personagem (Local)
-        const otherPlayers = {}; // Lista de outros personagens { id: mesh }
-        let myID = null;
-        let isCharacterReady = false;
-        let firstLoad = true;
+        let playerGroup = null; const otherPlayers = {}; let myID = null; let isCharacterReady = false;
+        let lastPacketTime = Date.now(); // MELHORIA PONTUAL: Heartbeat tracker
 
         const BYOND_REF = "{{BYOND_REF}}";
 
-        // Função Principal de Rede
         function receberDadosMultiplayer(json) {
+            lastPacketTime = Date.now(); // Reset do Heartbeat ao receber dados
             const packet = JSON.parse(json);
-            
-            // A. Meus Dados (HUD e Controle Local)
             const me = packet.me;
             myID = packet.my_id;
 
@@ -139,7 +123,6 @@
                     playerGroup.visible = true;
                     playerGroup.position.set(myData.x, 0, myData.z);
                     scene.add(playerGroup);
-                    
                     isCharacterReady = true;
                     camAngle = myData.rot + Math.PI; 
                 }
@@ -152,24 +135,18 @@
                 document.getElementById('hp-bar-fill').style.width = ((me.hp / me.max_hp) * 100) + "%";
             }
 
-            // B. Sincronização de Outros Players
             const serverPlayers = packet.others;
-            
             for (const id in serverPlayers) {
                 if (id === myID) continue;
-
                 const pData = serverPlayers[id];
-
                 if (!otherPlayers[id]) {
                     const newChar = createCharacterMesh(pData.skin, pData.cloth);
                     newChar.position.set(pData.x, 0, pData.z);
                     scene.add(newChar);
-                    
                     const label = document.createElement('div');
                     label.className = 'name-label';
                     label.innerText = pData.name;
                     document.getElementById('labels-container').appendChild(label);
-
                     otherPlayers[id] = { mesh: newChar, label: label, targetX: pData.x, targetZ: pData.z, targetRot: pData.rot };
                     addLog(pData.name + " entrou na área.", "log-miss");
                 } else {
@@ -179,7 +156,6 @@
                     other.targetRot = pData.rot;
                 }
             }
-
             for (const id in otherPlayers) {
                 if (!serverPlayers[id]) {
                     scene.remove(otherPlayers[id].mesh);
@@ -189,7 +165,16 @@
             }
         }
 
-        // --- 5. INPUTS E CONTROLE ---
+        // MELHORIA PONTUAL: Monitor de Conexão (Heartbeat)
+        setInterval(() => {
+            if(isCharacterReady) {
+                if(Date.now() - lastPacketTime > 4000) { // Se 4s sem dados, conexão perdida
+                    addLog("AVISO: Conexão com o servidor perdida.", "log-hit");
+                    isCharacterReady = false; 
+                }
+            }
+        }, 1000);
+
         const keys = { arrowup: false, arrowdown: false, arrowleft: false, arrowright: false, " ": false };
         let blockSync = false;
 
@@ -214,7 +199,6 @@
             if(mouseRight) { camAngle -= (e.clientX - lastMouseX)*0.005; lastMouseX=e.clientX; } 
         });
 
-        // Loop de Envio
         setInterval(() => {
             if(isCharacterReady && !blockSync) {
                 const x = playerGroup.position.x.toFixed(2);
@@ -224,14 +208,14 @@
             }
         }, 200);
 
-        // --- 6. GAME LOOP & ANIMAÇÃO ---
         let animTime = 0; let isJumping = false; let verticalVelocity = 0; const gravity = -0.015; const jumpForce = 0.3;
-        
         let isAttacking = false; let attackTimer = 0;
+
         function addLog(msg, css) { 
             const d = document.getElementById('combat-log'); 
             d.innerHTML += `<span class="${css}">${msg}</span><br>`; d.scrollTop=d.scrollHeight; 
         }
+
         function performAttack() {
             if(isAttacking || !isCharacterReady) return; isAttacking = true; attackTimer = 0;
             const dist = playerGroup.position.distanceTo(dummyGroup.position);
@@ -244,7 +228,6 @@
 
         function lerp(start, end, t) { return start * (1 - t) + end * t; }
 
-        // --- PONTO 2: Correção lerpAngle com função mod real ---
         function mod(n, m) { return ((n % m) + m) % m; }
         function lerpAngle(start, end, t) {
             const diff = end - start;
@@ -286,7 +269,6 @@
                 if(moving) {
                     const targetCharRot = Math.atan2(moveX, moveZ);
                     playerGroup.rotation.y = targetCharRot;
-
                     if(!keys.arrowdown && !mouseRight) {
                          camAngle = lerpAngle(camAngle, targetCharRot + Math.PI, 0.02);
                     }
