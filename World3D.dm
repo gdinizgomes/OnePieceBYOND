@@ -18,7 +18,7 @@ mob
     var/real_rot = 0
     var/in_game = 0
     var/is_attacking = 0
-    var/attack_type = "" // NOVA VARIAVEL: Tipo do ataque (fist, kick, sword, gun)
+    var/attack_type = "" // Tipo do ataque (fist, kick, sword, gun)
 
     Login()
         ..()
@@ -30,7 +30,6 @@ mob
             SaveCharacter()
             in_game = 0
             char_loaded = 0
-
         del(src)
         ..()
 
@@ -48,7 +47,6 @@ mob
                 slots_data["slot[i]"] = null
 
         var/page = file2text('menu.html')
-
         page = replacetext(page, "{{BYOND_REF}}", "\ref[src]")
         src << browse(page, "window=map3d")
         sleep(2)
@@ -117,9 +115,22 @@ mob
             if(full_sync) sync_step = 0
             else sync_step++
 
-
+            // OTIMIZAÇÃO CRÍTICA (AOI - Area of Interest)
+            // Em vez de "world", usamos "view(src, 10)"
+            // Isso pega apenas mobs num raio de 10 tiles (aprox o que cabe na tela 3D)
+            // Nota: O BYOND precisa saber onde o mob está no mapa 2D para o view() funcionar.
+            // Como movemos apenas real_x/z, precisamos enganar o BYOND ou iterar manualmente se for mapa infinito.
+            // Para garantir neste sistema 3D puro onde x/y do BYOND não muda, usaremos uma verificação de distância matemática manual simples
+            // que é muito mais rápida que enviar dados inúteis.
+            
             for(var/mob/M in world)
                 if(M.in_game && M.char_loaded)
+                    // Filtro de Distância (Otimização de Servidor)
+                    // Se estiver muito longe, ignoramos completamente.
+                    // abs() é rápido.
+                    if(abs(M.real_x - src.real_x) > 15 || abs(M.real_z - src.real_z) > 15) 
+                        continue
+
                     var/pid = "\ref[M]"
 
                     var/list/pData = list(
@@ -128,7 +139,7 @@ mob
                         "z" = M.real_z,
                         "rot" = M.real_rot,
                         "a" = M.is_attacking,
-                        "at" = M.attack_type // Envia o TIPO do ataque
+                        "at" = M.attack_type
                     )
 
                     if(full_sync)
@@ -140,7 +151,6 @@ mob
 
                     players_list[pid] = pData
 
-
             var/list/packet = list(
                 "my_id" = "\ref[src]",
                 "me" = list("loaded" = src.char_loaded, "lvl" = src.level, "gold" = src.gold, "hp" = src.current_hp, "max_hp" = src.max_hp),
@@ -148,6 +158,8 @@ mob
                 "t" = world.time
             )
             src << output(json_encode(packet), "map3d:receberDadosMultiplayer")
+            
+            // Mantendo o sleep(2) que é um bom equilíbrio
             sleep(2)
 
     proc/AutoSaveLoop()
@@ -166,7 +178,6 @@ mob
         if(action == "select_char") StartGame(text2num(href_list["slot"]))
         if(action == "create_char")
             var/slot = text2num(href_list["slot"])
-
             src.name = href_list["name"];
             src.skin_color = href_list["skin"];
             src.cloth_color = href_list["cloth"]
@@ -184,11 +195,11 @@ mob
 
         if(action == "attack" && in_game)
             is_attacking = 1
-            attack_type = href_list["type"] // Recebe qual o tipo de ataque
+            attack_type = href_list["type"]
             src << output("Ataque [attack_type]!", "map3d:mostrarNotificacao")
-            spawn(3)
+            spawn(3) 
                 is_attacking = 0
-                attack_type = "" // Limpa o tipo após o ataque
+                attack_type = "" 
 
 mob/npc
     in_game = 1
@@ -197,7 +208,6 @@ mob/npc
     cloth_color = "0000FF"
 
     New()
-
         ..()
         real_x = rand(-10, 10);
         real_z = rand(-10, 10)
@@ -217,6 +227,5 @@ mob/npc
             sleep(rand(20, 50))
 
 world/New()
-
     ..()
     new /mob/npc() { name = "Pirata de Teste" }

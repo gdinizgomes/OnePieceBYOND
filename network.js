@@ -8,7 +8,8 @@ let blockSync = false;
 const POSITION_SYNC_INTERVAL = 100;
 const POSITION_EPSILON = 0.01;
 let lastSentTime = 0;
-let lastSentX = 0; let lastSentY = 0; let lastSentZ = 0; let lastSentRot = 0;
+// Inicializa com null para forçar o primeiro envio
+let lastSentX = null; let lastSentY = null; let lastSentZ = null; let lastSentRot = null;
 
 // Variáveis de Cache para UI
 let cachedHP = -1;
@@ -37,11 +38,10 @@ function receberDadosMultiplayer(json) {
         }
     }
 
-    // Atualização da UI (CORRIGIDO: Verifica se os dados existem antes de atualizar)
+    // Atualização da UI (Otimizada)
     if(isCharacterReady) {
         const myData = packet.others[myID];
         
-        // Só atualiza o nome se ele vier no pacote E for diferente do cache
         if(myData && myData.name && myData.name !== cachedName) {
             document.getElementById('name-display').innerText = myData.name;
             cachedName = myData.name;
@@ -63,21 +63,25 @@ function receberDadosMultiplayer(json) {
     }
 
     const serverPlayers = packet.others;
+    
+    // Lista de IDs recebidos para limpeza
+    const receivedIds = new Set();
+
     for (const id in serverPlayers) {
         if (id === myID) continue;
+        receivedIds.add(id);
+        
         const pData = serverPlayers[id];
         
         if (!otherPlayers[id]) {
-            // Só cria se tivermos os dados visuais (skin)
             if(pData.skin) {
                 const newChar = createCharacterMesh(pData.skin, pData.cloth);
                 newChar.position.set(pData.x, pData.y, pData.z);
                 scene.add(newChar);
                 
-                // Criação da etiqueta de nome
                 const label = document.createElement('div');
                 label.className = 'name-label';
-                label.innerText = pData.name || "Unknown"; // Fallback seguro
+                label.innerText = pData.name || "Unknown"; 
                 document.getElementById('labels-container').appendChild(label);
                 
                 otherPlayers[id] = {
@@ -94,11 +98,9 @@ function receberDadosMultiplayer(json) {
                 };
             }
         } else {
-            // Atualização de jogadores existentes
             const other = otherPlayers[id];
             const timeSinceLast = other.lastPacketTime ? (now - other.lastPacketTime) : POSITION_SYNC_INTERVAL;
             
-            // Ajuste dinâmico do Lerp para evitar "pulos" se a rede engasgar
             other.lerpDuration = Math.max(180, timeSinceLast + 30);
             
             other.startX = other.mesh.position.x; other.startY = other.mesh.position.y;
@@ -107,23 +109,21 @@ function receberDadosMultiplayer(json) {
             other.targetZ = pData.z; other.targetRot = pData.rot;
             other.lastPacketTime = now;
             
-            // Só atualiza status se vierem no pacote
             if (pData.a !== undefined) other.attacking = pData.a;
             if (pData.at) other.attackType = pData.at;
             
             if (pData.a) other.lastCombatTime = now;
             if (pData.at) other.lastCombatType = pData.at;
 
-            // Correção também para o nome dos outros jogadores
             if(pData.name && other.label.innerText !== pData.name) {
                 other.label.innerText = pData.name; 
             }
         }
     }
     
-    // Limpeza de jogadores desconectados
+    // Limpeza de jogadores desconectados (ou que saíram da área de visão)
     for (const id in otherPlayers) {
-        if (!serverPlayers[id]) {
+        if (!receivedIds.has(id)) {
             scene.remove(otherPlayers[id].mesh);
             if(otherPlayers[id].label) otherPlayers[id].label.remove();
             delete otherPlayers[id];
@@ -131,25 +131,50 @@ function receberDadosMultiplayer(json) {
     }
 }
 
+// Otimização Matemática: Arredonda para 2 casas decimais sem converter para string
+function round2(num) {
+    return Math.round((num + Number.EPSILON) * 100) / 100;
+}
+
 function shouldSendPosition(x, y, z, rot, now) { 
     if (now - lastSentTime < POSITION_SYNC_INTERVAL) return false;
-    if (Math.abs(x - lastSentX) < POSITION_EPSILON && Math.abs(y - lastSentY) < POSITION_EPSILON && 
-        Math.abs(z - lastSentZ) < POSITION_EPSILON && Math.abs(rot - lastSentRot) < POSITION_EPSILON) return false;
+    
+    // Se for a primeira vez, envia
+    if (lastSentX === null) return true;
+
+    // Compara usando valores numéricos diretos
+    if (Math.abs(x - lastSentX) < POSITION_EPSILON && 
+        Math.abs(y - lastSentY) < POSITION_EPSILON && 
+        Math.abs(z - lastSentZ) < POSITION_EPSILON && 
+        Math.abs(rot - lastSentRot) < POSITION_EPSILON) return false;
+        
     return true;
 }
 
 function sendPositionUpdate(now) {
     if (!isCharacterReady || blockSync) return;
-    const x = Number(playerGroup.position.x.toFixed(2));
-    const y = Number(playerGroup.position.y.toFixed(2));
-    const z = Number(playerGroup.position.z.toFixed(2));
-    const rot = Number(playerGroup.rotation.y.toFixed(2));
+    
+    // Obtém valores brutos
+    const rawX = playerGroup.position.x;
+    const rawY = playerGroup.position.y;
+    const rawZ = playerGroup.position.z;
+    const rawRot = playerGroup.rotation.y;
+
+    // Arredonda matematicamente
+    const x = round2(rawX);
+    const y = round2(rawY);
+    const z = round2(rawZ);
+    const rot = round2(rawRot);
+
     if (!shouldSendPosition(x, y, z, rot, now)) return;
-    lastSentTime = now; lastSentX = x; lastSentY = y; lastSentZ = z; lastSentRot = rot;
+    
+    lastSentTime = now; 
+    lastSentX = x; lastSentY = y; lastSentZ = z; lastSentRot = rot;
+    
+    // Apenas aqui converte para string para a URL
     window.location.href = `byond://?src=${BYOND_REF}&action=update_pos&x=${x}&y=${y}&z=${z}&rot=${rot}`; 
 }
 
-// Loop de verificação de conexão
 setInterval(() => {
     if(isCharacterReady && Date.now() - lastPacketTime > 4000) { 
         addLog("AVISO: Conexão com o servidor perdida.", "log-hit");
