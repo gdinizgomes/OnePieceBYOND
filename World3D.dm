@@ -34,23 +34,11 @@ mob
         ..()
 
     proc/ShowCharacterMenu()
-        var/list/slots_data = list()
-        for(var/i=1 to 3)
-            if(fexists("[SAVE_DIR][src.ckey]_slot[i].sav"))
-                var/savefile/F = new("[SAVE_DIR][src.ckey]_slot[i].sav")
-                var/n;
-                var/l; var/g
-                F["name"] >> n;
-                F["level"] >> l; F["gold"] >> g
-                slots_data["slot[i]"] = list("name"=n, "lvl"=l, "gold"=g)
-            else
-                slots_data["slot[i]"] = null
-
+        // Apenas abre a janela. Os dados serão enviados quando o HTML pedir.
         var/page = file2text('menu.html')
         page = replacetext(page, "{{BYOND_REF}}", "\ref[src]")
         src << browse(page, "window=map3d")
-        sleep(2)
-        src << output(json_encode(slots_data), "map3d:loadSlots")
+        // REMOVIDO: sleep(2) e output(...) - Isso causava o bug!
 
     proc/StartGame(slot_index)
         current_slot = slot_index
@@ -116,18 +104,9 @@ mob
             else sync_step++
 
             // OTIMIZAÇÃO CRÍTICA (AOI - Area of Interest)
-            // Em vez de "world", usamos "view(src, 10)"
-            // Isso pega apenas mobs num raio de 10 tiles (aprox o que cabe na tela 3D)
-            // Nota: O BYOND precisa saber onde o mob está no mapa 2D para o view() funcionar.
-            // Como movemos apenas real_x/z, precisamos enganar o BYOND ou iterar manualmente se for mapa infinito.
-            // Para garantir neste sistema 3D puro onde x/y do BYOND não muda, usaremos uma verificação de distância matemática manual simples
-            // que é muito mais rápida que enviar dados inúteis.
-            
             for(var/mob/M in world)
                 if(M.in_game && M.char_loaded)
                     // Filtro de Distância (Otimização de Servidor)
-                    // Se estiver muito longe, ignoramos completamente.
-                    // abs() é rápido.
                     if(abs(M.real_x - src.real_x) > 15 || abs(M.real_z - src.real_z) > 15) 
                         continue
 
@@ -159,7 +138,6 @@ mob
             )
             src << output(json_encode(packet), "map3d:receberDadosMultiplayer")
             
-            // Mantendo o sleep(2) que é um bom equilíbrio
             sleep(2)
 
     proc/AutoSaveLoop()
@@ -170,11 +148,27 @@ mob
     Topic(href, href_list[])
         ..()
         var/action = href_list["action"]
+        
+        // --- NOVA AÇÃO: Cliente pede os slots quando estiver pronto ---
+        if(action == "request_slots")
+            var/list/slots_data = list()
+            for(var/i=1 to 3)
+                if(fexists("[SAVE_DIR][src.ckey]_slot[i].sav"))
+                    var/savefile/F = new("[SAVE_DIR][src.ckey]_slot[i].sav")
+                    var/n; var/l; var/g
+                    F["name"] >> n; F["level"] >> l; F["gold"] >> g
+                    slots_data["slot[i]"] = list("name"=n, "lvl"=l, "gold"=g)
+                else
+                    slots_data["slot[i]"] = null
+            // Envia os dados agora, com certeza que o cliente existe
+            src << output(json_encode(slots_data), "map3d:loadSlots")
+        // -------------------------------------------------------------
+
         if(action == "delete_char")
             var/slot = text2num(href_list["slot"])
             var/path = "[SAVE_DIR][src.ckey]_slot[slot].sav"
             if(fexists(path)) fdel(path)
-            ShowCharacterMenu()
+            ShowCharacterMenu() // Aqui ele recarrega a pagina, então o ciclo recomeça
         if(action == "select_char") StartGame(text2num(href_list["slot"]))
         if(action == "create_char")
             var/slot = text2num(href_list["slot"])

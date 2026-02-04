@@ -43,7 +43,9 @@
 </head>
 <body>
     <h1>SELECIONE SEU PERSONAGEM</h1>
-    <div class="slots-container" id="container"></div>
+    <div class="slots-container" id="container">
+        <div>Carregando slots...</div>
+    </div>
 
     <div id="create-modal">
         <div class="modal-box">
@@ -61,6 +63,14 @@
     <script>
         const BYOND_REF = "{{BYOND_REF}}";
         let selectedSlot = 0;
+
+        // --- CORREÇÃO DE RACE CONDITION ---
+        // Assim que o HTML carregar, pedimos os dados ao servidor
+        window.onload = function() {
+            setTimeout(() => {
+                window.location.href = `byond://?src=${BYOND_REF}&action=request_slots`;
+            }, 100); // Pequeno delay de segurança
+        };
 
         function loadSlots(jsonSlots) {
             const data = JSON.parse(jsonSlots);
