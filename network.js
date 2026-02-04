@@ -50,6 +50,7 @@ function receberDadosMultiplayer(json) {
                 label.className = 'name-label';
                 label.innerText = pData.name;
                 document.getElementById('labels-container').appendChild(label);
+                
                 otherPlayers[id] = {
                     mesh: newChar,
                     label: label,
@@ -58,7 +59,10 @@ function receberDadosMultiplayer(json) {
                     lastPacketTime: now,
                     lerpDuration: 180,
                     attacking: pData.a,
-                    attackType: pData.at // Novo: Salva o tipo de ataque do inimigo
+                    attackType: pData.at,
+                    // MEMÓRIA LOCAL: Inicializa com valores padrão
+                    lastCombatTime: 0,
+                    lastCombatType: "sword" 
                 };
             }
         } else {
@@ -71,7 +75,18 @@ function receberDadosMultiplayer(json) {
             other.targetZ = pData.z; other.targetRot = pData.rot;
             other.lastPacketTime = now;
             other.attacking = pData.a; 
-            other.attackType = pData.at; // Atualiza tipo
+            other.attackType = pData.at; 
+            
+            // ATUALIZAÇÃO DA MEMÓRIA
+            // Se estiver atacando agora, atualiza o tempo e o tipo
+            if (pData.a) {
+                other.lastCombatTime = now;
+            }
+            // Se o pacote trouxer um tipo de ataque (não vazio), salva na memória persistente
+            if (pData.at) {
+                other.lastCombatType = pData.at;
+            }
+
             if(pData.name) other.label.innerText = pData.name; 
         }
     }
