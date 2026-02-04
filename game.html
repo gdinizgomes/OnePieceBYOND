@@ -97,6 +97,7 @@
         const POSITION_EPSILON = 0.01;
         let lastSentTime = 0;
         let lastSentX = 0;
+        let lastSentY = 0; // Novo
         let lastSentZ = 0;
         let lastSentRot = 0;
 
@@ -112,7 +113,7 @@
                     const myData = packet.others[myID];
                     playerGroup = createCharacterMesh(myData.skin, myData.cloth);
                     playerGroup.visible = true;
-                    playerGroup.position.set(myData.x, 0, myData.z);
+                    playerGroup.position.set(myData.x, myData.y, myData.z); // Usa Y
                     scene.add(playerGroup);
                     isCharacterReady = true;
                     camAngle = myData.rot + Math.PI; 
@@ -132,7 +133,7 @@
                 const pData = serverPlayers[id];
                 if (!otherPlayers[id]) {
                     const newChar = createCharacterMesh(pData.skin, pData.cloth);
-                    newChar.position.set(pData.x, 0, pData.z);
+                    newChar.position.set(pData.x, pData.y, pData.z); // Usa Y
                     scene.add(newChar);
                     const label = document.createElement('div');
                     label.className = 'name-label';
@@ -142,9 +143,11 @@
                         mesh: newChar,
                         label: label,
                         startX: pData.x,
+                        startY: pData.y, // Novo
                         startZ: pData.z,
                         startRot: pData.rot,
                         targetX: pData.x,
+                        targetY: pData.y, // Novo
                         targetZ: pData.z,
                         targetRot: pData.rot,
                         lastPacketTime: now,
@@ -155,9 +158,13 @@
                     const other = otherPlayers[id];
                     const timeSinceLast = other.lastPacketTime ? (now - other.lastPacketTime) : POSITION_SYNC_INTERVAL;
                     other.startX = other.mesh.position.x;
+                    other.startY = other.mesh.position.y; // Novo
                     other.startZ = other.mesh.position.z;
                     other.startRot = other.mesh.rotation.y;
-                    other.targetX = pData.x; other.targetZ = pData.z; other.targetRot = pData.rot;
+                    other.targetX = pData.x; 
+                    other.targetY = pData.y; // Novo
+                    other.targetZ = pData.z; 
+                    other.targetRot = pData.rot;
                     other.lerpDuration = Math.max(60, Math.min(300, timeSinceLast));
                     other.lastPacketTime = now;
                     other.attacking = pData.attacking;
@@ -200,9 +207,10 @@
         document.addEventListener('mouseup', e => { if(e.button===2) mouseRight=false; });
         document.addEventListener('mousemove', e => { if(mouseRight) { camAngle -= (e.clientX - lastMouseX)*0.005; lastMouseX=e.clientX; } });
 
-        function shouldSendPosition(x, z, rot, now) {
+        function shouldSendPosition(x, y, z, rot, now) { // Y incluido
             if (now - lastSentTime < POSITION_SYNC_INTERVAL) return false;
             if (Math.abs(x - lastSentX) < POSITION_EPSILON &&
+                Math.abs(y - lastSentY) < POSITION_EPSILON && // Y check
                 Math.abs(z - lastSentZ) < POSITION_EPSILON &&
                 Math.abs(rot - lastSentRot) < POSITION_EPSILON) return false;
             return true;
@@ -211,14 +219,16 @@
         function sendPositionUpdate(now) {
             if (!isCharacterReady || blockSync) return;
             const x = Number(playerGroup.position.x.toFixed(2));
+            const y = Number(playerGroup.position.y.toFixed(2)); // Captura Y
             const z = Number(playerGroup.position.z.toFixed(2));
             const rot = Number(playerGroup.rotation.y.toFixed(2));
-            if (!shouldSendPosition(x, z, rot, now)) return;
+            if (!shouldSendPosition(x, y, z, rot, now)) return;
             lastSentTime = now;
             lastSentX = x;
+            lastSentY = y; // Atualiza last
             lastSentZ = z;
             lastSentRot = rot;
-            window.location.href = `byond://?src=${BYOND_REF}&action=update_pos&x=${x}&z=${z}&rot=${rot}`;
+            window.location.href = `byond://?src=${BYOND_REF}&action=update_pos&x=${x}&y=${y}&z=${z}&rot=${rot}`; // Envia Y
         }
 
         let animTime = 0; let isJumping = false; let verticalVelocity = 0; const gravity = -0.015; const jumpForce = 0.3;
@@ -299,6 +309,7 @@
                 const elapsed = other.lastPacketTime ? (now - other.lastPacketTime) : 0;
                 const t = other.lerpDuration ? Math.min(1, elapsed / other.lerpDuration) : 1;
                 mesh.position.x = lerp(other.startX, other.targetX, t);
+                mesh.position.y = lerp(other.startY, other.targetY, t); // Lerp Y
                 mesh.position.z = lerp(other.startZ, other.targetZ, t);
                 mesh.rotation.y = lerpAngle(other.startRot, other.targetRot, t);
 
