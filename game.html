@@ -93,12 +93,19 @@
         let playerGroup = null; const otherPlayers = {}; let myID = null; let isCharacterReady = false;
         let lastPacketTime = Date.now();
         const BYOND_REF = "{{BYOND_REF}}";
+        const POSITION_SYNC_INTERVAL = 100;
+        const POSITION_EPSILON = 0.01;
+        let lastSentTime = 0;
+        let lastSentX = 0;
+        let lastSentZ = 0;
+        let lastSentRot = 0;
 
         function receberDadosMultiplayer(json) {
             lastPacketTime = Date.now();
             const packet = JSON.parse(json);
             const me = packet.me;
             myID = packet.my_id;
+            const now = performance.now();
 
             if(me.loaded == 1 && !isCharacterReady) {
                 if(packet.others[myID]) {
@@ -131,10 +138,28 @@
                     label.className = 'name-label';
                     label.innerText = pData.name;
                     document.getElementById('labels-container').appendChild(label);
-                    otherPlayers[id] = { mesh: newChar, label: label, targetX: pData.x, targetZ: pData.z, targetRot: pData.rot, attacking: pData.attacking };
+                    otherPlayers[id] = {
+                        mesh: newChar,
+                        label: label,
+                        startX: pData.x,
+                        startZ: pData.z,
+                        startRot: pData.rot,
+                        targetX: pData.x,
+                        targetZ: pData.z,
+                        targetRot: pData.rot,
+                        lastPacketTime: now,
+                        lerpDuration: POSITION_SYNC_INTERVAL,
+                        attacking: pData.attacking
+                    };
                 } else {
                     const other = otherPlayers[id];
+                    const timeSinceLast = other.lastPacketTime ? (now - other.lastPacketTime) : POSITION_SYNC_INTERVAL;
+                    other.startX = other.mesh.position.x;
+                    other.startZ = other.mesh.position.z;
+                    other.startRot = other.mesh.rotation.y;
                     other.targetX = pData.x; other.targetZ = pData.z; other.targetRot = pData.rot;
+                    other.lerpDuration = Math.max(60, Math.min(300, timeSinceLast));
+                    other.lastPacketTime = now;
                     other.attacking = pData.attacking;
                 }
             }
@@ -175,14 +200,26 @@
         document.addEventListener('mouseup', e => { if(e.button===2) mouseRight=false; });
         document.addEventListener('mousemove', e => { if(mouseRight) { camAngle -= (e.clientX - lastMouseX)*0.005; lastMouseX=e.clientX; } });
 
-        setInterval(() => {
-            if(isCharacterReady && !blockSync) {
-                const x = playerGroup.position.x.toFixed(2);
-                const z = playerGroup.position.z.toFixed(2);
-                const rot = playerGroup.rotation.y.toFixed(2);
-                window.location.href = `byond://?src=${BYOND_REF}&action=update_pos&x=${x}&z=${z}&rot=${rot}`;
-            }
-        }, 200);
+        function shouldSendPosition(x, z, rot, now) {
+            if (now - lastSentTime < POSITION_SYNC_INTERVAL) return false;
+            if (Math.abs(x - lastSentX) < POSITION_EPSILON &&
+                Math.abs(z - lastSentZ) < POSITION_EPSILON &&
+                Math.abs(rot - lastSentRot) < POSITION_EPSILON) return false;
+            return true;
+        }
+
+        function sendPositionUpdate(now) {
+            if (!isCharacterReady || blockSync) return;
+            const x = Number(playerGroup.position.x.toFixed(2));
+            const z = Number(playerGroup.position.z.toFixed(2));
+            const rot = Number(playerGroup.rotation.y.toFixed(2));
+            if (!shouldSendPosition(x, z, rot, now)) return;
+            lastSentTime = now;
+            lastSentX = x;
+            lastSentZ = z;
+            lastSentRot = rot;
+            window.location.href = `byond://?src=${BYOND_REF}&action=update_pos&x=${x}&z=${z}&rot=${rot}`;
+        }
 
         let animTime = 0; let isJumping = false; let verticalVelocity = 0; const gravity = -0.015; const jumpForce = 0.3;
         let isAttacking = false; let attackTimer = 0;
@@ -221,6 +258,7 @@
         function animate() {
             requestAnimationFrame(animate);
             animTime += 0.1;
+            const now = performance.now();
             if (isCharacterReady) {
                 const speed = 0.15;
                 let moveX = 0, moveZ = 0, moving = false;
@@ -250,19 +288,22 @@
                 const camDist = 7; const camH = 5;
                 camera.position.set(playerGroup.position.x + Math.sin(camAngle)*camDist, playerGroup.position.y + camH, playerGroup.position.z + Math.cos(camAngle)*camDist);
                 camera.lookAt(playerGroup.position.x, playerGroup.position.y + 1.5, playerGroup.position.z);
+
+                sendPositionUpdate(now);
             }
 
             for(const id in otherPlayers) {
                 const other = otherPlayers[id];
                 const mesh = other.mesh;
                 
-                // MUDANÇA PONTUAL: Interpolação para suavizar o movimento "foto a foto"
+                const elapsed = other.lastPacketTime ? (now - other.lastPacketTime) : 0;
+                const t = other.lerpDuration ? Math.min(1, elapsed / other.lerpDuration) : 1;
+                mesh.position.x = lerp(other.startX, other.targetX, t);
+                mesh.position.z = lerp(other.startZ, other.targetZ, t);
+                mesh.rotation.y = lerpAngle(other.startRot, other.targetRot, t);
+
                 const dist = Math.sqrt(Math.pow(other.targetX - mesh.position.x, 2) + Math.pow(other.targetZ - mesh.position.z, 2));
                 const isMoving = dist > 0.05;
-
-                mesh.position.x = lerp(mesh.position.x, other.targetX, 0.15); // Suaviza posição X
-                mesh.position.z = lerp(mesh.position.z, other.targetZ, 0.15); // Suaviza posição Z
-                mesh.rotation.y = lerpAngle(mesh.rotation.y, other.targetRot, 0.15); // Suaviza rotação
                 
                 // Animação dos membros para outros jogadores baseada na velocidade da interpolação
                 animateLimb(mesh.userData.limbs, isMoving, animTime, other.attacking, other.attacking ? Math.PI/2 : 0);

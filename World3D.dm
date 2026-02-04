@@ -107,7 +107,8 @@ mob
             var/list/packet = list(
                 "my_id" = "\ref[src]",
                 "me" = list("loaded" = src.char_loaded, "lvl" = src.level, "gold" = src.gold, "hp" = src.current_hp, "max_hp" = src.max_hp),
-                "others" = players_list
+                "others" = players_list,
+                "t" = world.time
             )
             src << output(json_encode(packet), "map3d:receberDadosMultiplayer")
             sleep(1) 
