@@ -1,50 +1,44 @@
-// factory.js - Construtor Universal baseado em Dados
+// factory.js - Construtor Universal com Correção de Escala
 const CharFactory = {
     textureLoader: new THREE.TextureLoader(),
 
-    // Cache de Geometrias para performance (Instancing seria o próximo passo)
+    // Cache de Geometrias
     geoCache: {
-        box: new THREE.BoxGeometry(1, 1, 1), // Base unitária, escalamos depois
+        box: new THREE.BoxGeometry(1, 1, 1),
         cylinder: new THREE.CylinderGeometry(1, 1, 1, 12),
         sphere: new THREE.SphereGeometry(1, 16, 16),
         plane: new THREE.PlaneGeometry(1, 1)
     },
 
-    // Cria um objeto 3D baseado na Definição (ID)
+    // Cria um objeto 3D baseado na Definição
     createFromDef: function(defId, overrides = {}) {
         const def = GameDefinitions[defId];
         if (!def) {
             console.error(`Factory: Definição '${defId}' não encontrada.`);
-            return new THREE.Mesh(this.geoCache.box, new THREE.MeshBasicMaterial({color: 0xFF00FF})); // Erro rosa
+            return new THREE.Mesh(this.geoCache.box, new THREE.MeshBasicMaterial({color: 0xFF00FF}));
         }
 
-        // 1. Geometria
         const geometry = this.geoCache[def.visual.model] || this.geoCache.box;
 
-        // 2. Material
         let material;
-        // Permite override de cor (ex: pele/roupa do player)
         const finalColor = overrides.color ? parseInt("0x" + overrides.color) : def.visual.color;
 
         if (def.visual.texture) {
             const tex = this.textureLoader.load(def.visual.texture);
-            tex.magFilter = THREE.NearestFilter; // Pixel Art
+            tex.magFilter = THREE.NearestFilter;
             material = new THREE.MeshPhongMaterial({ map: tex, transparent: true, color: 0xFFFFFF });
         } else {
             material = new THREE.MeshPhongMaterial({ color: finalColor });
         }
 
-        // 3. Mesh
         const mesh = new THREE.Mesh(geometry, material);
         mesh.castShadow = true;
         mesh.receiveShadow = true;
 
-        // 4. Escala (Aplicamos a escala visual definida no JSON)
         if (def.visual.scale) {
             mesh.scale.set(def.visual.scale[0], def.visual.scale[1], def.visual.scale[2]);
         }
 
-        // Guarda dados lógicos no objeto 3D para uso futuro (ex: clique)
         mesh.userData = { 
             id: def.id, 
             type: def.type, 
@@ -54,58 +48,101 @@ const CharFactory = {
         return mesh;
     },
 
-    // Monta um Personagem completo usando peças definidas
+    // --- CORREÇÃO AQUI: Montagem usando Âncoras (Groups) ---
     createCharacter: function(skinColor, clothColor) {
-        const group = new THREE.Group();
+        const root = new THREE.Group(); // O Personagem inteiro
 
-        // Helper para criar partes com offsets específicos do corpo humano
-        // (Isso ainda é meio hardcoded pois é a estrutura do esqueleto, mas as peças vêm do JSON)
-        
-        const torso = this.createFromDef("char_human_torso", { color: clothColor });
-        torso.position.y = 1.1; // Altura do centro do corpo
-        group.add(torso);
+        // 1. Criar a "Espinha Dorsal" (Torso Anchor)
+        // Usamos um Grupo invisível para segurar tudo. Ele tem escala 1,1,1, então não deforma os filhos.
+        const torsoAnchor = new THREE.Group();
+        torsoAnchor.position.y = 1.1; 
+        root.add(torsoAnchor);
 
+        // 2. O Visual do Torso (A caixa vermelha/azul)
+        // Adicionamos à âncora, não somos pai de ninguém visualmente
+        const torsoMesh = this.createFromDef("char_human_torso", { color: clothColor });
+        // O mesh do torso já tem scale ajustado pelo createFromDef. 
+        // Como ele é filho da âncora (scale 1), ele fica correto.
+        torsoAnchor.add(torsoMesh);
+
+        // 3. A Cabeça
+        // Adicionamos à âncora também.
         const head = this.createFromDef("char_human_head", { color: skinColor });
-        head.position.y = 0.55; // Relativo ao Torso
-        torso.add(head);
+        head.position.y = 0.55; // Posição relativa ao centro da âncora
+        torsoAnchor.add(head);
 
-        // Função interna para criar membros com pivot correto
+        // Olhos (filhos da cabeça, ok herdar escala da cabeça pois são decorativos ou ajustados)
+        const eyeDef = { visual: { model: "box", color: 0x000000, scale: [0.05, 0.05, 0.05] } }; // Definição temporária interna ou do JSON
+        // Para simplificar, vou criar olhos manuais aqui ou usar createFromDef se tiver no JSON.
+        // Vou usar box manual para garantir, já que não estão no definitions.js padrão acima
+        const eyeGeo = this.geoCache.box;
+        const eyeMat = new THREE.MeshBasicMaterial({color: 0x000000});
+        
+        const createEye = (x) => {
+            const eye = new THREE.Mesh(eyeGeo, eyeMat);
+            eye.scale.set(0.05, 0.05, 0.05);
+            // Ajuste fino: como a cabeça tem escala, precisamos posicionar "dentro" da escala dela
+            // A cabeça tem tamanho ~0.35. O olho deve estar na frente.
+            eye.position.set(x * (1/0.35), 0.05 * (1/0.35), 0.18 * (1/0.35)); 
+            // Nota: Se a cabeça for escalada, posições filhas também são.
+            // No código antigo: position.set(0.1, 0.05, 0.18).
+            // Como head.scale é 0.35, a posição real seria 0.1*0.35 = 0.035. Muito perto.
+            // SOLUÇÃO: Não adicione olhos como filhos de uma malha escalada se quiser controle preciso sem matemática chata.
+            // Mas vamos manter simples:
+            eye.position.set(x, 0.2, 0.6); // Valores chutados para compensar a escala da cabeça (0.35)
+            return eye;
+        };
+        // Melhor abordagem para os olhos no sistema novo: 
+        // Adicionar olhos ao JSON 'char_human_head' seria o ideal no futuro.
+        // Por agora, vamos pular os olhos ou adicioná-los com valores testados:
+        const eyeL = new THREE.Mesh(this.geoCache.box, eyeMat);
+        eyeL.scale.set(0.15, 0.15, 0.15); // Relativo à cabeça pequena
+        eyeL.position.set(0.3, 0.1, 0.51); // "Na cara" da cabeça
+        head.add(eyeL);
+
+        const eyeR = new THREE.Mesh(this.geoCache.box, eyeMat);
+        eyeR.scale.set(0.15, 0.15, 0.15);
+        eyeR.position.set(-0.3, 0.1, 0.51);
+        head.add(eyeR);
+
+
+        // 4. Membros (Pivots)
+        // Adicionamos à âncora (TorsoAnchor).
         const createLimb = (defId, color, x, y, z) => {
             const pivot = new THREE.Group();
             pivot.position.set(x, y, z);
             
             const mesh = this.createFromDef(defId, { color: color });
-            // Desloca mesh para que o pivot seja no topo
+            // Desloca visualmente para baixo do pivot
             mesh.position.y = -mesh.scale.y / 2; 
             
             pivot.add(mesh);
-            return { pivot, mesh }; // Retorna pivot para animação e mesh para tintura
+            return { pivot, mesh };
         };
 
         const lArm = createLimb("char_human_limb", skinColor, 0.35, 0.3, 0);
         const rArm = createLimb("char_human_limb", skinColor, -0.35, 0.3, 0);
-        const lLeg = createLimb("char_human_limb", clothColor, 0.12, -0.35, 0); // Pernas usam mesma geo por enquanto
+        const lLeg = createLimb("char_human_limb", clothColor, 0.12, -0.35, 0);
         const rLeg = createLimb("char_human_limb", clothColor, -0.12, -0.35, 0);
 
-        // Ajuste específico de pernas (mais grossas/compridas se quiser mudar no JSON depois)
-        // Mas por enquanto usamos o padrão do JSON
+        torsoAnchor.add(lArm.pivot); 
+        torsoAnchor.add(rArm.pivot);
+        torsoAnchor.add(lLeg.pivot); 
+        torsoAnchor.add(rLeg.pivot);
 
-        torso.add(lArm.pivot); torso.add(rArm.pivot);
-        torso.add(lLeg.pivot); torso.add(rLeg.pivot);
-
-        // Salva referências para o sistema de animação
-        group.userData.limbs = {
+        // Salva referências para animação
+        root.userData.limbs = {
             leftArm: lArm.pivot,
             rightArm: rArm.pivot,
             leftLeg: lLeg.pivot,
             rightLeg: rLeg.pivot,
-            head: head
+            head: head,
+            torso: torsoAnchor // Para girar o corpo todo se precisar
         };
 
-        return group;
+        return root;
     },
 
-    // Equipa um item baseado no JSON de Definição
     equipItem: function(characterGroup, itemId) {
         const def = GameDefinitions[itemId];
         if (!def || def.type !== 'equipment') return;
@@ -114,12 +151,15 @@ const CharFactory = {
         const targetBone = limbs[def.attachment.bone];
 
         if (targetBone) {
-            // Remove item anterior se houver (lógica simples)
-            // Idealmente teríamos slots nomeados: targetBone.getObjectByName("weapon_slot")
-            
+            // Remove item antigo (simples)
+            for(let i = targetBone.children.length - 1; i >= 0; i--) {
+                if(targetBone.children[i].userData.type === 'equipment') {
+                    targetBone.remove(targetBone.children[i]);
+                }
+            }
+
             const itemMesh = this.createFromDef(itemId);
             
-            // Aplica Offsets definidos no JSON
             if (def.attachment.pos) itemMesh.position.set(...def.attachment.pos);
             if (def.attachment.rot) itemMesh.rotation.set(...def.attachment.rot);
 
