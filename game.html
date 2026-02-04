@@ -15,6 +15,11 @@
         .toast { background: rgba(0,0,0,0.8); color: white; padding: 10px 20px; border-radius: 20px; margin-top: 5px; animation: fadeout 3s forwards; }
         @keyframes fadeout { 0% { opacity: 1; } 80% { opacity: 1; } 100% { opacity: 0; } }
         .name-label { position: absolute; color: white; background: rgba(0,0,0,0.5); padding: 2px 5px; border-radius: 4px; font-size: 10px; pointer-events: none; text-shadow: 1px 1px 0 #000; display: none; }
+        #hud-panels { position: absolute; top: 20px; right: 20px; width: 260px; pointer-events: auto; color: white; }
+        .panel { background: rgba(0,0,0,0.55); border: 1px solid rgba(255,255,255,0.2); border-radius: 8px; padding: 10px; margin-bottom: 10px; }
+        #skill-bar { position: absolute; bottom: 20px; left: 20px; display: flex; gap: 10px; pointer-events: auto; }
+        .skill-slot { width: 48px; height: 48px; background: rgba(0,0,0,0.6); border: 2px solid #d4af37; border-radius: 6px; display: flex; align-items: center; justify-content: center; color: #f1c40f; font-size: 12px; }
+        .skill-name { font-size: 11px; color: #ddd; margin-top: 4px; text-align: center; }
     </style>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 </head>
@@ -29,6 +34,26 @@
         <div id="notif-area"></div>
         <div id="combat-log">System: Multiplayer Core Active.<br></div>
         <div id="labels-container"></div>
+        <div id="hud-panels">
+            <div class="panel">
+                <div style="font-weight: bold;">Inventário</div>
+                <div style="font-size: 12px; color: #aaa;">Arraste itens, clique para usar.</div>
+            </div>
+            <div class="panel">
+                <div style="font-weight: bold;">Chat</div>
+                <div style="font-size: 12px; color: #aaa;">/say Olá mundo!</div>
+            </div>
+        </div>
+        <div id="skill-bar">
+            <div>
+                <div class="skill-slot">1</div>
+                <div class="skill-name">Pistol</div>
+            </div>
+            <div>
+                <div class="skill-slot">F</div>
+                <div class="skill-name">Fruta</div>
+            </div>
+        </div>
     </div>
 
     <script>
@@ -91,6 +116,7 @@
         }
 
         let playerGroup = null; const otherPlayers = {}; let myID = null; let isCharacterReady = false;
+        const skillEffects = []; const fruitEffects = {};
         let lastPacketTime = Date.now();
         const BYOND_REF = "{{BYOND_REF}}";
         const POSITION_SYNC_INTERVAL = 100;
@@ -99,6 +125,84 @@
         let lastSentX = 0;
         let lastSentZ = 0;
         let lastSentRot = 0;
+        const serverState = { x: 0, z: 0, rot: 0 };
+        let currentFruit = "none";
+        const correctionThreshold = 1.2;
+        const correctionSpeed = 0.08;
+
+        const skillAtlas = {
+            ray_long: {
+                geometry: () => new THREE.CylinderGeometry(0.2, 0.2, 5, 12, 1, true),
+                rotationX: Math.PI / 2
+            },
+            cone: {
+                geometry: () => new THREE.ConeGeometry(2, 4, 16, 1, true),
+                rotationX: Math.PI / 2
+            },
+            explosion: {
+                geometry: () => new THREE.SphereGeometry(1.6, 16, 12),
+                rotationX: 0
+            },
+            circle: {
+                geometry: () => new THREE.RingGeometry(0.4, 2.2, 24),
+                rotationX: -Math.PI / 2
+            }
+        };
+
+        function buildSkillMaterial(textureUrl, colorHex) {
+            const baseColor = colorHex ? parseInt(colorHex.replace("#", "0x")) : 0xffffff;
+            if (textureUrl) {
+                const texture = new THREE.TextureLoader().load(textureUrl);
+                texture.wrapS = THREE.RepeatWrapping;
+                texture.wrapT = THREE.RepeatWrapping;
+                return new THREE.MeshBasicMaterial({ map: texture, color: baseColor, transparent: true, opacity: 0.85, side: THREE.DoubleSide });
+            }
+            return new THREE.MeshBasicMaterial({ color: baseColor, transparent: true, opacity: 0.65, side: THREE.DoubleSide });
+        }
+
+        function spawnSkillEffect(eventData) {
+            const shape = skillAtlas[eventData.shape_id];
+            if (!shape) return;
+            const material = buildSkillMaterial(eventData.texture, eventData.color);
+            const mesh = new THREE.Mesh(shape.geometry(), material);
+            mesh.position.set(eventData.x, 0.2, eventData.z);
+            mesh.rotation.y = eventData.rot || 0;
+            mesh.rotation.x = shape.rotationX;
+            mesh.scale.setScalar(eventData.scale || 1);
+            scene.add(mesh);
+            skillEffects.push({ mesh, createdAt: performance.now(), ttl: 600 });
+        }
+
+        function applyFruitEffect(targetId, fruitType) {
+            const target = targetId === myID ? playerGroup : (otherPlayers[targetId] ? otherPlayers[targetId].mesh : null);
+            if (!target) return;
+            if (fruitEffects[targetId]) {
+                target.remove(fruitEffects[targetId]);
+                delete fruitEffects[targetId];
+            }
+            if (fruitType === "fire") {
+                const particles = new THREE.BufferGeometry();
+                const count = 80;
+                const positions = new Float32Array(count * 3);
+                for (let i = 0; i < count; i++) {
+                    positions[i * 3] = (Math.random() - 0.5) * 1.6;
+                    positions[i * 3 + 1] = Math.random() * 2;
+                    positions[i * 3 + 2] = (Math.random() - 0.5) * 1.6;
+                }
+                particles.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+                const mat = new THREE.PointsMaterial({ color: 0xff5500, size: 0.08 });
+                const points = new THREE.Points(particles, mat);
+                target.add(points);
+                fruitEffects[targetId] = points;
+            }
+            if (fruitType === "ice") {
+                const ring = new THREE.Mesh(new THREE.RingGeometry(0.4, 1.2, 20), new THREE.MeshBasicMaterial({ color: 0x88ccff, transparent: true, opacity: 0.7, side: THREE.DoubleSide }));
+                ring.rotation.x = -Math.PI / 2;
+                ring.position.y = 0.05;
+                target.add(ring);
+                fruitEffects[targetId] = ring;
+            }
+        }
 
         function receberDadosMultiplayer(json) {
             lastPacketTime = Date.now();
@@ -116,6 +220,11 @@
                     scene.add(playerGroup);
                     isCharacterReady = true;
                     camAngle = myData.rot + Math.PI; 
+                    serverState.x = myData.x;
+                    serverState.z = myData.z;
+                    serverState.rot = myData.rot;
+                    currentFruit = myData.fruit;
+                    applyFruitEffect(myID, myData.fruit);
                 }
             }
 
@@ -149,8 +258,10 @@
                         targetRot: pData.rot,
                         lastPacketTime: now,
                         lerpDuration: POSITION_SYNC_INTERVAL,
-                        attacking: pData.attacking
+                        attacking: pData.attacking,
+                        fruit: pData.fruit
                     };
+                    applyFruitEffect(id, pData.fruit);
                 } else {
                     const other = otherPlayers[id];
                     const timeSinceLast = other.lastPacketTime ? (now - other.lastPacketTime) : POSITION_SYNC_INTERVAL;
@@ -161,14 +272,34 @@
                     other.lerpDuration = Math.max(60, Math.min(300, timeSinceLast));
                     other.lastPacketTime = now;
                     other.attacking = pData.attacking;
+                    if (other.fruit !== pData.fruit) {
+                        other.fruit = pData.fruit;
+                        applyFruitEffect(id, pData.fruit);
+                    }
                 }
             }
             for (const id in otherPlayers) {
                 if (!serverPlayers[id]) {
                     scene.remove(otherPlayers[id].mesh);
                     otherPlayers[id].label.remove();
+                    if (fruitEffects[id]) {
+                        otherPlayers[id].mesh.remove(fruitEffects[id]);
+                        delete fruitEffects[id];
+                    }
                     delete otherPlayers[id];
                 }
+            }
+            if (serverPlayers[myID]) {
+                serverState.x = serverPlayers[myID].x;
+                serverState.z = serverPlayers[myID].z;
+                serverState.rot = serverPlayers[myID].rot;
+                if (currentFruit !== serverPlayers[myID].fruit) {
+                    currentFruit = serverPlayers[myID].fruit;
+                    applyFruitEffect(myID, currentFruit);
+                }
+            }
+            if (packet.events && packet.events.length) {
+                packet.events.forEach(spawnSkillEffect);
             }
         }
 
@@ -185,6 +316,8 @@
         document.addEventListener('keydown', e => { 
             const k = e.key.toLowerCase(); if(keys.hasOwnProperty(k)) keys[k] = true;
             if(k === 'a') performAttack();
+            if(k === '1') useSkill("gomu_pistol");
+            if(k === 'f') consumeFruit("fire");
             if(k === 'p' && !blockSync) {
                 blockSync = true; 
                 window.location.href = "byond://?src=" + BYOND_REF + "&action=force_save";
@@ -236,6 +369,20 @@
             blockSync = true; window.location.href = "byond://?src=" + BYOND_REF + "&action=attack"; setTimeout(()=>{blockSync=false},200);
         }
 
+        function useSkill(skillId) {
+            if (!isCharacterReady) return;
+            blockSync = true;
+            window.location.href = `byond://?src=${BYOND_REF}&action=use_skill&skill=${skillId}`;
+            setTimeout(() => { blockSync = false; }, 200);
+        }
+
+        function consumeFruit(fruitId) {
+            if (!isCharacterReady) return;
+            blockSync = true;
+            window.location.href = `byond://?src=${BYOND_REF}&action=consume_fruit&fruit=${fruitId}`;
+            setTimeout(() => { blockSync = false; }, 200);
+        }
+
         function lerp(start, end, t) { return start * (1 - t) + end * t; }
         function mod(n, m) { return ((n % m) + m) % m; }
         function lerpAngle(start, end, t) {
@@ -278,6 +425,15 @@
                     if(!keys.arrowdown && !mouseRight) camAngle = lerpAngle(camAngle, targetCharRot + Math.PI, 0.02);
                 }
 
+                const dx = serverState.x - playerGroup.position.x;
+                const dz = serverState.z - playerGroup.position.z;
+                const distToServer = Math.sqrt(dx * dx + dz * dz);
+                if (distToServer > correctionThreshold) {
+                    playerGroup.position.x = lerp(playerGroup.position.x, serverState.x, correctionSpeed);
+                    playerGroup.position.z = lerp(playerGroup.position.z, serverState.z, correctionSpeed);
+                    playerGroup.rotation.y = lerpAngle(playerGroup.rotation.y, serverState.rot, correctionSpeed);
+                }
+
                 if(keys[" "] && !isJumping) { verticalVelocity = jumpForce; isJumping = true; }
                 playerGroup.position.y += verticalVelocity; verticalVelocity += gravity;
                 if(playerGroup.position.y < 0) { playerGroup.position.y = 0; isJumping = false; verticalVelocity = 0; }
@@ -290,6 +446,17 @@
                 camera.lookAt(playerGroup.position.x, playerGroup.position.y + 1.5, playerGroup.position.z);
 
                 sendPositionUpdate(now);
+            }
+
+            for (let i = skillEffects.length - 1; i >= 0; i--) {
+                const effect = skillEffects[i];
+                const elapsed = performance.now() - effect.createdAt;
+                effect.mesh.material.opacity = Math.max(0, 0.85 - elapsed / 800);
+                effect.mesh.scale.multiplyScalar(1.002);
+                if (elapsed > effect.ttl) {
+                    scene.remove(effect.mesh);
+                    skillEffects.splice(i, 1);
+                }
             }
 
             for(const id in otherPlayers) {
