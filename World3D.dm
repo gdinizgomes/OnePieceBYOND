@@ -2,7 +2,7 @@
 
 mob
     var/current_slot = 0
-    var/char_loaded = 0 
+    var/char_loaded = 0
 
     var/level = 1;
     var/experience = 0
@@ -27,9 +27,9 @@ mob
     Logout()
         if(in_game)
             SaveCharacter()
-            in_game = 0     
-            char_loaded = 0 
-        del(src)            
+            in_game = 0
+            char_loaded = 0
+        del(src)
         ..()
 
     proc/ShowCharacterMenu()
@@ -43,6 +43,9 @@ mob
                 slots_data["slot[i]"] = list("name"=n, "lvl"=l, "gold"=g)
             else
                 slots_data["slot[i]"] = null
+
+        // Envia o CSS do menu também, caso tenhamos separado (opcional)
+        // src << browse_rsc(file("menu.css"), "menu.css")
 
         var/page = file2text('menu.html')
         page = replacetext(page, "{{BYOND_REF}}", "\ref[src]")
@@ -58,7 +61,15 @@ mob
             real_x = 0; real_y = 0; real_z = 0
             src << output("Novo personagem!", "map3d:mostrarNotificacao")
 
-        char_loaded = 1 
+        // --- CORREÇÃO AQUI: Enviando os arquivos para o cliente ---
+        // O BYOND precisa enviar explicitamente os arquivos .js e .css
+        src << browse_rsc(file("style.css"), "style.css")
+        src << browse_rsc(file("graphics.js"), "graphics.js")
+        src << browse_rsc(file("animation.js"), "animation.js")
+        src << browse_rsc(file("network.js"), "network.js")
+        // ----------------------------------------------------------
+
+        char_loaded = 1
         in_game = 1
         var/page = file2text('game.html')
         page = replacetext(page, "{{BYOND_REF}}", "\ref[src]")
@@ -96,31 +107,26 @@ mob
         return 1
 
     proc/UpdateLoop()
-        var/sync_step = 0 // Contador para alternar entre pacote completo e leve
+        var/sync_step = 0
         while(src && in_game)
             var/list/players_list = list()
-            
-            // Lógica de Otimização:
-            // A cada 5 ticks (0.5s), mandamos dados completos (Skin, Nome, HP).
-            // Nos outros ticks, mandamos apenas Posição e Ação (Muito mais leve).
+
             var/full_sync = (sync_step >= 4)
             if(full_sync) sync_step = 0
             else sync_step++
 
             for(var/mob/M in world)
-                if(M.in_game && M.char_loaded) 
+                if(M.in_game && M.char_loaded)
                     var/pid = "\ref[M]"
-                    
-                    // Dados Leves (Sempre envia)
+
                     var/list/pData = list(
-                        "x" = M.real_x, 
+                        "x" = M.real_x,
                         "y" = M.real_y,
-                        "z" = M.real_z, 
+                        "z" = M.real_z,
                         "rot" = M.real_rot,
-                        "a" = M.is_attacking // Simplificado para 'a' para economizar bytes
+                        "a" = M.is_attacking
                     )
 
-                    // Dados Pesados (Apenas no Full Sync)
                     if(full_sync)
                         pData["name"] = M.name
                         pData["skin"] = M.skin_color
@@ -137,7 +143,7 @@ mob
                 "t" = world.time
             )
             src << output(json_encode(packet), "map3d:receberDadosMultiplayer")
-            sleep(1) 
+            sleep(1)
 
     proc/AutoSaveLoop()
         while(src && in_game)
@@ -169,16 +175,16 @@ mob
             real_y = text2num(href_list["y"]);
             real_z = text2num(href_list["z"]);
             real_rot = text2num(href_list["rot"])
-        
-        if(action == "attack" && in_game) 
-            is_attacking = 1 
+
+        if(action == "attack" && in_game)
+            is_attacking = 1
             src << output("Ataque!", "map3d:mostrarNotificacao")
             spawn(3) is_attacking = 0
 
 mob/npc
     in_game = 1
     char_loaded = 1
-    skin_color = "00FF00" 
+    skin_color = "00FF00"
     cloth_color = "0000FF"
 
     New()
