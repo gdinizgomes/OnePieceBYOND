@@ -97,7 +97,7 @@
         const POSITION_EPSILON = 0.01;
         let lastSentTime = 0;
         let lastSentX = 0;
-        let lastSentY = 0; // Novo
+        let lastSentY = 0; 
         let lastSentZ = 0;
         let lastSentRot = 0;
 
@@ -109,11 +109,11 @@
             const now = performance.now();
 
             if(me.loaded == 1 && !isCharacterReady) {
-                if(packet.others[myID]) {
+                if(packet.others[myID] && packet.others[myID].skin) {
                     const myData = packet.others[myID];
                     playerGroup = createCharacterMesh(myData.skin, myData.cloth);
                     playerGroup.visible = true;
-                    playerGroup.position.set(myData.x, myData.y, myData.z); // Usa Y
+                    playerGroup.position.set(myData.x, myData.y, myData.z);
                     scene.add(playerGroup);
                     isCharacterReady = true;
                     camAngle = myData.rot + Math.PI; 
@@ -121,7 +121,7 @@
             }
 
             if(isCharacterReady) {
-                document.getElementById('name-display').innerText = packet.others[myID] ? packet.others[myID].name : "Loading";
+                if(packet.others[myID] && packet.others[myID].name) document.getElementById('name-display').innerText = packet.others[myID].name;
                 document.getElementById('lvl-display').innerText = me.lvl;
                 document.getElementById('gold-display').innerText = me.gold;
                 document.getElementById('hp-bar-fill').style.width = ((me.hp / me.max_hp) * 100) + "%";
@@ -131,43 +131,54 @@
             for (const id in serverPlayers) {
                 if (id === myID) continue;
                 const pData = serverPlayers[id];
+                
                 if (!otherPlayers[id]) {
-                    const newChar = createCharacterMesh(pData.skin, pData.cloth);
-                    newChar.position.set(pData.x, pData.y, pData.z); // Usa Y
-                    scene.add(newChar);
-                    const label = document.createElement('div');
-                    label.className = 'name-label';
-                    label.innerText = pData.name;
-                    document.getElementById('labels-container').appendChild(label);
-                    otherPlayers[id] = {
-                        mesh: newChar,
-                        label: label,
-                        startX: pData.x,
-                        startY: pData.y, // Novo
-                        startZ: pData.z,
-                        startRot: pData.rot,
-                        targetX: pData.x,
-                        targetY: pData.y, // Novo
-                        targetZ: pData.z,
-                        targetRot: pData.rot,
-                        lastPacketTime: now,
-                        lerpDuration: POSITION_SYNC_INTERVAL,
-                        attacking: pData.attacking
-                    };
+                    if(pData.skin) {
+                        const newChar = createCharacterMesh(pData.skin, pData.cloth);
+                        newChar.position.set(pData.x, pData.y, pData.z);
+                        scene.add(newChar);
+                        const label = document.createElement('div');
+                        label.className = 'name-label';
+                        label.innerText = pData.name;
+                        document.getElementById('labels-container').appendChild(label);
+                        otherPlayers[id] = {
+                            mesh: newChar,
+                            label: label,
+                            startX: pData.x,
+                            startY: pData.y,
+                            startZ: pData.z,
+                            startRot: pData.rot,
+                            targetX: pData.x,
+                            targetY: pData.y,
+                            targetZ: pData.z,
+                            targetRot: pData.rot,
+                            lastPacketTime: now,
+                            lerpDuration: 180, // Valor inicial seguro
+                            attacking: pData.a 
+                        };
+                    }
                 } else {
                     const other = otherPlayers[id];
                     const timeSinceLast = other.lastPacketTime ? (now - other.lastPacketTime) : POSITION_SYNC_INTERVAL;
+                    
+                    // ATUALIZAÇÃO DE INTERPOLAÇÃO (Correção do "Engasgo")
+                    // Forçamos a animação a demorar NO MÍNIMO 180ms.
+                    // Se a rede estiver lenta (timeSinceLast > 180), usamos o tempo real + 30ms de margem.
+                    other.lerpDuration = Math.max(180, timeSinceLast + 30);
+
                     other.startX = other.mesh.position.x;
-                    other.startY = other.mesh.position.y; // Novo
+                    other.startY = other.mesh.position.y;
                     other.startZ = other.mesh.position.z;
                     other.startRot = other.mesh.rotation.y;
                     other.targetX = pData.x; 
-                    other.targetY = pData.y; // Novo
+                    other.targetY = pData.y;
                     other.targetZ = pData.z; 
                     other.targetRot = pData.rot;
-                    other.lerpDuration = Math.max(60, Math.min(300, timeSinceLast));
+                    
                     other.lastPacketTime = now;
-                    other.attacking = pData.attacking;
+                    other.attacking = pData.a; 
+                    
+                    if(pData.name) other.label.innerText = pData.name; 
                 }
             }
             for (const id in otherPlayers) {
@@ -207,10 +218,10 @@
         document.addEventListener('mouseup', e => { if(e.button===2) mouseRight=false; });
         document.addEventListener('mousemove', e => { if(mouseRight) { camAngle -= (e.clientX - lastMouseX)*0.005; lastMouseX=e.clientX; } });
 
-        function shouldSendPosition(x, y, z, rot, now) { // Y incluido
+        function shouldSendPosition(x, y, z, rot, now) { 
             if (now - lastSentTime < POSITION_SYNC_INTERVAL) return false;
             if (Math.abs(x - lastSentX) < POSITION_EPSILON &&
-                Math.abs(y - lastSentY) < POSITION_EPSILON && // Y check
+                Math.abs(y - lastSentY) < POSITION_EPSILON && 
                 Math.abs(z - lastSentZ) < POSITION_EPSILON &&
                 Math.abs(rot - lastSentRot) < POSITION_EPSILON) return false;
             return true;
@@ -219,16 +230,16 @@
         function sendPositionUpdate(now) {
             if (!isCharacterReady || blockSync) return;
             const x = Number(playerGroup.position.x.toFixed(2));
-            const y = Number(playerGroup.position.y.toFixed(2)); // Captura Y
+            const y = Number(playerGroup.position.y.toFixed(2));
             const z = Number(playerGroup.position.z.toFixed(2));
             const rot = Number(playerGroup.rotation.y.toFixed(2));
             if (!shouldSendPosition(x, y, z, rot, now)) return;
             lastSentTime = now;
             lastSentX = x;
-            lastSentY = y; // Atualiza last
+            lastSentY = y;
             lastSentZ = z;
             lastSentRot = rot;
-            window.location.href = `byond://?src=${BYOND_REF}&action=update_pos&x=${x}&y=${y}&z=${z}&rot=${rot}`; // Envia Y
+            window.location.href = `byond://?src=${BYOND_REF}&action=update_pos&x=${x}&y=${y}&z=${z}&rot=${rot}`; 
         }
 
         let animTime = 0; let isJumping = false; let verticalVelocity = 0; const gravity = -0.015; const jumpForce = 0.3;
@@ -309,14 +320,13 @@
                 const elapsed = other.lastPacketTime ? (now - other.lastPacketTime) : 0;
                 const t = other.lerpDuration ? Math.min(1, elapsed / other.lerpDuration) : 1;
                 mesh.position.x = lerp(other.startX, other.targetX, t);
-                mesh.position.y = lerp(other.startY, other.targetY, t); // Lerp Y
+                mesh.position.y = lerp(other.startY, other.targetY, t);
                 mesh.position.z = lerp(other.startZ, other.targetZ, t);
                 mesh.rotation.y = lerpAngle(other.startRot, other.targetRot, t);
 
                 const dist = Math.sqrt(Math.pow(other.targetX - mesh.position.x, 2) + Math.pow(other.targetZ - mesh.position.z, 2));
                 const isMoving = dist > 0.05;
                 
-                // Animação dos membros para outros jogadores baseada na velocidade da interpolação
                 animateLimb(mesh.userData.limbs, isMoving, animTime, other.attacking, other.attacking ? Math.PI/2 : 0);
 
                 const tempV = new THREE.Vector3(mesh.position.x, mesh.position.y + 2, mesh.position.z);
