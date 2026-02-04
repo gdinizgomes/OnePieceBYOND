@@ -148,7 +148,7 @@ mob
                 "t" = world.time
             )
             src << output(json_encode(packet), "map3d:receberDadosMultiplayer")
-            sleep(1)
+            sleep(2)
 
     proc/AutoSaveLoop()
         while(src && in_game)

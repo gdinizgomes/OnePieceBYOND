@@ -10,6 +10,13 @@ const POSITION_EPSILON = 0.01;
 let lastSentTime = 0;
 let lastSentX = 0; let lastSentY = 0; let lastSentZ = 0; let lastSentRot = 0;
 
+// Variáveis de Cache para UI
+let cachedHP = -1;
+let cachedMaxHP = -1;
+let cachedGold = -1;
+let cachedLvl = -1;
+let cachedName = "";
+
 function receberDadosMultiplayer(json) {
     lastPacketTime = Date.now();
     const packet = JSON.parse(json);
@@ -17,6 +24,7 @@ function receberDadosMultiplayer(json) {
     myID = packet.my_id;
     const now = performance.now();
 
+    // Criação do personagem local
     if(me.loaded == 1 && !isCharacterReady) {
         if(packet.others[myID] && packet.others[myID].skin) {
             const myData = packet.others[myID];
@@ -29,11 +37,29 @@ function receberDadosMultiplayer(json) {
         }
     }
 
+    // Atualização da UI (CORRIGIDO: Verifica se os dados existem antes de atualizar)
     if(isCharacterReady) {
-        if(packet.others[myID] && packet.others[myID].name) document.getElementById('name-display').innerText = packet.others[myID].name;
-        document.getElementById('lvl-display').innerText = me.lvl;
-        document.getElementById('gold-display').innerText = me.gold;
-        document.getElementById('hp-bar-fill').style.width = ((me.hp / me.max_hp) * 100) + "%";
+        const myData = packet.others[myID];
+        
+        // Só atualiza o nome se ele vier no pacote E for diferente do cache
+        if(myData && myData.name && myData.name !== cachedName) {
+            document.getElementById('name-display').innerText = myData.name;
+            cachedName = myData.name;
+        }
+        
+        if(me.lvl !== cachedLvl) {
+            document.getElementById('lvl-display').innerText = me.lvl;
+            cachedLvl = me.lvl;
+        }
+        if(me.gold !== cachedGold) {
+            document.getElementById('gold-display').innerText = me.gold;
+            cachedGold = me.gold;
+        }
+        if(me.hp !== cachedHP || me.max_hp !== cachedMaxHP) {
+            document.getElementById('hp-bar-fill').style.width = ((me.hp / me.max_hp) * 100) + "%";
+            cachedHP = me.hp;
+            cachedMaxHP = me.max_hp;
+        }
     }
 
     const serverPlayers = packet.others;
@@ -42,13 +68,16 @@ function receberDadosMultiplayer(json) {
         const pData = serverPlayers[id];
         
         if (!otherPlayers[id]) {
+            // Só cria se tivermos os dados visuais (skin)
             if(pData.skin) {
                 const newChar = createCharacterMesh(pData.skin, pData.cloth);
                 newChar.position.set(pData.x, pData.y, pData.z);
                 scene.add(newChar);
+                
+                // Criação da etiqueta de nome
                 const label = document.createElement('div');
                 label.className = 'name-label';
-                label.innerText = pData.name;
+                label.innerText = pData.name || "Unknown"; // Fallback seguro
                 document.getElementById('labels-container').appendChild(label);
                 
                 otherPlayers[id] = {
@@ -60,40 +89,43 @@ function receberDadosMultiplayer(json) {
                     lerpDuration: 180,
                     attacking: pData.a,
                     attackType: pData.at,
-                    // MEMÓRIA LOCAL: Inicializa com valores padrão
                     lastCombatTime: 0,
                     lastCombatType: "sword" 
                 };
             }
         } else {
+            // Atualização de jogadores existentes
             const other = otherPlayers[id];
             const timeSinceLast = other.lastPacketTime ? (now - other.lastPacketTime) : POSITION_SYNC_INTERVAL;
+            
+            // Ajuste dinâmico do Lerp para evitar "pulos" se a rede engasgar
             other.lerpDuration = Math.max(180, timeSinceLast + 30);
+            
             other.startX = other.mesh.position.x; other.startY = other.mesh.position.y;
             other.startZ = other.mesh.position.z; other.startRot = other.mesh.rotation.y;
             other.targetX = pData.x; other.targetY = pData.y;
             other.targetZ = pData.z; other.targetRot = pData.rot;
             other.lastPacketTime = now;
-            other.attacking = pData.a; 
-            other.attackType = pData.at; 
             
-            // ATUALIZAÇÃO DA MEMÓRIA
-            // Se estiver atacando agora, atualiza o tempo e o tipo
-            if (pData.a) {
-                other.lastCombatTime = now;
-            }
-            // Se o pacote trouxer um tipo de ataque (não vazio), salva na memória persistente
-            if (pData.at) {
-                other.lastCombatType = pData.at;
-            }
+            // Só atualiza status se vierem no pacote
+            if (pData.a !== undefined) other.attacking = pData.a;
+            if (pData.at) other.attackType = pData.at;
+            
+            if (pData.a) other.lastCombatTime = now;
+            if (pData.at) other.lastCombatType = pData.at;
 
-            if(pData.name) other.label.innerText = pData.name; 
+            // Correção também para o nome dos outros jogadores
+            if(pData.name && other.label.innerText !== pData.name) {
+                other.label.innerText = pData.name; 
+            }
         }
     }
+    
+    // Limpeza de jogadores desconectados
     for (const id in otherPlayers) {
         if (!serverPlayers[id]) {
             scene.remove(otherPlayers[id].mesh);
-            otherPlayers[id].label.remove();
+            if(otherPlayers[id].label) otherPlayers[id].label.remove();
             delete otherPlayers[id];
         }
     }
@@ -117,6 +149,7 @@ function sendPositionUpdate(now) {
     window.location.href = `byond://?src=${BYOND_REF}&action=update_pos&x=${x}&y=${y}&z=${z}&rot=${rot}`; 
 }
 
+// Loop de verificação de conexão
 setInterval(() => {
     if(isCharacterReady && Date.now() - lastPacketTime > 4000) { 
         addLog("AVISO: Conexão com o servidor perdida.", "log-hit");
