@@ -5,8 +5,6 @@ let isCharacterReady = false;
 let lastPacketTime = Date.now();
 let blockSync = false;
 
-// Configurações de Rede
-// REMOVIDO: const BYOND_REF... (Agora vem do HTML global)
 const POSITION_SYNC_INTERVAL = 100;
 const POSITION_EPSILON = 0.01;
 let lastSentTime = 0;
@@ -59,7 +57,8 @@ function receberDadosMultiplayer(json) {
                     targetX: pData.x, targetY: pData.y, targetZ: pData.z, targetRot: pData.rot,
                     lastPacketTime: now,
                     lerpDuration: 180,
-                    attacking: pData.a 
+                    attacking: pData.a,
+                    attackType: pData.at // Novo: Salva o tipo de ataque do inimigo
                 };
             }
         } else {
@@ -72,6 +71,7 @@ function receberDadosMultiplayer(json) {
             other.targetZ = pData.z; other.targetRot = pData.rot;
             other.lastPacketTime = now;
             other.attacking = pData.a; 
+            other.attackType = pData.at; // Atualiza tipo
             if(pData.name) other.label.innerText = pData.name; 
         }
     }

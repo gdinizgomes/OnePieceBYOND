@@ -18,6 +18,7 @@ mob
     var/real_rot = 0
     var/in_game = 0
     var/is_attacking = 0
+    var/attack_type = "" // NOVA VARIAVEL: Tipo do ataque (fist, kick, sword, gun)
 
     Login()
         ..()
@@ -29,6 +30,7 @@ mob
             SaveCharacter()
             in_game = 0
             char_loaded = 0
+
         del(src)
         ..()
 
@@ -37,17 +39,16 @@ mob
         for(var/i=1 to 3)
             if(fexists("[SAVE_DIR][src.ckey]_slot[i].sav"))
                 var/savefile/F = new("[SAVE_DIR][src.ckey]_slot[i].sav")
-                var/n; var/l; var/g
+                var/n;
+                var/l; var/g
                 F["name"] >> n;
                 F["level"] >> l; F["gold"] >> g
                 slots_data["slot[i]"] = list("name"=n, "lvl"=l, "gold"=g)
             else
                 slots_data["slot[i]"] = null
 
-        // Envia o CSS do menu também, caso tenhamos separado (opcional)
-        // src << browse_rsc(file("menu.css"), "menu.css")
-
         var/page = file2text('menu.html')
+
         page = replacetext(page, "{{BYOND_REF}}", "\ref[src]")
         src << browse(page, "window=map3d")
         sleep(2)
@@ -58,16 +59,15 @@ mob
         if(LoadCharacter(slot_index))
             src << output("Personagem carregado!", "map3d:mostrarNotificacao")
         else
-            real_x = 0; real_y = 0; real_z = 0
+            real_x = 0;
+            real_y = 0; real_z = 0
             src << output("Novo personagem!", "map3d:mostrarNotificacao")
 
-        // --- CORREÇÃO AQUI: Enviando os arquivos para o cliente ---
-        // O BYOND precisa enviar explicitamente os arquivos .js e .css
+        // Enviando arquivos para o cliente
         src << browse_rsc(file("style.css"), "style.css")
         src << browse_rsc(file("graphics.js"), "graphics.js")
         src << browse_rsc(file("animation.js"), "animation.js")
         src << browse_rsc(file("network.js"), "network.js")
-        // ----------------------------------------------------------
 
         char_loaded = 1
         in_game = 1
@@ -80,9 +80,11 @@ mob
 
     proc/SaveCharacter()
         if(!current_slot || !in_game) return
+
         var/savefile/F = new("[SAVE_DIR][src.ckey]_slot[current_slot].sav")
         F["name"] << src.name;
-        F["level"] << src.level; F["gold"] << src.gold
+        F["level"] << src.level;
+        F["gold"] << src.gold
         F["hp"] << src.current_hp;
         F["max_hp"] << src.max_hp
         F["pos_x"] << src.real_x;
@@ -115,6 +117,7 @@ mob
             if(full_sync) sync_step = 0
             else sync_step++
 
+
             for(var/mob/M in world)
                 if(M.in_game && M.char_loaded)
                     var/pid = "\ref[M]"
@@ -124,7 +127,8 @@ mob
                         "y" = M.real_y,
                         "z" = M.real_z,
                         "rot" = M.real_rot,
-                        "a" = M.is_attacking
+                        "a" = M.is_attacking,
+                        "at" = M.attack_type // Envia o TIPO do ataque
                     )
 
                     if(full_sync)
@@ -135,6 +139,7 @@ mob
                         pData["max_hp"] = M.max_hp
 
                     players_list[pid] = pData
+
 
             var/list/packet = list(
                 "my_id" = "\ref[src]",
@@ -161,6 +166,7 @@ mob
         if(action == "select_char") StartGame(text2num(href_list["slot"]))
         if(action == "create_char")
             var/slot = text2num(href_list["slot"])
+
             src.name = href_list["name"];
             src.skin_color = href_list["skin"];
             src.cloth_color = href_list["cloth"]
@@ -178,8 +184,11 @@ mob
 
         if(action == "attack" && in_game)
             is_attacking = 1
-            src << output("Ataque!", "map3d:mostrarNotificacao")
-            spawn(3) is_attacking = 0
+            attack_type = href_list["type"] // Recebe qual o tipo de ataque
+            src << output("Ataque [attack_type]!", "map3d:mostrarNotificacao")
+            spawn(3)
+                is_attacking = 0
+                attack_type = "" // Limpa o tipo após o ataque
 
 mob/npc
     in_game = 1
@@ -188,6 +197,7 @@ mob/npc
     cloth_color = "0000FF"
 
     New()
+
         ..()
         real_x = rand(-10, 10);
         real_z = rand(-10, 10)
@@ -207,5 +217,6 @@ mob/npc
             sleep(rand(20, 50))
 
 world/New()
+
     ..()
     new /mob/npc() { name = "Pirata de Teste" }
