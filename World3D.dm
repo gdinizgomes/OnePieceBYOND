@@ -38,7 +38,6 @@ mob
         var/page = file2text('menu.html')
         page = replacetext(page, "{{BYOND_REF}}", "\ref[src]")
         src << browse(page, "window=map3d")
-        // REMOVIDO: sleep(2) e output(...) - Isso causava o bug!
 
     proc/StartGame(slot_index)
         current_slot = slot_index
@@ -49,11 +48,14 @@ mob
             real_y = 0; real_z = 0
             src << output("Novo personagem!", "map3d:mostrarNotificacao")
 
-        // Enviando arquivos para o cliente
+        // --- ENVIANDO ARQUIVOS MODULARIZADOS ---
         src << browse_rsc(file("style.css"), "style.css")
-        src << browse_rsc(file("graphics.js"), "graphics.js")
+        src << browse_rsc(file("engine.js"), "engine.js")     // NOVO
+        src << browse_rsc(file("factory.js"), "factory.js")   // NOVO
+        src << browse_rsc(file("input.js"), "input.js")       // NOVO
         src << browse_rsc(file("animation.js"), "animation.js")
         src << browse_rsc(file("network.js"), "network.js")
+        // ---------------------------------------
 
         char_loaded = 1
         in_game = 1
@@ -149,7 +151,6 @@ mob
         ..()
         var/action = href_list["action"]
         
-        // --- NOVA AÇÃO: Cliente pede os slots quando estiver pronto ---
         if(action == "request_slots")
             var/list/slots_data = list()
             for(var/i=1 to 3)
@@ -160,15 +161,13 @@ mob
                     slots_data["slot[i]"] = list("name"=n, "lvl"=l, "gold"=g)
                 else
                     slots_data["slot[i]"] = null
-            // Envia os dados agora, com certeza que o cliente existe
             src << output(json_encode(slots_data), "map3d:loadSlots")
-        // -------------------------------------------------------------
 
         if(action == "delete_char")
             var/slot = text2num(href_list["slot"])
             var/path = "[SAVE_DIR][src.ckey]_slot[slot].sav"
             if(fexists(path)) fdel(path)
-            ShowCharacterMenu() // Aqui ele recarrega a pagina, então o ciclo recomeça
+            ShowCharacterMenu()
         if(action == "select_char") StartGame(text2num(href_list["slot"]))
         if(action == "create_char")
             var/slot = text2num(href_list["slot"])
