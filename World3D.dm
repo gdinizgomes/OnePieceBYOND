@@ -179,7 +179,12 @@ mob
     proc/ShowCharacterMenu()
         var/list/slots_data = list()
         for(var/i=1 to 3)
-            if(fexists("[SAVE_DIR][src.ckey]_slot[i].sav"))
+            var/list/db_slot = null
+            if(db_manager && db_manager.connected)
+                db_slot = db_manager.LoadSlotSummary(src.ckey, i)
+            if(db_slot)
+                slots_data["slot[i]"] = db_slot
+            else if(fexists("[SAVE_DIR][src.ckey]_slot[i].sav"))
                 var/savefile/F = new("[SAVE_DIR][src.ckey]_slot[i].sav")
                 var/n; var/l; var/g
                 F["name"] >> n;
@@ -226,6 +231,8 @@ mob
         src << output("Jogo Salvo!", "map3d:mostrarNotificacao")
 
     proc/LoadCharacter(slot)
+        if(db_manager && db_manager.connected)
+            if(db_manager.LoadCharacter(src, slot)) return 1
         if(!fexists("[SAVE_DIR][src.ckey]_slot[slot].sav")) return 0
         var/savefile/F = new("[SAVE_DIR][src.ckey]_slot[slot].sav")
         F["name"] >> src.name;
