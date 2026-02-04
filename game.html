@@ -22,8 +22,7 @@
         <div id="labels-container"></div>
     </div>
 
-    <script src="engine.js"></script>
-    <script src="factory.js"></script>
+    <script src="definitions.js"></script> <script src="factory.js"></script>     <script src="engine.js"></script>
     <script src="input.js"></script>
     <script src="animation.js"></script>
     <script src="network.js"></script>
@@ -43,14 +42,15 @@
 
         function addLog(msg, css) { const d = document.getElementById('combat-log'); d.innerHTML += `<span class="${css}">${msg}</span><br>`; d.scrollTop=d.scrollHeight; }
 
-        // Escuta o evento que vem do input.js
         window.addEventListener('game-action', (e) => {
             const k = e.detail;
-            if(k === 'a') performAttack("fist");
-            if(k === 's') performAttack("kick");
-            if(k === 'd') performAttack("sword");
-            if(k === 'f') performAttack("gun");
-            if(k === 'p' && !blockSync) {
+            // Equipar itens para teste ao atacar
+            if(k === 'd') { CharFactory.equipItem(playerGroup, "weapon_sword_iron"); performAttack("sword"); }
+            else if(k === 'f') { CharFactory.equipItem(playerGroup, "weapon_gun_flintlock"); performAttack("gun"); }
+            else if(k === 'a') { performAttack("fist"); } // Mãos limpas
+            else if(k === 's') { performAttack("kick"); }
+            
+            else if(k === 'p' && !blockSync) {
                 blockSync = true; 
                 window.location.href = "byond://?src=" + BYOND_REF + "&action=force_save";
                 addLog("Salvando...", "log-miss");
@@ -77,7 +77,6 @@
             setTimeout(() => {
                 charState = atkStance;
                 
-                // Distância (Usando Engine.dummyTarget)
                 let dist = 100;
                 if(Engine.dummyTarget) {
                     dist = playerGroup.position.distanceTo(Engine.dummyTarget.position);
@@ -85,7 +84,6 @@
 
                 if(dist < (type === "gun" ? 8.0 : 2.5)) { 
                     addLog(`HIT (${type})!`, "log-hit"); 
-                    // Feedback visual no alvo
                     if(Engine.dummyTarget && Engine.dummyTarget.userData.hitZone) {
                         const mat = Engine.dummyTarget.userData.hitZone.material;
                         mat.color.setHex(0x550000); 
@@ -119,7 +117,6 @@
 
                 const speed = 0.15;
                 let moveX = 0, moveZ = 0, moving = false;
-                // Input agora vem do módulo Input
                 const sin = Math.sin(Input.camAngle); const cos = Math.cos(Input.camAngle);
                 
                 if(Input.keys.arrowup) { moveX -= sin*speed; moveZ -= cos*speed; moving = true; }
@@ -134,7 +131,6 @@
                 if(moving) {
                     const targetCharRot = Math.atan2(moveX, moveZ);
                     playerGroup.rotation.y = targetCharRot;
-                    // Câmera segue suavemente
                     if(!Input.keys.arrowdown && !Input.mouseRight) Input.camAngle = lerpAngle(Input.camAngle, targetCharRot + Math.PI, 0.02);
                 }
 
@@ -175,7 +171,7 @@
                 sendPositionUpdate(now);
             }
 
-            // Animação Remota (Players)
+            // Animação Remota
             for(const id in otherPlayers) {
                 const other = otherPlayers[id];
                 const mesh = other.mesh;

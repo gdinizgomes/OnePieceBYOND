@@ -1,4 +1,4 @@
-// network.js - Comunicação com o Servidor
+// network.js - Comunicação
 let playerGroup = null; 
 const otherPlayers = {}; 
 let myID = null; 
@@ -20,22 +20,19 @@ function receberDadosMultiplayer(json) {
     myID = packet.my_id;
     const now = performance.now();
 
-    // Criação do Jogador Local
     if(me.loaded == 1 && !isCharacterReady) {
         if(packet.others[myID] && packet.others[myID].skin) {
             const myData = packet.others[myID];
-            // USA A FACTORY AGORA
-            playerGroup = CharFactory.create(myData.skin, myData.cloth);
+            // Usa o novo Factory.createCharacter
+            playerGroup = CharFactory.createCharacter(myData.skin, myData.cloth);
             playerGroup.visible = true;
             playerGroup.position.set(myData.x, myData.y, myData.z);
-            // USA A ENGINE
             Engine.scene.add(playerGroup);
             isCharacterReady = true;
             Input.camAngle = myData.rot + Math.PI; 
         }
     }
 
-    // Atualização de UI (Cacheada)
     if(isCharacterReady) {
         const myData = packet.others[myID];
         if(myData && myData.name && myData.name !== cachedName) {
@@ -57,7 +54,6 @@ function receberDadosMultiplayer(json) {
         }
     }
 
-    // Jogadores Remotos
     const serverPlayers = packet.others;
     const receivedIds = new Set();
 
@@ -68,8 +64,7 @@ function receberDadosMultiplayer(json) {
         
         if (!otherPlayers[id]) {
             if(pData.skin) {
-                // USA A FACTORY
-                const newChar = CharFactory.create(pData.skin, pData.cloth);
+                const newChar = CharFactory.createCharacter(pData.skin, pData.cloth);
                 newChar.position.set(pData.x, pData.y, pData.z);
                 Engine.scene.add(newChar);
                 
@@ -104,15 +99,12 @@ function receberDadosMultiplayer(json) {
             
             if (pData.a !== undefined) other.attacking = pData.a;
             if (pData.at) other.attackType = pData.at;
-            
             if (pData.a) other.lastCombatTime = now;
             if (pData.at) other.lastCombatType = pData.at;
-
             if(pData.name && other.label.innerText !== pData.name) other.label.innerText = pData.name; 
         }
     }
     
-    // Limpeza
     for (const id in otherPlayers) {
         if (!receivedIds.has(id)) {
             Engine.scene.remove(otherPlayers[id].mesh);

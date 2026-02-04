@@ -53,6 +53,7 @@ mob
         src << browse_rsc(file("engine.js"), "engine.js")     // NOVO
         src << browse_rsc(file("factory.js"), "factory.js")   // NOVO
         src << browse_rsc(file("input.js"), "input.js")       // NOVO
+        src << browse_rsc(file("definitions.js"), "definitions.js") // NOVO
         src << browse_rsc(file("animation.js"), "animation.js")
         src << browse_rsc(file("network.js"), "network.js")
         // ---------------------------------------

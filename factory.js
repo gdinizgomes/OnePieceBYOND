@@ -1,75 +1,129 @@
-// factory.js - Criação e Gerenciamento de Personagens
+// factory.js - Construtor Universal baseado em Dados
 const CharFactory = {
-    // Banco de Geometrias (Reutilização = Performance)
-    geometries: {
-        torso: new THREE.BoxGeometry(0.5, 0.7, 0.3),
-        head: new THREE.BoxGeometry(0.35, 0.35, 0.35),
-        eye: new THREE.BoxGeometry(0.05, 0.05, 0.05),
-        arm: new THREE.BoxGeometry(0.15, 0.7, 0.15),
-        leg: new THREE.BoxGeometry(0.18, 0.8, 0.18)
+    textureLoader: new THREE.TextureLoader(),
+
+    // Cache de Geometrias para performance (Instancing seria o próximo passo)
+    geoCache: {
+        box: new THREE.BoxGeometry(1, 1, 1), // Base unitária, escalamos depois
+        cylinder: new THREE.CylinderGeometry(1, 1, 1, 12),
+        sphere: new THREE.SphereGeometry(1, 16, 16),
+        plane: new THREE.PlaneGeometry(1, 1)
     },
 
-    // Cria um personagem completo
-    create: function(skinColorHex, clothColorHex) {
-        const group = new THREE.Group();
-        
-        // Materiais (Únicos por personagem para permitir cores diferentes)
-        const matSkin = new THREE.MeshPhongMaterial({ color: parseInt("0x" + skinColorHex) }); 
-        const matClothes = new THREE.MeshPhongMaterial({ color: parseInt("0x" + clothColorHex) }); 
-        const matEye = new THREE.MeshBasicMaterial({color: 0x000000});
-        
-        // --- Montagem Modular ---
-        const torso = this.createPart(this.geometries.torso, matClothes, 0, 1.1, 0);
-        group.add(torso);
-        
-        const head = this.createPart(this.geometries.head, matSkin, 0, 0.55, 0);
-        torso.add(head);
-        
-        const eyeL = this.createPart(this.geometries.eye, matEye, 0.1, 0.05, 0.18);
-        head.add(eyeL); // Olho é filho da cabeça
-        
-        const eyeR = this.createPart(this.geometries.eye, matEye, -0.1, 0.05, 0.18);
-        head.add(eyeR);
+    // Cria um objeto 3D baseado na Definição (ID)
+    createFromDef: function(defId, overrides = {}) {
+        const def = GameDefinitions[defId];
+        if (!def) {
+            console.error(`Factory: Definição '${defId}' não encontrada.`);
+            return new THREE.Mesh(this.geoCache.box, new THREE.MeshBasicMaterial({color: 0xFF00FF})); // Erro rosa
+        }
 
-        // Membros
-        // Nota: Pivots são grupos vazios para rotação correta (ombro/quadril)
-        const leftArm = this.createLimbPivot(this.geometries.arm, matSkin, 0.35, 0.3, 0);
-        const rightArm = this.createLimbPivot(this.geometries.arm, matSkin, -0.35, 0.3, 0);
-        const leftLeg = this.createLimbPivot(this.geometries.leg, matClothes, 0.12, -0.35, 0, 0.8);
-        const rightLeg = this.createLimbPivot(this.geometries.leg, matClothes, -0.12, -0.35, 0, 0.8);
-        
-        torso.add(leftArm); torso.add(rightArm); torso.add(leftLeg); torso.add(rightLeg);
-        
-        // Salva referências para animação
-        group.userData.limbs = { 
-            leftArm: leftArm, 
-            rightArm: rightArm, 
-            leftLeg: leftLeg, 
-            rightLeg: rightLeg 
-        };
-        
-        return group;
-    },
+        // 1. Geometria
+        const geometry = this.geoCache[def.visual.model] || this.geoCache.box;
 
-    // Helper simples para partes estáticas (cabeça, torso)
-    createPart: function(geo, mat, x, y, z) {
-        const mesh = new THREE.Mesh(geo, mat);
-        mesh.position.set(x, y, z);
+        // 2. Material
+        let material;
+        // Permite override de cor (ex: pele/roupa do player)
+        const finalColor = overrides.color ? parseInt("0x" + overrides.color) : def.visual.color;
+
+        if (def.visual.texture) {
+            const tex = this.textureLoader.load(def.visual.texture);
+            tex.magFilter = THREE.NearestFilter; // Pixel Art
+            material = new THREE.MeshPhongMaterial({ map: tex, transparent: true, color: 0xFFFFFF });
+        } else {
+            material = new THREE.MeshPhongMaterial({ color: finalColor });
+        }
+
+        // 3. Mesh
+        const mesh = new THREE.Mesh(geometry, material);
         mesh.castShadow = true;
+        mesh.receiveShadow = true;
+
+        // 4. Escala (Aplicamos a escala visual definida no JSON)
+        if (def.visual.scale) {
+            mesh.scale.set(def.visual.scale[0], def.visual.scale[1], def.visual.scale[2]);
+        }
+
+        // Guarda dados lógicos no objeto 3D para uso futuro (ex: clique)
+        mesh.userData = { 
+            id: def.id, 
+            type: def.type, 
+            tags: def.data?.tags || [] 
+        };
+
         return mesh;
     },
 
-    // Helper para membros articulados (com pivot no topo)
-    createLimbPivot: function(geo, mat, x, y, z, heightOverride = 0.7) {
-        const pivot = new THREE.Group();
-        pivot.position.set(x, y, z);
+    // Monta um Personagem completo usando peças definidas
+    createCharacter: function(skinColor, clothColor) {
+        const group = new THREE.Group();
+
+        // Helper para criar partes com offsets específicos do corpo humano
+        // (Isso ainda é meio hardcoded pois é a estrutura do esqueleto, mas as peças vêm do JSON)
         
-        const mesh = new THREE.Mesh(geo, mat);
-        // Desloca a malha para baixo para que o pivot fique no topo (ombro)
-        mesh.position.y = -heightOverride / 2; 
-        mesh.castShadow = true;
-        
-        pivot.add(mesh);
-        return pivot;
+        const torso = this.createFromDef("char_human_torso", { color: clothColor });
+        torso.position.y = 1.1; // Altura do centro do corpo
+        group.add(torso);
+
+        const head = this.createFromDef("char_human_head", { color: skinColor });
+        head.position.y = 0.55; // Relativo ao Torso
+        torso.add(head);
+
+        // Função interna para criar membros com pivot correto
+        const createLimb = (defId, color, x, y, z) => {
+            const pivot = new THREE.Group();
+            pivot.position.set(x, y, z);
+            
+            const mesh = this.createFromDef(defId, { color: color });
+            // Desloca mesh para que o pivot seja no topo
+            mesh.position.y = -mesh.scale.y / 2; 
+            
+            pivot.add(mesh);
+            return { pivot, mesh }; // Retorna pivot para animação e mesh para tintura
+        };
+
+        const lArm = createLimb("char_human_limb", skinColor, 0.35, 0.3, 0);
+        const rArm = createLimb("char_human_limb", skinColor, -0.35, 0.3, 0);
+        const lLeg = createLimb("char_human_limb", clothColor, 0.12, -0.35, 0); // Pernas usam mesma geo por enquanto
+        const rLeg = createLimb("char_human_limb", clothColor, -0.12, -0.35, 0);
+
+        // Ajuste específico de pernas (mais grossas/compridas se quiser mudar no JSON depois)
+        // Mas por enquanto usamos o padrão do JSON
+
+        torso.add(lArm.pivot); torso.add(rArm.pivot);
+        torso.add(lLeg.pivot); torso.add(rLeg.pivot);
+
+        // Salva referências para o sistema de animação
+        group.userData.limbs = {
+            leftArm: lArm.pivot,
+            rightArm: rArm.pivot,
+            leftLeg: lLeg.pivot,
+            rightLeg: rLeg.pivot,
+            head: head
+        };
+
+        return group;
+    },
+
+    // Equipa um item baseado no JSON de Definição
+    equipItem: function(characterGroup, itemId) {
+        const def = GameDefinitions[itemId];
+        if (!def || def.type !== 'equipment') return;
+
+        const limbs = characterGroup.userData.limbs;
+        const targetBone = limbs[def.attachment.bone];
+
+        if (targetBone) {
+            // Remove item anterior se houver (lógica simples)
+            // Idealmente teríamos slots nomeados: targetBone.getObjectByName("weapon_slot")
+            
+            const itemMesh = this.createFromDef(itemId);
+            
+            // Aplica Offsets definidos no JSON
+            if (def.attachment.pos) itemMesh.position.set(...def.attachment.pos);
+            if (def.attachment.rot) itemMesh.rotation.set(...def.attachment.rot);
+
+            targetBone.add(itemMesh);
+        }
     }
 };
