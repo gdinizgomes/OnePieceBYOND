@@ -104,7 +104,7 @@ const Engine = {
     camera: null,
     renderer: null,
     dummyTarget: null,
-    collidables: [], // Lista GLOBAL de objetos sólidos (Props + Players + NPCs)
+    collidables: [], // Lista GLOBAL de objetos sólidos
 
     init: function() {
         Input.init();
@@ -155,11 +155,14 @@ const Engine = {
             logMesh.position.y = logDef.visual.scale[1] / 2;
             dummyGroup.add(logMesh);
             
-            // --- ATUALIZAÇÃO: COLISÃO PADRÃO TRUE ---
-            // Se não houver definição de física, OU se solid não for explicitamente falso, adiciona.
+            // Lógica de Colisão
             const isSolid = !logDef.physics || logDef.physics.solid !== false;
             
             if(isSolid) {
+                // Passa a propriedade 'standable' para a malha, para o game.js saber se pode pisar
+                if(logDef.physics && logDef.physics.standable) {
+                    logMesh.userData.standable = true;
+                }
                 this.collidables.push(logMesh);
             }
             

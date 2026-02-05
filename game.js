@@ -52,11 +52,7 @@ function toggleStats() {
 
 function addStat(statName) {
     if(blockSync) return;
-    // Verifica se BYOND_REF existe antes de tentar usar
-    if(typeof BYOND_REF === 'undefined') {
-        console.error("ERRO FATAL: BYOND_REF não definido!");
-        return;
-    }
+    if(typeof BYOND_REF === 'undefined') return;
     blockSync = true;
     window.location.href = `byond://?src=${BYOND_REF}&action=add_stat&stat=${statName}`;
     setTimeout(function() { blockSync = false; }, 200);
@@ -66,24 +62,68 @@ window.addEventListener('keydown', function(e) {
     if(e.key.toLowerCase() === 'c') toggleStats();
 });
 
-// --- SISTEMA DE COLISÃO ---
+// --- SISTEMA DE FÍSICA (COLISÃO E ALTURA) ---
 const tempBoxPlayer = new THREE.Box3();
 const tempBoxObstacle = new THREE.Box3();
 const playerSize = new THREE.Vector3(0.5, 1.8, 0.5); 
 
+// Função que determina a altura do chão na coordenada X, Z
+function getGroundHeightAt(x, z) {
+    let maxY = 0; // Chão padrão é 0
+    if(!Engine.collidables) return maxY;
+
+    const testPoint = new THREE.Vector3(x, 10, z); // Ponto alto para teste (simplificado)
+
+    // Loop clássico
+    for (let i = 0; i < Engine.collidables.length; i++) {
+        let obj = Engine.collidables[i];
+        if(!obj) continue;
+
+        // Só consideramos chão se for "standable" (pisável)
+        // NPCs e Players não têm standable=true, então retornam 0 (você escorrega deles)
+        if(obj.userData.standable) {
+            tempBoxObstacle.setFromObject(obj);
+            
+            // Verifica se X e Z estão dentro da caixa do objeto
+            if(x >= tempBoxObstacle.min.x && x <= tempBoxObstacle.max.x &&
+               z >= tempBoxObstacle.min.z && z <= tempBoxObstacle.max.z) {
+                
+                // Se estamos dentro horizontalmente, o "chão" é o topo deste objeto
+                if(tempBoxObstacle.max.y > maxY) {
+                    maxY = tempBoxObstacle.max.y;
+                }
+            }
+        }
+    }
+    return maxY;
+}
+
 function checkCollision(x, y, z) {
     if(!Engine.collidables) return false;
 
+    // Caixa do jogador na nova posição
     tempBoxPlayer.setFromCenterAndSize(new THREE.Vector3(x, y + 0.9, z), playerSize);
     
-    // LOOP CLÁSSICO PARA EVITAR ERROS NO BYOND/IE
     for (let i = 0; i < Engine.collidables.length; i++) {
         let obj = Engine.collidables[i];
         if(!obj) continue;
 
         tempBoxObstacle.setFromObject(obj);
+        
+        // INTERSEÇÃO
         if (tempBoxPlayer.intersectsBox(tempBoxObstacle)) {
-            return true; // Colidiu
+            
+            // TRUQUE DA DENSIDADE:
+            // Se o objeto é pisável (standable) e meus pés (y) estão acima ou no topo dele,
+            // NÃO conta como colisão de parede. Conta como chão (tratado na gravidade).
+            // A margem de 0.1 permite subir degraus pequenos suavemente.
+            if(obj.userData.standable) {
+                if (y >= tempBoxObstacle.max.y - 0.1) {
+                    continue; // Ignora colisão, permite andar em cima
+                }
+            }
+            
+            return true; // É uma parede ou obstáculo intransponível
         }
     }
     return false; 
@@ -195,21 +235,18 @@ function receberDadosMultiplayer(json) {
             cachedGold = me.gold;
         }
         
-        // Atualiza Barra de Vida
         if(me.hp !== cachedHP || me.max_hp !== cachedMaxHP) {
             const pct = Math.max(0, Math.min(100, (me.hp / me.max_hp) * 100));
             document.getElementById('hp-bar-fill').style.width = pct + "%";
             cachedHP = me.hp; cachedMaxHP = me.max_hp;
         }
 
-        // Atualiza Barra de XP
         if(me.exp !== cachedExp || me.req_exp !== cachedReqExp) {
             const xpPct = Math.max(0, Math.min(100, (me.exp / me.req_exp) * 100));
             document.getElementById('xp-bar-fill').style.width = xpPct + "%";
             cachedExp = me.exp; cachedReqExp = me.req_exp;
         }
 
-        // Atualiza Status Window
         if(me.pts !== undefined && (me.pts !== cachedPts || me.str !== cachedStats.str)) {
             document.getElementById('stat-points').innerText = me.pts;
             document.getElementById('val-str').innerText = me.str;
@@ -217,7 +254,6 @@ function receberDadosMultiplayer(json) {
             document.getElementById('val-agi').innerText = me.agi;
             document.getElementById('val-wis').innerText = me.wis;
             
-            // Loop clássico para desativar botões
             const btns = document.getElementsByClassName('stat-btn');
             for(let i = 0; i < btns.length; i++) {
                 btns[i].disabled = (me.pts <= 0);
@@ -277,7 +313,6 @@ function receberDadosMultiplayer(json) {
         }
     }
     
-    // Cleanup
     for (const id in otherPlayers) {
         if (!receivedIds.has(id)) {
             Engine.scene.remove(otherPlayers[id].mesh);
@@ -299,8 +334,6 @@ function shouldSendPosition(x, y, z, rot, now) {
 
 function sendPositionUpdate(now) {
     if (!isCharacterReady || blockSync) return;
-    
-    // Segurança extra: se BYOND_REF sumir, não tente enviar (evita crash loop)
     if(typeof BYOND_REF === 'undefined') return;
 
     const x = round2(playerGroup.position.x); const y = round2(playerGroup.position.y);
@@ -335,13 +368,16 @@ function animate() {
         const nextZ = playerGroup.position.z + moveZ;
         const currentY = playerGroup.position.y; 
 
+        // Movimento Horizontal: Só move se não bater em parede
         if(!checkCollision(nextX, currentY, nextZ)) {
             playerGroup.position.x = nextX; playerGroup.position.z = nextZ;
         } else {
+            // Deslizar nas paredes
             if(!checkCollision(nextX, currentY, playerGroup.position.z)) playerGroup.position.x = nextX;
             else if(!checkCollision(playerGroup.position.x, currentY, nextZ)) playerGroup.position.z = nextZ;
         }
         
+        // Limites
         if(playerGroup.position.x > 30) playerGroup.position.x = 30; if(playerGroup.position.x < -30) playerGroup.position.x = -30;
         if(playerGroup.position.z > 30) playerGroup.position.z = 30; if(playerGroup.position.z < -30) playerGroup.position.z = -30;
 
@@ -351,9 +387,28 @@ function animate() {
             if(!Input.keys.arrowdown && !Input.mouseRight) Input.camAngle = lerpAngle(Input.camAngle, targetCharRot + Math.PI, 0.02);
         }
 
-        if(Input.keys[" "] && !isJumping) { verticalVelocity = jumpForce; isJumping = true; }
-        playerGroup.position.y += verticalVelocity; verticalVelocity += gravity;
-        if(playerGroup.position.y < 0) { playerGroup.position.y = 0; isJumping = false; verticalVelocity = 0; }
+        // --- GRAVIDADE E PULO (ATUALIZADO) ---
+        // Calcula a altura do terreno abaixo do jogador
+        const groundHeight = getGroundHeightAt(playerGroup.position.x, playerGroup.position.z);
+
+        if(Input.keys[" "] && !isJumping) { 
+            // Só pula se estiver no chão (agora considerando o groundHeight)
+            if (Math.abs(playerGroup.position.y - groundHeight) < 0.1) {
+                verticalVelocity = jumpForce; 
+                isJumping = true; 
+            }
+        }
+        
+        playerGroup.position.y += verticalVelocity; 
+        verticalVelocity += gravity;
+
+        // Se cair abaixo do chão atual, aterra
+        if(playerGroup.position.y < groundHeight) { 
+            playerGroup.position.y = groundHeight; 
+            isJumping = false; 
+            verticalVelocity = 0; 
+        }
+        // -------------------------------------
 
         let targetStance = STANCES[charState] || STANCES.DEFAULT;
         if(moving && !isJumping && !isAttacking) {

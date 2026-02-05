@@ -1,10 +1,9 @@
 // definitions.js - O Banco de Dados de Objetos do Jogo
-// Aqui definimos TUDO que existe visualmente no jogo.
 // REGRA DE COLISÃO: Tudo é SÓLIDO (collision=true) por padrão.
-// Para criar algo atravessável (fantasma/luz), adicione physics: { solid: false }
+// PHYSICS: { solid: true/false, standable: true/false }
 
 const GameDefinitions = {
-    // --- PARTES DO CORPO (Modular) ---
+    // --- PARTES DO CORPO ---
     "char_human_torso": {
         type: "part",
         visual: { model: "box", color: 0xFF0000, scale: [0.2, 0.7, 0.2] }
@@ -18,7 +17,7 @@ const GameDefinitions = {
         visual: { model: "box", color: 0xFFCCAA, scale: [0.15, 0.7, 0.15] }
     },
 
-    // --- ARMAS (Exemplos de Equipment) ---
+    // --- ARMAS ---
     "weapon_sword_iron": {
         id: "weapon_sword_iron",
         name: "Espada de Ferro",
@@ -66,7 +65,8 @@ const GameDefinitions = {
             color: 0x8B4513,
             scale: [0.4, 1.8, 0.4] 
         },
-        // Física é opcional. Se omitido, será considerado SÓLIDO por padrão no engine.js
-        physics: { solid: true, mass: 50 } 
+        // 'solid': Bloqueia movimento horizontal (Parede)
+        // 'standable': Bloqueia movimento vertical (Chão/Plataforma)
+        physics: { solid: true, standable: true, mass: 50 } 
     }
 };
