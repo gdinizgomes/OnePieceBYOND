@@ -1,6 +1,27 @@
 <!DOCTYPE html>
 <html>
 <head>
+    <script>
+    // Detetive de Erros: Mostra erros na tela se o jogo falhar
+    window.onerror = function(message, source, lineno, colno, error) {
+        let errorBox = document.getElementById('error-debug');
+        if (!errorBox) {
+            errorBox = document.createElement('div');
+            errorBox.id = 'error-debug';
+            errorBox.style.position = 'fixed';
+            errorBox.style.top = '0';
+            errorBox.style.left = '0';
+            errorBox.style.width = '100%';
+            errorBox.style.background = 'red';
+            errorBox.style.color = 'white';
+            errorBox.style.zIndex = '9999';
+            errorBox.style.padding = '10px';
+            errorBox.style.fontFamily = 'monospace';
+            document.body.appendChild(errorBox);
+        }
+        errorBox.innerHTML += "ERRO: " + message + " em " + source + ":" + lineno + "<br>";
+    };
+    </script>
     <meta charset="UTF-8"> <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <style>
