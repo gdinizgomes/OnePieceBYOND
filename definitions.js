@@ -1,6 +1,7 @@
 // definitions.js - O Banco de Dados de Objetos do Jogo
 // Aqui definimos TUDO que existe visualmente no jogo.
-// A IA deve gerar JSONs seguindo este padrão.
+// REGRA DE COLISÃO: Tudo é SÓLIDO (collision=true) por padrão.
+// Para criar algo atravessável (fantasma/luz), adicione physics: { solid: false }
 
 const GameDefinitions = {
     // --- PARTES DO CORPO (Modular) ---
@@ -24,15 +25,15 @@ const GameDefinitions = {
         type: "equipment",
         tags: ["sharp", "metal"],
         visual: {
-            model: "box", // Pode ser 'plane' se for sprite 2D
-            color: 0xCCCCCC, // Cinza
-            scale: [0.1, 0.8, 0.05], // Comprimento definido aqui no Y
-            texture: null // Aqui entraria o URL da sprite gerada por IA
+            model: "box", 
+            color: 0xCCCCCC, 
+            scale: [0.1, 0.8, 0.05], 
+            texture: null 
         },
         attachment: {
             bone: "rightArm",
-            pos: [0, -0.6, 0.15], // Posição na mão
-            rot: [Math.PI / 2, 0, 0] // Rotação para apontar para frente
+            pos: [0, -0.6, 0.15], 
+            rot: [Math.PI / 2, 0, 0] 
         },
         data: { power: 10, durability: 100 }
     },
@@ -44,7 +45,7 @@ const GameDefinitions = {
         tags: ["ranged", "gunpowder"],
         visual: {
             model: "box",
-            color: 0x553311, // Marrom
+            color: 0x553311, 
             scale: [0.1, 0.1, 0.4]
         },
         attachment: {
@@ -63,8 +64,9 @@ const GameDefinitions = {
         visual: {
             model: "cylinder",
             color: 0x8B4513,
-            scale: [0.4, 1.8, 0.4] // Raio Topo, Altura, Raio Base
+            scale: [0.4, 1.8, 0.4] 
         },
-        physics: { solid: true, mass: 50 }
+        // Física é opcional. Se omitido, será considerado SÓLIDO por padrão no engine.js
+        physics: { solid: true, mass: 50 } 
     }
 };

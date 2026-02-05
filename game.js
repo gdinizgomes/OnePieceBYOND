@@ -36,6 +36,28 @@ function addLog(msg, css) {
 
 function round2(num) { return Math.round((num + Number.EPSILON) * 100) / 100; }
 
+// --- SISTEMA DE COLISÃO ---
+const tempBoxPlayer = new THREE.Box3();
+const tempBoxObstacle = new THREE.Box3();
+const playerSize = new THREE.Vector3(0.5, 1.8, 0.5); 
+
+function checkCollision(x, y, z) {
+    // Caixa do Player
+    tempBoxPlayer.setFromCenterAndSize(
+        new THREE.Vector3(x, y + 0.9, z), 
+        playerSize
+    );
+
+    // Itera sobre Engine.collidables (Que agora contém Props + Players Remotos)
+    for (let obj of Engine.collidables) {
+        tempBoxObstacle.setFromObject(obj);
+        if (tempBoxPlayer.intersectsBox(tempBoxObstacle)) {
+            return true; 
+        }
+    }
+    return false; 
+}
+
 // --- SISTEMA DE COMBATE ---
 window.addEventListener('game-action', (e) => {
     const k = e.detail;
@@ -97,12 +119,9 @@ function performAttack(type) {
     }, 100); 
 }
 
-// --- NETWORK CORE ---
-function receivingMultiplayerData(json) { // Nome em inglês interno, mas a string do BYOND chama 'receberDadosMultiplayer'
-    // Alias para manter compatibilidade com o BYOND se não mudarmos lá
-}
+// --- NETWORK CORE (ATUALIZADO PARA COLISÃO) ---
+function receivingMultiplayerData(json) { }
 
-// Essa função é chamada pelo BYOND
 function receberDadosMultiplayer(json) {
     lastPacketTime = Date.now();
     const packet = JSON.parse(json);
@@ -119,6 +138,8 @@ function receberDadosMultiplayer(json) {
             Engine.scene.add(playerGroup);
             isCharacterReady = true;
             Input.camAngle = myData.rot + Math.PI; 
+            // NOTA: NÃO adicionamos o PRÓPRIO jogador à lista de colisão local,
+            // senão ele colidiria com ele mesmo e travaria.
         }
     }
 
@@ -156,6 +177,9 @@ function receberDadosMultiplayer(json) {
                 const newChar = CharFactory.createCharacter(pData.skin, pData.cloth);
                 newChar.position.set(pData.x, pData.y, pData.z);
                 Engine.scene.add(newChar);
+                
+                // NOVO: Adiciona players remotos/NPCs à colisão
+                Engine.collidables.push(newChar);
                 
                 const label = document.createElement('div');
                 label.className = 'name-label';
@@ -196,7 +220,14 @@ function receberDadosMultiplayer(json) {
     
     for (const id in otherPlayers) {
         if (!receivedIds.has(id)) {
+            // Remove da cena
             Engine.scene.remove(otherPlayers[id].mesh);
+            
+            // NOVO: Remove da lista de colisão
+            const meshToRemove = otherPlayers[id].mesh;
+            const idx = Engine.collidables.indexOf(meshToRemove);
+            if(idx > -1) Engine.collidables.splice(idx, 1);
+
             if(otherPlayers[id].label) otherPlayers[id].label.remove();
             delete otherPlayers[id];
         }
@@ -245,7 +276,22 @@ function animate() {
         if(Input.keys.arrowleft) { moveX -= cos*speed; moveZ += sin*speed; moving = true; }
         if(Input.keys.arrowright) { moveX += cos*speed; moveZ -= sin*speed; moving = true; }
 
-        playerGroup.position.x += moveX; playerGroup.position.z += moveZ;
+        // --- APLICAÇÃO DA COLISÃO ---
+        const nextX = playerGroup.position.x + moveX;
+        const nextZ = playerGroup.position.z + moveZ;
+        const currentY = playerGroup.position.y; 
+
+        if(!checkCollision(nextX, currentY, nextZ)) {
+            playerGroup.position.x = nextX; 
+            playerGroup.position.z = nextZ;
+        } else {
+            if(!checkCollision(nextX, currentY, playerGroup.position.z)) {
+                playerGroup.position.x = nextX;
+            } else if(!checkCollision(playerGroup.position.x, currentY, nextZ)) {
+                playerGroup.position.z = nextZ;
+            }
+        }
+        
         if(playerGroup.position.x > 30) playerGroup.position.x = 30; if(playerGroup.position.x < -30) playerGroup.position.x = -30;
         if(playerGroup.position.z > 30) playerGroup.position.z = 30; if(playerGroup.position.z < -30) playerGroup.position.z = -30;
 
@@ -259,7 +305,6 @@ function animate() {
         playerGroup.position.y += verticalVelocity; verticalVelocity += gravity;
         if(playerGroup.position.y < 0) { playerGroup.position.y = 0; isJumping = false; verticalVelocity = 0; }
 
-        // Animação Local
         let targetStance = STANCES[charState] || STANCES.DEFAULT;
         if(moving && !isJumping && !isAttacking) {
             playerGroup.userData.limbs.leftLeg.rotation.x = Math.sin(animTime)*0.8;
@@ -280,7 +325,6 @@ function animate() {
             lerpLimbRotation(playerGroup.userData.limbs.rightLeg, targetStance.rightLeg, animSpeed);
         }
 
-        // Câmera
         const camDist = 7; const camH = 5;
         Engine.camera.position.set(
             playerGroup.position.x + Math.sin(Input.camAngle)*camDist, 
@@ -292,7 +336,6 @@ function animate() {
         sendPositionUpdate(now);
     }
 
-    // Animação Remota
     for(const id in otherPlayers) {
         const other = otherPlayers[id];
         const mesh = other.mesh;
@@ -359,10 +402,8 @@ function animate() {
     Engine.renderer.render(Engine.scene, Engine.camera);
 }
 
-// Inicia Loop
 animate();
 
-// Monitor de Conexão
 setInterval(() => {
     if(isCharacterReady && Date.now() - lastPacketTime > 4000) { 
         addLog("AVISO: Conexão com o servidor perdida.", "log-hit");

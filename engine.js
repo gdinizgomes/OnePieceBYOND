@@ -1,6 +1,6 @@
 // engine.js - Core do Cliente (Input, Math, Graphics)
 
-// --- 1. MÓDULO DE MATEMÁTICA E ANIMAÇÃO (Antigo animation.js) ---
+// --- 1. MÓDULO DE MATEMÁTICA E ANIMAÇÃO ---
 function lerp(start, end, t) { return start * (1 - t) + end * t; }
 function mod(n, m) { return ((n % m) + m) % m; }
 function lerpAngle(start, end, t) {
@@ -62,7 +62,7 @@ const STANCES = {
     }
 };
 
-// --- 2. MÓDULO DE INPUT (Antigo input.js) ---
+// --- 2. MÓDULO DE INPUT ---
 const Input = {
     keys: { arrowup: false, arrowdown: false, arrowleft: false, arrowright: false, " ": false },
     mouseRight: false,
@@ -98,15 +98,15 @@ const Input = {
     }
 };
 
-// --- 3. MÓDULO ENGINE GRÁFICA (Antigo engine.js) ---
+// --- 3. MÓDULO ENGINE GRÁFICA ---
 const Engine = {
     scene: null,
     camera: null,
     renderer: null,
-    dummyTarget: null, 
+    dummyTarget: null,
+    collidables: [], // Lista GLOBAL de objetos sólidos (Props + Players + NPCs)
 
     init: function() {
-        // Inicializa Input
         Input.init();
 
         this.scene = new THREE.Scene();
@@ -155,6 +155,14 @@ const Engine = {
             logMesh.position.y = logDef.visual.scale[1] / 2;
             dummyGroup.add(logMesh);
             
+            // --- ATUALIZAÇÃO: COLISÃO PADRÃO TRUE ---
+            // Se não houver definição de física, OU se solid não for explicitamente falso, adiciona.
+            const isSolid = !logDef.physics || logDef.physics.solid !== false;
+            
+            if(isSolid) {
+                this.collidables.push(logMesh);
+            }
+            
             const target = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.42, 0.2, 12), new THREE.MeshBasicMaterial({ color: 0xFF0000 }));
             target.position.y = 1.3;
             dummyGroup.add(target);
@@ -163,7 +171,9 @@ const Engine = {
 
         this.scene.add(dummyGroup);
         this.dummyTarget = dummyGroup;
+        
+        dummyGroup.updateMatrixWorld(true);
     }
 };
-// Inicializa tudo
+
 Engine.init();
