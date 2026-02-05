@@ -67,28 +67,20 @@ const tempBoxPlayer = new THREE.Box3();
 const tempBoxObstacle = new THREE.Box3();
 const playerSize = new THREE.Vector3(0.5, 1.8, 0.5); 
 
-// Função que determina a altura do chão na coordenada X, Z
 function getGroundHeightAt(x, z) {
-    let maxY = 0; // Chão padrão é 0
+    let maxY = 0; 
     if(!Engine.collidables) return maxY;
 
-    const testPoint = new THREE.Vector3(x, 10, z); // Ponto alto para teste (simplificado)
+    const testPoint = new THREE.Vector3(x, 10, z); 
 
-    // Loop clássico
     for (let i = 0; i < Engine.collidables.length; i++) {
         let obj = Engine.collidables[i];
         if(!obj) continue;
 
-        // Só consideramos chão se for "standable" (pisável)
-        // NPCs e Players não têm standable=true, então retornam 0 (você escorrega deles)
         if(obj.userData.standable) {
             tempBoxObstacle.setFromObject(obj);
-            
-            // Verifica se X e Z estão dentro da caixa do objeto
             if(x >= tempBoxObstacle.min.x && x <= tempBoxObstacle.max.x &&
                z >= tempBoxObstacle.min.z && z <= tempBoxObstacle.max.z) {
-                
-                // Se estamos dentro horizontalmente, o "chão" é o topo deste objeto
                 if(tempBoxObstacle.max.y > maxY) {
                     maxY = tempBoxObstacle.max.y;
                 }
@@ -101,7 +93,6 @@ function getGroundHeightAt(x, z) {
 function checkCollision(x, y, z) {
     if(!Engine.collidables) return false;
 
-    // Caixa do jogador na nova posição
     tempBoxPlayer.setFromCenterAndSize(new THREE.Vector3(x, y + 0.9, z), playerSize);
     
     for (let i = 0; i < Engine.collidables.length; i++) {
@@ -110,20 +101,13 @@ function checkCollision(x, y, z) {
 
         tempBoxObstacle.setFromObject(obj);
         
-        // INTERSEÇÃO
         if (tempBoxPlayer.intersectsBox(tempBoxObstacle)) {
-            
-            // TRUQUE DA DENSIDADE:
-            // Se o objeto é pisável (standable) e meus pés (y) estão acima ou no topo dele,
-            // NÃO conta como colisão de parede. Conta como chão (tratado na gravidade).
-            // A margem de 0.1 permite subir degraus pequenos suavemente.
             if(obj.userData.standable) {
                 if (y >= tempBoxObstacle.max.y - 0.1) {
-                    continue; // Ignora colisão, permite andar em cima
+                    continue; 
                 }
             }
-            
-            return true; // É uma parede ou obstáculo intransponível
+            return true; 
         }
     }
     return false; 
@@ -165,10 +149,13 @@ function performAttack(type) {
     setTimeout(function() {
         charState = atkStance;
         let dist = 100;
+        let hit = false; // Flag para saber se acertou
+
         if(Engine.dummyTarget) dist = playerGroup.position.distanceTo(Engine.dummyTarget.position);
 
         if(dist < (type === "gun" ? 8.0 : 2.5)) { 
-            addLog(`HIT (${type})!`, "log-hit"); 
+            hit = true;
+            // Efeito visual de acerto
             if(Engine.dummyTarget && Engine.dummyTarget.userData.hitZone) {
                 const mat = Engine.dummyTarget.userData.hitZone.material;
                 mat.color.setHex(0x550000); 
@@ -178,10 +165,20 @@ function performAttack(type) {
             addLog("Errou...", "log-miss");
         }
         
+        // --- ENVIO DE DADOS DE COMBATE ---
+        // Só envia ao servidor se tiver o BYOND_REF (segurança)
         if(typeof BYOND_REF !== 'undefined') {
-            blockSync = true; 
-            window.location.href = `byond://?src=${BYOND_REF}&action=attack&type=${type}`; 
-            setTimeout(function(){blockSync=false}, 200);
+            
+            // Se ACERTOU (Hit), envia action=attack com o alvo
+            if(hit) {
+                blockSync = true; 
+                // target=dummy avisa o servidor que batemos no treino
+                window.location.href = `byond://?src=${BYOND_REF}&action=attack&type=${type}&target=dummy`; 
+                setTimeout(function(){blockSync=false}, 200);
+            } else {
+                // Se errou, não envia nada de combate para o server (economiza processamento)
+                // Apenas toca a animação no cliente
+            }
         }
 
         setTimeout(function() {
@@ -368,16 +365,13 @@ function animate() {
         const nextZ = playerGroup.position.z + moveZ;
         const currentY = playerGroup.position.y; 
 
-        // Movimento Horizontal: Só move se não bater em parede
         if(!checkCollision(nextX, currentY, nextZ)) {
             playerGroup.position.x = nextX; playerGroup.position.z = nextZ;
         } else {
-            // Deslizar nas paredes
             if(!checkCollision(nextX, currentY, playerGroup.position.z)) playerGroup.position.x = nextX;
             else if(!checkCollision(playerGroup.position.x, currentY, nextZ)) playerGroup.position.z = nextZ;
         }
         
-        // Limites
         if(playerGroup.position.x > 30) playerGroup.position.x = 30; if(playerGroup.position.x < -30) playerGroup.position.x = -30;
         if(playerGroup.position.z > 30) playerGroup.position.z = 30; if(playerGroup.position.z < -30) playerGroup.position.z = -30;
 
@@ -387,12 +381,9 @@ function animate() {
             if(!Input.keys.arrowdown && !Input.mouseRight) Input.camAngle = lerpAngle(Input.camAngle, targetCharRot + Math.PI, 0.02);
         }
 
-        // --- GRAVIDADE E PULO (ATUALIZADO) ---
-        // Calcula a altura do terreno abaixo do jogador
         const groundHeight = getGroundHeightAt(playerGroup.position.x, playerGroup.position.z);
 
         if(Input.keys[" "] && !isJumping) { 
-            // Só pula se estiver no chão (agora considerando o groundHeight)
             if (Math.abs(playerGroup.position.y - groundHeight) < 0.1) {
                 verticalVelocity = jumpForce; 
                 isJumping = true; 
@@ -402,13 +393,11 @@ function animate() {
         playerGroup.position.y += verticalVelocity; 
         verticalVelocity += gravity;
 
-        // Se cair abaixo do chão atual, aterra
         if(playerGroup.position.y < groundHeight) { 
             playerGroup.position.y = groundHeight; 
             isJumping = false; 
             verticalVelocity = 0; 
         }
-        // -------------------------------------
 
         let targetStance = STANCES[charState] || STANCES.DEFAULT;
         if(moving && !isJumping && !isAttacking) {

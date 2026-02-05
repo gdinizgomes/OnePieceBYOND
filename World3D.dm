@@ -47,7 +47,8 @@ mob
         if(!in_game) return
         
         experience += amount
-        src << output("<span class='log-hit'>+ [amount] EXP</span>", "map3d:addLog")
+        // Feedback visual de XP
+        src << output("<span class='log-hit' style='color:#aaddff'>+ [amount] EXP</span>", "map3d:addLog")
         
         var/safety_loop = 0
         while(experience >= req_experience && safety_loop < 100)
@@ -64,7 +65,7 @@ mob
         max_hp += 10 + (vitality * 2) 
         current_hp = max_hp           
         
-        src << output("<span class='log-hit' style='font-size:14px'>LEVEL UP! Nível [level]</span>", "map3d:addLog")
+        src << output("<span class='log-hit' style='font-size:14px; color:#ffff00'>LEVEL UP! Nível [level]</span>", "map3d:addLog")
         src << output("Você ganhou 3 pontos de status.", "map3d:mostrarNotificacao")
         SaveCharacter()
 
@@ -180,13 +181,11 @@ mob
                     "exp" = src.experience,       
                     "req_exp" = src.req_experience, 
                     
-                    // --- ATUALIZAÇÃO: ENVIAR STATS ---
                     "pts" = src.stat_points,
                     "str" = src.strength,
                     "vit" = src.vitality,
                     "agi" = src.agility,
                     "wis" = src.wisdom,
-                    // --------------------------------
                     
                     "gold" = src.gold, 
                     "hp" = src.current_hp, 
@@ -239,19 +238,33 @@ mob
         if(action == "attack" && in_game)
             is_attacking = 1
             attack_type = href_list["type"]
-            GainExperience(10) // DEBUG: Treino
+            var/target = href_list["target"] // Novo parâmetro
+
+            // LÓGICA DE DANO E XP
+            if(target == "dummy")
+                // Dano Base = Força + Bonus da Arma (simples por enquanto)
+                var/weapon_bonus = 0
+                if(attack_type == "sword") weapon_bonus = 5
+                if(attack_type == "gun") weapon_bonus = 10
+                
+                var/damage = strength + weapon_bonus + rand(0, 2)
+                src << output("<span class='log-hit'>HIT! Dano: [damage]</span>", "map3d:addLog")
+                
+                // Ganha XP apenas se acertou
+                GainExperience(10)
+            
             spawn(3) 
                 is_attacking = 0
                 attack_type = "" 
 
-        // --- SISTEMA DE STATS (NOVO) ---
+        // --- SISTEMA DE STATS ---
         if(action == "add_stat" && in_game)
             if(stat_points > 0)
                 var/s = href_list["stat"]
                 if(s == "str") strength++
                 if(s == "vit") 
                     vitality++
-                    max_hp += 2 // Aumenta vida ao aumentar vit
+                    max_hp += 2 
                 if(s == "agi") agility++
                 if(s == "wis") wisdom++
                 
