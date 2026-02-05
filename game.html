@@ -4,12 +4,7 @@
     <meta charset="UTF-8"> <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script>
-        // --- CORREÇÃO CRÍTICA ---
-        // Esta linha define a identidade do jogador para o Javascript.
-        // Sem ela, o jogo não sabe com quem falar e trava.
         const BYOND_REF = "{{BYOND_REF}}"; 
-        
-        // Ferramenta de Detecção de Erros
         window.onerror = function(message, source, lineno, colno, error) {
             let errorBox = document.getElementById('error-debug');
             if (!errorBox) {
@@ -26,26 +21,35 @@
         #ui-layer { position: absolute; width: 100%; height: 100%; pointer-events: none; }
         
         /* HUD Principal */
-        .char-info { position: absolute; top: 20px; left: 20px; background: rgba(0,0,0,0.6); padding: 15px; border-radius: 8px; color: white; border: 2px solid #d4af37; pointer-events: auto; }
+        .char-info { position: absolute; top: 20px; left: 20px; background: rgba(0,0,0,0.6); padding: 15px; border-radius: 8px; color: white; border: 2px solid #d4af37; pointer-events: auto; min-width: 200px; }
         
         /* Barras */
-        .bar-container { width: 200px; height: 10px; background: #333; margin-top: 5px; overflow: hidden; border: 1px solid #555; }
+        .bar-container { width: 100%; height: 10px; background: #333; margin-top: 2px; overflow: hidden; border: 1px solid #555; }
         .hp-bar { width: 100%; height: 100%; background: #e74c3c; transition: width 0.2s; }
+        .en-bar { width: 100%; height: 100%; background: #3498db; transition: width 0.2s; } /* Azul */
         .xp-bar { width: 0%; height: 100%; background: #9b59b6; transition: width 0.2s; } 
+
+        /* Lista de Comandos (Novo) */
+        #controls-help {
+            position: absolute; bottom: 20px; left: 20px;
+            background: rgba(0,0,0,0.5); color: #ccc;
+            padding: 10px; border-radius: 5px; font-size: 11px;
+            font-family: monospace;
+        }
 
         /* Janela de Status */
         #stat-window {
             position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-            width: 300px; background: rgba(0, 0, 0, 0.85); color: white;
+            width: 320px; background: rgba(0, 0, 0, 0.9); color: white;
             border: 2px solid #d4af37; border-radius: 10px; padding: 20px;
-            display: none; 
-            pointer-events: auto;
+            display: none; pointer-events: auto;
             box-shadow: 0 0 20px rgba(0,0,0,0.8);
         }
-        .stat-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-size: 14px; }
+        .stat-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; font-size: 14px; }
+        .stat-sub { font-size: 12px; color: #aaa; margin-left: 10px; }
         .stat-btn {
             background: #d4af37; color: black; border: none; border-radius: 4px;
-            width: 25px; height: 25px; font-weight: bold; cursor: pointer;
+            width: 20px; height: 20px; font-weight: bold; cursor: pointer; font-size: 12px;
         }
         .stat-btn:hover { background: #f1c40f; }
         .stat-btn:disabled { background: #555; cursor: default; }
@@ -64,40 +68,47 @@
             <div id="name-display" style="font-size: 18px; font-weight: bold;">Loading...</div>
             <div style="font-size: 12px; color: #aaa;">Lvl <span id="lvl-display">0</span></div>
             
-            <div style="font-size:10px; margin-top:5px;">HP</div>
+            <div style="font-size:10px; margin-top:5px;">HP <span id="hp-text"></span></div>
             <div class="bar-container"><div id="hp-bar-fill" class="hp-bar"></div></div>
             
+            <div style="font-size:10px; margin-top:2px;">Energy <span id="en-text"></span></div>
+            <div class="bar-container"><div id="en-bar-fill" class="en-bar"></div></div>
+            
             <div style="font-size:10px; margin-top:2px;">EXP</div>
-            <div class="bar-container" style="height: 6px;"><div id="xp-bar-fill" class="xp-bar"></div></div>
+            <div class="bar-container" style="height: 4px;"><div id="xp-bar-fill" class="xp-bar"></div></div>
             
             <div style="margin-top:5px; color:#f1c40f">💰 <span id="gold-display">0</span> Berries</div>
             <div style="margin-top:5px; font-size: 10px; color: #ccc;">[C] Status</div>
         </div>
 
+        <div id="controls-help">
+            <strong>CONTROLES:</strong><br>
+            [W,A,S,D] Mover<br>
+            [Espaço] Pular<br>
+            [A] Soco &nbsp; [S] Chute<br>
+            [D] Espada [F] Arma<br>
+            [R] Descansar<br>
+            [C] Menu Stats
+        </div>
+
         <div id="stat-window">
             <div style="text-align: center; border-bottom: 1px solid #555; margin-bottom: 10px; padding-bottom: 5px;">
-                <strong>PERSONAGEM</strong>
+                <strong>ATRIBUTOS</strong>
             </div>
-            <div class="stat-row"><span>Pontos Disponíveis:</span> <span id="stat-points" style="color: #f1c40f; font-weight:bold;">0</span></div>
-            <hr style="border-color: #333">
+            <div class="stat-row"><span>Pontos:</span> <span id="stat-points" style="color: #f1c40f; font-weight:bold;">0</span></div>
             
-            <div class="stat-row">
-                <span>Força (STR)</span>
-                <div><span id="val-str">0</span> <button class="stat-btn" onclick="addStat('str')">+</button></div>
-            </div>
-            <div class="stat-row">
-                <span>Vitalidade (VIT)</span>
-                <div><span id="val-vit">0</span> <button class="stat-btn" onclick="addStat('vit')">+</button></div>
-            </div>
-            <div class="stat-row">
-                <span>Agilidade (AGI)</span>
-                <div><span id="val-agi">0</span> <button class="stat-btn" onclick="addStat('agi')">+</button></div>
-            </div>
-            <div class="stat-row">
-                <span>Sabedoria (WIS)</span>
-                <div><span id="val-wis">0</span> <button class="stat-btn" onclick="addStat('wis')">+</button></div>
-            </div>
+            <div class="stat-row"><span>Força (Dano)</span> <div><span id="val-str">0</span> <button class="stat-btn" onclick="addStat('str')">+</button></div></div>
+            <div class="stat-row"><span>Vitalidade (HP)</span> <div><span id="val-vit">0</span> <button class="stat-btn" onclick="addStat('vit')">+</button></div></div>
+            <div class="stat-row"><span>Agilidade (Vel)</span> <div><span id="val-agi">0</span> <button class="stat-btn" onclick="addStat('agi')">+</button></div></div>
+            <div class="stat-row"><span>Sabedoria (Ener)</span> <div><span id="val-wis">0</span> <button class="stat-btn" onclick="addStat('wis')">+</button></div></div>
             
+            <hr style="border-color: #333; margin: 10px 0;">
+            <div style="text-align: center; margin-bottom: 5px;"><strong>PROFICIÊNCIAS</strong></div>
+            <div class="stat-row"><span class="stat-sub">Soco Lv.</span> <span id="prof-punch">1</span></div>
+            <div class="stat-row"><span class="stat-sub">Chute Lv.</span> <span id="prof-kick">1</span></div>
+            <div class="stat-row"><span class="stat-sub">Espada Lv.</span> <span id="prof-sword">1</span></div>
+            <div class="stat-row"><span class="stat-sub">Arma Lv.</span> <span id="prof-gun">1</span></div>
+
             <div style="text-align: center; margin-top: 15px;">
                 <button onclick="toggleStats()" style="padding: 5px 15px; cursor: pointer;">Fechar</button>
             </div>
