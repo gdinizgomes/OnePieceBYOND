@@ -18,8 +18,13 @@ let verticalVelocity = 0;
 const gravity = -0.015; 
 const jumpForce = 0.3;
 
+// UI State
+let isStatWindowOpen = false;
+
 // Cache UI
 let cachedHP = -1; let cachedMaxHP = -1; let cachedGold = -1; let cachedLvl = -1; let cachedName = "";
+let cachedExp = -1; let cachedReqExp = -1; let cachedPts = -1;
+let cachedStats = { str: -1, vit: -1, agi: -1, wis: -1 };
 
 // Sync
 const POSITION_SYNC_INTERVAL = 100;
@@ -30,11 +35,36 @@ let lastSentX = null; let lastSentY = null; let lastSentZ = null; let lastSentRo
 // --- FUNÇÕES AUXILIARES UI ---
 function addLog(msg, css) { 
     const d = document.getElementById('combat-log'); 
-    d.innerHTML += `<span class="${css}">${msg}</span><br>`; 
-    d.scrollTop=d.scrollHeight; 
+    if(d) {
+        d.innerHTML += `<span class="${css}">${msg}</span><br>`; 
+        d.scrollTop=d.scrollHeight; 
+    }
 }
 
 function round2(num) { return Math.round((num + Number.EPSILON) * 100) / 100; }
+
+// --- CONTROLE DA INTERFACE ---
+function toggleStats() {
+    isStatWindowOpen = !isStatWindowOpen;
+    const win = document.getElementById('stat-window');
+    if(win) win.style.display = isStatWindowOpen ? 'block' : 'none';
+}
+
+function addStat(statName) {
+    if(blockSync) return;
+    // Verifica se BYOND_REF existe antes de tentar usar
+    if(typeof BYOND_REF === 'undefined') {
+        console.error("ERRO FATAL: BYOND_REF não definido!");
+        return;
+    }
+    blockSync = true;
+    window.location.href = `byond://?src=${BYOND_REF}&action=add_stat&stat=${statName}`;
+    setTimeout(function() { blockSync = false; }, 200);
+}
+
+window.addEventListener('keydown', function(e) {
+    if(e.key.toLowerCase() === 'c') toggleStats();
+});
 
 // --- SISTEMA DE COLISÃO ---
 const tempBoxPlayer = new THREE.Box3();
@@ -42,34 +72,37 @@ const tempBoxObstacle = new THREE.Box3();
 const playerSize = new THREE.Vector3(0.5, 1.8, 0.5); 
 
 function checkCollision(x, y, z) {
-    // Caixa do Player
-    tempBoxPlayer.setFromCenterAndSize(
-        new THREE.Vector3(x, y + 0.9, z), 
-        playerSize
-    );
+    if(!Engine.collidables) return false;
 
-    // Itera sobre Engine.collidables (Que agora contém Props + Players Remotos)
-    for (let obj of Engine.collidables) {
+    tempBoxPlayer.setFromCenterAndSize(new THREE.Vector3(x, y + 0.9, z), playerSize);
+    
+    // LOOP CLÁSSICO PARA EVITAR ERROS NO BYOND/IE
+    for (let i = 0; i < Engine.collidables.length; i++) {
+        let obj = Engine.collidables[i];
+        if(!obj) continue;
+
         tempBoxObstacle.setFromObject(obj);
         if (tempBoxPlayer.intersectsBox(tempBoxObstacle)) {
-            return true; 
+            return true; // Colidiu
         }
     }
     return false; 
 }
 
 // --- SISTEMA DE COMBATE ---
-window.addEventListener('game-action', (e) => {
+window.addEventListener('game-action', function(e) {
     const k = e.detail;
     if(k === 'd') { CharFactory.equipItem(playerGroup, "weapon_sword_iron"); performAttack("sword"); }
     else if(k === 'f') { CharFactory.equipItem(playerGroup, "weapon_gun_flintlock"); performAttack("gun"); }
     else if(k === 'a') { performAttack("fist"); }
     else if(k === 's') { performAttack("kick"); }
     else if(k === 'p' && !blockSync) {
-        blockSync = true; 
-        window.location.href = "byond://?src=" + BYOND_REF + "&action=force_save";
-        addLog("Salvando...", "log-miss");
-        setTimeout(() => { blockSync = false; }, 500);
+        if(typeof BYOND_REF !== 'undefined') {
+            blockSync = true; 
+            window.location.href = "byond://?src=" + BYOND_REF + "&action=force_save";
+            addLog("Salvando...", "log-miss");
+            setTimeout(function() { blockSync = false; }, 500);
+        }
     }
 });
 
@@ -89,42 +122,48 @@ function performAttack(type) {
 
     charState = windupStance; 
 
-    setTimeout(() => {
+    setTimeout(function() {
         charState = atkStance;
-        
         let dist = 100;
-        if(Engine.dummyTarget) {
-            dist = playerGroup.position.distanceTo(Engine.dummyTarget.position);
-        }
+        if(Engine.dummyTarget) dist = playerGroup.position.distanceTo(Engine.dummyTarget.position);
 
         if(dist < (type === "gun" ? 8.0 : 2.5)) { 
             addLog(`HIT (${type})!`, "log-hit"); 
             if(Engine.dummyTarget && Engine.dummyTarget.userData.hitZone) {
                 const mat = Engine.dummyTarget.userData.hitZone.material;
                 mat.color.setHex(0x550000); 
-                setTimeout(()=>mat.color.setHex(0xFF0000),150);
+                setTimeout(function(){mat.color.setHex(0xFF0000)}, 150);
             }
         } else {
             addLog("Errou...", "log-miss");
         }
         
-        blockSync = true; 
-        window.location.href = `byond://?src=${BYOND_REF}&action=attack&type=${type}`; 
-        setTimeout(()=>{blockSync=false}, 200);
+        if(typeof BYOND_REF !== 'undefined') {
+            blockSync = true; 
+            window.location.href = `byond://?src=${BYOND_REF}&action=attack&type=${type}`; 
+            setTimeout(function(){blockSync=false}, 200);
+        }
 
-        setTimeout(() => {
+        setTimeout(function() {
             charState = idleStance; 
             isAttacking = false;
         }, 300);
     }, 100); 
 }
 
-// --- NETWORK CORE (ATUALIZADO PARA COLISÃO) ---
+// --- NETWORK CORE ---
 function receivingMultiplayerData(json) { }
 
 function receberDadosMultiplayer(json) {
     lastPacketTime = Date.now();
-    const packet = JSON.parse(json);
+    let packet;
+    try {
+        packet = JSON.parse(json);
+    } catch(e) {
+        console.error("Erro JSON", e);
+        return;
+    }
+
     const me = packet.me;
     myID = packet.my_id;
     const now = performance.now();
@@ -138,8 +177,6 @@ function receberDadosMultiplayer(json) {
             Engine.scene.add(playerGroup);
             isCharacterReady = true;
             Input.camAngle = myData.rot + Math.PI; 
-            // NOTA: NÃO adicionamos o PRÓPRIO jogador à lista de colisão local,
-            // senão ele colidiria com ele mesmo e travaria.
         }
     }
 
@@ -157,10 +194,37 @@ function receberDadosMultiplayer(json) {
             document.getElementById('gold-display').innerText = me.gold;
             cachedGold = me.gold;
         }
+        
+        // Atualiza Barra de Vida
         if(me.hp !== cachedHP || me.max_hp !== cachedMaxHP) {
-            document.getElementById('hp-bar-fill').style.width = ((me.hp / me.max_hp) * 100) + "%";
-            cachedHP = me.hp;
-            cachedMaxHP = me.max_hp;
+            const pct = Math.max(0, Math.min(100, (me.hp / me.max_hp) * 100));
+            document.getElementById('hp-bar-fill').style.width = pct + "%";
+            cachedHP = me.hp; cachedMaxHP = me.max_hp;
+        }
+
+        // Atualiza Barra de XP
+        if(me.exp !== cachedExp || me.req_exp !== cachedReqExp) {
+            const xpPct = Math.max(0, Math.min(100, (me.exp / me.req_exp) * 100));
+            document.getElementById('xp-bar-fill').style.width = xpPct + "%";
+            cachedExp = me.exp; cachedReqExp = me.req_exp;
+        }
+
+        // Atualiza Status Window
+        if(me.pts !== undefined && (me.pts !== cachedPts || me.str !== cachedStats.str)) {
+            document.getElementById('stat-points').innerText = me.pts;
+            document.getElementById('val-str').innerText = me.str;
+            document.getElementById('val-vit').innerText = me.vit;
+            document.getElementById('val-agi').innerText = me.agi;
+            document.getElementById('val-wis').innerText = me.wis;
+            
+            // Loop clássico para desativar botões
+            const btns = document.getElementsByClassName('stat-btn');
+            for(let i = 0; i < btns.length; i++) {
+                btns[i].disabled = (me.pts <= 0);
+            }
+
+            cachedPts = me.pts;
+            cachedStats = { str: me.str, vit: me.vit, agi: me.agi, wis: me.wis };
         }
     }
 
@@ -177,8 +241,6 @@ function receberDadosMultiplayer(json) {
                 const newChar = CharFactory.createCharacter(pData.skin, pData.cloth);
                 newChar.position.set(pData.x, pData.y, pData.z);
                 Engine.scene.add(newChar);
-                
-                // NOVO: Adiciona players remotos/NPCs à colisão
                 Engine.collidables.push(newChar);
                 
                 const label = document.createElement('div');
@@ -193,10 +255,7 @@ function receberDadosMultiplayer(json) {
                     targetX: pData.x, targetY: pData.y, targetZ: pData.z, targetRot: pData.rot,
                     lastPacketTime: now,
                     lerpDuration: 180,
-                    attacking: pData.a,
-                    attackType: pData.at,
-                    lastCombatTime: 0,
-                    lastCombatType: "sword" 
+                    attacking: pData.a, attackType: pData.at, lastCombatTime: 0, lastCombatType: "sword" 
                 };
             }
         } else {
@@ -218,16 +277,12 @@ function receberDadosMultiplayer(json) {
         }
     }
     
+    // Cleanup
     for (const id in otherPlayers) {
         if (!receivedIds.has(id)) {
-            // Remove da cena
             Engine.scene.remove(otherPlayers[id].mesh);
-            
-            // NOVO: Remove da lista de colisão
-            const meshToRemove = otherPlayers[id].mesh;
-            const idx = Engine.collidables.indexOf(meshToRemove);
+            const idx = Engine.collidables.indexOf(otherPlayers[id].mesh);
             if(idx > -1) Engine.collidables.splice(idx, 1);
-
             if(otherPlayers[id].label) otherPlayers[id].label.remove();
             delete otherPlayers[id];
         }
@@ -245,14 +300,14 @@ function shouldSendPosition(x, y, z, rot, now) {
 function sendPositionUpdate(now) {
     if (!isCharacterReady || blockSync) return;
     
-    const x = round2(playerGroup.position.x);
-    const y = round2(playerGroup.position.y);
-    const z = round2(playerGroup.position.z);
-    const rot = round2(playerGroup.rotation.y);
+    // Segurança extra: se BYOND_REF sumir, não tente enviar (evita crash loop)
+    if(typeof BYOND_REF === 'undefined') return;
+
+    const x = round2(playerGroup.position.x); const y = round2(playerGroup.position.y);
+    const z = round2(playerGroup.position.z); const rot = round2(playerGroup.rotation.y);
 
     if (!shouldSendPosition(x, y, z, rot, now)) return;
     lastSentTime = now; lastSentX = x; lastSentY = y; lastSentZ = z; lastSentRot = rot;
-    
     window.location.href = `byond://?src=${BYOND_REF}&action=update_pos&x=${x}&y=${y}&z=${z}&rot=${rot}`; 
 }
 
@@ -276,20 +331,15 @@ function animate() {
         if(Input.keys.arrowleft) { moveX -= cos*speed; moveZ += sin*speed; moving = true; }
         if(Input.keys.arrowright) { moveX += cos*speed; moveZ -= sin*speed; moving = true; }
 
-        // --- APLICAÇÃO DA COLISÃO ---
         const nextX = playerGroup.position.x + moveX;
         const nextZ = playerGroup.position.z + moveZ;
         const currentY = playerGroup.position.y; 
 
         if(!checkCollision(nextX, currentY, nextZ)) {
-            playerGroup.position.x = nextX; 
-            playerGroup.position.z = nextZ;
+            playerGroup.position.x = nextX; playerGroup.position.z = nextZ;
         } else {
-            if(!checkCollision(nextX, currentY, playerGroup.position.z)) {
-                playerGroup.position.x = nextX;
-            } else if(!checkCollision(playerGroup.position.x, currentY, nextZ)) {
-                playerGroup.position.z = nextZ;
-            }
+            if(!checkCollision(nextX, currentY, playerGroup.position.z)) playerGroup.position.x = nextX;
+            else if(!checkCollision(playerGroup.position.x, currentY, nextZ)) playerGroup.position.z = nextZ;
         }
         
         if(playerGroup.position.x > 30) playerGroup.position.x = 30; if(playerGroup.position.x < -30) playerGroup.position.x = -30;
@@ -309,7 +359,6 @@ function animate() {
         if(moving && !isJumping && !isAttacking) {
             playerGroup.userData.limbs.leftLeg.rotation.x = Math.sin(animTime)*0.8;
             playerGroup.userData.limbs.rightLeg.rotation.x = -Math.sin(animTime)*0.8;
-            
             if(charState === "DEFAULT") {
                 playerGroup.userData.limbs.leftArm.rotation.x = -Math.sin(animTime)*0.8;
                 playerGroup.userData.limbs.rightArm.rotation.x = Math.sin(animTime)*0.8;
@@ -326,13 +375,8 @@ function animate() {
         }
 
         const camDist = 7; const camH = 5;
-        Engine.camera.position.set(
-            playerGroup.position.x + Math.sin(Input.camAngle)*camDist, 
-            playerGroup.position.y + camH, 
-            playerGroup.position.z + Math.cos(Input.camAngle)*camDist
-        );
+        Engine.camera.position.set(playerGroup.position.x + Math.sin(Input.camAngle)*camDist, playerGroup.position.y + camH, playerGroup.position.z + Math.cos(Input.camAngle)*camDist);
         Engine.camera.lookAt(playerGroup.position.x, playerGroup.position.y + 1.5, playerGroup.position.z);
-
         sendPositionUpdate(now);
     }
 
@@ -349,12 +393,10 @@ function animate() {
 
         const dist = Math.sqrt(Math.pow(other.targetX - mesh.position.x, 2) + Math.pow(other.targetZ - mesh.position.z, 2));
         const isMoving = dist > 0.05;
-
         let remoteStance = STANCES.DEFAULT; 
         const timeSinceCombat = now - (other.lastCombatTime || 0);
-        const isInCombatMode = timeSinceCombat < 3000;
 
-        if(isInCombatMode) {
+        if(timeSinceCombat < 3000) {
             let type = other.lastCombatType || "sword";
             if(type === "fist" || type === "kick") remoteStance = STANCES.FIST_IDLE;
             else if(type === "gun") remoteStance = STANCES.GUN_IDLE;
@@ -367,7 +409,6 @@ function animate() {
             if(currentType === "fist") atkName = "FIST_ATK";
             if(currentType === "kick") atkName = "KICK_ATK";
             if(currentType === "gun") atkName = "GUN_ATK";
-            
             let targetAnim = STANCES[atkName] || STANCES.SWORD_ATK_1;
             lerpLimbRotation(mesh.userData.limbs.leftArm, targetAnim.leftArm, 0.3);
             lerpLimbRotation(mesh.userData.limbs.rightArm, targetAnim.rightArm, 0.3);
@@ -398,15 +439,8 @@ function animate() {
         other.label.style.left = (tempV.x * .5 + .5) * window.innerWidth + 'px';
         other.label.style.top = (-(tempV.y * .5) + .5) * window.innerHeight + 'px';
     }
-
     Engine.renderer.render(Engine.scene, Engine.camera);
 }
 
 animate();
-
-setInterval(() => {
-    if(isCharacterReady && Date.now() - lastPacketTime > 4000) { 
-        addLog("AVISO: Conexão com o servidor perdida.", "log-hit");
-        isCharacterReady = false; 
-    }
-}, 1000);
+setInterval(function() { if(isCharacterReady && Date.now() - lastPacketTime > 4000) { addLog("AVISO: Conexão com o servidor perdida.", "log-hit"); isCharacterReady = false; } }, 1000);

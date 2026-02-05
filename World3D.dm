@@ -4,16 +4,30 @@ mob
     var/current_slot = 0
     var/char_loaded = 0
 
-    var/level = 1; var/experience = 0
-    var/strength = 5; var/vitality = 5; var/agility = 5; var/wisdom = 5
-    var/current_hp = 50; var/max_hp = 50;
+    // --- SISTEMA DE RPG (ATUALIZADO) ---
+    var/level = 1
+    var/experience = 0
+    var/req_experience = 100 
+    var/stat_points = 0      
+    
+    // Atributos
+    var/strength = 5
+    var/vitality = 5
+    var/agility = 5
+    var/wisdom = 5
+    
+    // Status Vitais
+    var/current_hp = 50
+    var/max_hp = 50
     var/gold = 0
 
-    var/skin_color = "FFCCAA"; var/cloth_color = "FF0000"
+    // Visual e Posição
+    var/skin_color = "FFCCAA"
+    var/cloth_color = "FF0000"
     var/real_x = 0; var/real_y = 0; var/real_z = 0; var/real_rot = 0
     var/in_game = 0
     var/is_attacking = 0
-    var/attack_type = ""
+    var/attack_type = "" 
 
     Login()
         ..()
@@ -28,6 +42,34 @@ mob
         del(src)
         ..()
 
+    // --- LÓGICA DE EVOLUÇÃO ---
+    proc/GainExperience(amount)
+        if(!in_game) return
+        
+        experience += amount
+        src << output("<span class='log-hit'>+ [amount] EXP</span>", "map3d:addLog")
+        
+        var/safety_loop = 0
+        while(experience >= req_experience && safety_loop < 100)
+            LevelUp()
+            safety_loop++
+
+    proc/LevelUp()
+        level++
+        experience -= req_experience
+        req_experience = round(req_experience * 1.5)
+        if(req_experience < 10) req_experience = 100 
+        
+        stat_points += 3
+        max_hp += 10 + (vitality * 2) 
+        current_hp = max_hp           
+        
+        src << output("<span class='log-hit' style='font-size:14px'>LEVEL UP! Nível [level]</span>", "map3d:addLog")
+        src << output("Você ganhou 3 pontos de status.", "map3d:mostrarNotificacao")
+        SaveCharacter()
+
+    // -------------------------
+
     proc/ShowCharacterMenu()
         var/page = file2text('menu.html')
         page = replacetext(page, "{{BYOND_REF}}", "\ref[src]")
@@ -38,18 +80,17 @@ mob
         if(LoadCharacter(slot_index))
             src << output("Personagem carregado!", "map3d:mostrarNotificacao")
         else
+            // Reset para novo char
             real_x = 0; real_y = 0; real_z = 0
+            level = 1; experience = 0; req_experience = 100; stat_points = 0
+            current_hp = 50; max_hp = 50
+            strength = 5; vitality = 5; agility = 5; wisdom = 5
             src << output("Novo personagem!", "map3d:mostrarNotificacao")
 
-        // --- ENVIANDO ARQUIVOS (LISTA REDUZIDA) ---
-        // 1. Definições e Factory (Base)
         src << browse_rsc(file("definitions.js"), "definitions.js")
         src << browse_rsc(file("factory.js"), "factory.js")
-        // 2. Engine (Input, Graphics, Math)
         src << browse_rsc(file("engine.js"), "engine.js")
-        // 3. Game Logic (Network, Loop)
         src << browse_rsc(file("game.js"), "game.js")
-        // ---------------------------------------
 
         char_loaded = 1
         in_game = 1
@@ -64,9 +105,19 @@ mob
         if(!current_slot || !in_game) return
 
         var/savefile/F = new("[SAVE_DIR][src.ckey]_slot[current_slot].sav")
-        F["name"] << src.name; F["level"] << src.level;
+        F["name"] << src.name
+        F["level"] << src.level
+        F["exp"] << src.experience          
+        F["req_exp"] << src.req_experience  
+        F["stat_pts"] << src.stat_points    
+        
         F["gold"] << src.gold
         F["hp"] << src.current_hp; F["max_hp"] << src.max_hp
+        
+        // Stats
+        F["str"] << src.strength; F["vit"] << src.vitality
+        F["agi"] << src.agility;  F["wis"] << src.wisdom
+
         F["pos_x"] << src.real_x; F["pos_y"] << src.real_y; F["pos_z"] << src.real_z
         F["skin"] << src.skin_color; F["cloth"] << src.cloth_color
         src << output("Jogo Salvo!", "map3d:mostrarNotificacao")
@@ -74,47 +125,73 @@ mob
     proc/LoadCharacter(slot)
         if(!fexists("[SAVE_DIR][src.ckey]_slot[slot].sav")) return 0
         var/savefile/F = new("[SAVE_DIR][src.ckey]_slot[slot].sav")
-        F["name"] >> src.name; F["level"] >> src.level; F["gold"] >> src.gold
+        F["name"] >> src.name
+        F["level"] >> src.level
+        F["exp"] >> src.experience          
+        F["req_exp"] >> src.req_experience  
+        F["stat_pts"] >> src.stat_points    
+        
+        F["gold"] >> src.gold
         F["hp"] >> src.current_hp; F["max_hp"] >> src.max_hp
-        F["pos_x"] >> src.real_x;
+
+        if(F["str"]) F["str"] >> src.strength; else src.strength = 5
+        if(F["vit"]) F["vit"] >> src.vitality; else src.vitality = 5
+        if(F["agi"]) F["agi"] >> src.agility;  else src.agility = 5
+        if(F["wis"]) F["wis"] >> src.wisdom;   else src.wisdom = 5
+
+        F["pos_x"] >> src.real_x; 
         if(F["pos_y"]) F["pos_y"] >> src.real_y;
         F["pos_z"] >> src.real_z
         F["skin"] >> src.skin_color; F["cloth"] >> src.cloth_color
+
+        if(!src.req_experience || src.req_experience <= 0)
+            src.req_experience = 100 * (1.5 ** (src.level - 1)) 
+            if(src.req_experience < 100) src.req_experience = 100
+        
         return 1
 
     proc/UpdateLoop()
         var/sync_step = 0
         while(src && in_game)
             var/list/players_list = list()
-
             var/full_sync = (sync_step >= 4)
             if(full_sync) sync_step = 0
             else sync_step++
 
-            // OTIMIZAÇÃO (AOI - Area of Interest)
             for(var/mob/M in world)
                 if(M.in_game && M.char_loaded)
-                    if(abs(M.real_x - src.real_x) > 15 || abs(M.real_z - src.real_z) > 15)
-                        continue
-
+                    if(abs(M.real_x - src.real_x) > 15 || abs(M.real_z - src.real_z) > 15) continue
                     var/pid = "\ref[M]"
                     var/list/pData = list(
                         "x" = M.real_x, "y" = M.real_y, "z" = M.real_z, "rot" = M.real_rot,
                         "a" = M.is_attacking, "at" = M.attack_type
                     )
-
                     if(full_sync)
                         pData["name"] = M.name
-                        pData["skin"] = M.skin_color
-                        pData["cloth"] = M.cloth_color
-                        pData["hp"] = M.current_hp
-                        pData["max_hp"] = M.max_hp
-
+                        pData["skin"] = M.skin_color; pData["cloth"] = M.cloth_color
+                        pData["hp"] = M.current_hp; pData["max_hp"] = M.max_hp
                     players_list[pid] = pData
 
             var/list/packet = list(
                 "my_id" = "\ref[src]",
-                "me" = list("loaded" = src.char_loaded, "lvl" = src.level, "gold" = src.gold, "hp" = src.current_hp, "max_hp" = src.max_hp),
+                "me" = list(
+                    "loaded" = src.char_loaded, 
+                    "lvl" = src.level, 
+                    "exp" = src.experience,       
+                    "req_exp" = src.req_experience, 
+                    
+                    // --- ATUALIZAÇÃO: ENVIAR STATS ---
+                    "pts" = src.stat_points,
+                    "str" = src.strength,
+                    "vit" = src.vitality,
+                    "agi" = src.agility,
+                    "wis" = src.wisdom,
+                    // --------------------------------
+                    
+                    "gold" = src.gold, 
+                    "hp" = src.current_hp, 
+                    "max_hp" = src.max_hp
+                ),
                 "others" = players_list,
                 "t" = world.time
             )
@@ -129,7 +206,7 @@ mob
     Topic(href, href_list[])
         ..()
         var/action = href_list["action"]
-
+        
         if(action == "request_slots")
             var/list/slots_data = list()
             for(var/i=1 to 3)
@@ -162,10 +239,30 @@ mob
         if(action == "attack" && in_game)
             is_attacking = 1
             attack_type = href_list["type"]
-            src << output("Ataque [attack_type]!", "map3d:mostrarNotificacao")
-            spawn(3)
+            GainExperience(10) // DEBUG: Treino
+            spawn(3) 
                 is_attacking = 0
-                attack_type = ""
+                attack_type = "" 
+
+        // --- SISTEMA DE STATS (NOVO) ---
+        if(action == "add_stat" && in_game)
+            if(stat_points > 0)
+                var/s = href_list["stat"]
+                if(s == "str") strength++
+                if(s == "vit") 
+                    vitality++
+                    max_hp += 2 // Aumenta vida ao aumentar vit
+                if(s == "agi") agility++
+                if(s == "wis") wisdom++
+                
+                stat_points--
+                src << output("Ponto adicionado em [s]!", "map3d:mostrarNotificacao")
+            else
+                src << output("Sem pontos!", "map3d:mostrarNotificacao")
+
+    verb/TestLevelUp()
+        set category = "Debug"
+        GainExperience(req_experience)
 
 mob/npc
     in_game = 1
