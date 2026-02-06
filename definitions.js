@@ -17,42 +17,62 @@ const GameDefinitions = {
         visual: { model: "box", color: 0xFFCCAA, scale: [0.15, 0.7, 0.15] }
     },
 
-    // --- ARMAS ---
+    // --- ARMAS: ESPADAS ---
+    "weapon_sword_wood": {
+        id: "weapon_sword_wood",
+        name: "Espada de Treino",
+        type: "equipment",
+        tags: ["sword"],
+        visual: { model: "box", color: 0x8B4513, scale: [0.1, 0.8, 0.05] }, // Marrom
+        attachment: { bone: "rightArm", pos: [0, -0.6, 0.15], rot: [Math.PI / 2, 0, 0] },
+        data: { power: 5 }
+    },
     "weapon_sword_iron": {
         id: "weapon_sword_iron",
         name: "Espada de Ferro",
         type: "equipment",
-        tags: ["sharp", "metal"],
-        visual: {
-            model: "box", 
-            color: 0xCCCCCC, 
-            scale: [0.1, 0.8, 0.05], 
-            texture: null 
-        },
-        attachment: {
-            bone: "rightArm",
-            pos: [0, -0.6, 0.15], 
-            rot: [Math.PI / 2, 0, 0] 
-        },
-        data: { power: 10, durability: 100 }
+        tags: ["sword", "metal"],
+        visual: { model: "box", color: 0xCCCCCC, scale: [0.1, 0.8, 0.05] }, // Cinza
+        attachment: { bone: "rightArm", pos: [0, -0.6, 0.15], rot: [Math.PI / 2, 0, 0] },
+        data: { power: 10 }
+    },
+    "weapon_sword_silver": {
+        id: "weapon_sword_silver",
+        name: "Espada de Prata",
+        type: "equipment",
+        tags: ["sword", "precious"],
+        visual: { model: "box", color: 0xFFFFFF, scale: [0.1, 0.8, 0.05] }, // Branco Brilhante
+        attachment: { bone: "rightArm", pos: [0, -0.6, 0.15], rot: [Math.PI / 2, 0, 0] },
+        data: { power: 20 }
     },
     
+    // --- ARMAS: PISTOLAS ---
+    "weapon_gun_wood": {
+        id: "weapon_gun_wood",
+        name: "Pistola de Brinquedo",
+        type: "equipment",
+        tags: ["gun"],
+        visual: { model: "box", color: 0x8B4513, scale: [0.1, 0.1, 0.4] }, // Marrom
+        attachment: { bone: "rightArm", pos: [0, -0.6, 0.15], rot: [0, 0, 0] },
+        data: { power: 12 }
+    },
     "weapon_gun_flintlock": {
         id: "weapon_gun_flintlock",
         name: "Pistola Velha",
         type: "equipment",
-        tags: ["ranged", "gunpowder"],
-        visual: {
-            model: "box",
-            color: 0x553311, 
-            scale: [0.1, 0.1, 0.4]
-        },
-        attachment: {
-            bone: "rightArm",
-            pos: [0, -0.6, 0.15],
-            rot: [0, 0, 0]
-        },
-        data: { power: 25, durability: 50 }
+        tags: ["gun", "gunpowder"],
+        visual: { model: "box", color: 0x553311, scale: [0.1, 0.1, 0.4] }, // Escura
+        attachment: { bone: "rightArm", pos: [0, -0.6, 0.15], rot: [0, 0, 0] },
+        data: { power: 25 }
+    },
+    "weapon_gun_silver": {
+        id: "weapon_gun_silver",
+        name: "Pistola de Combate",
+        type: "equipment",
+        tags: ["gun", "modern"],
+        visual: { model: "box", color: 0xAAAAAA, scale: [0.1, 0.1, 0.4] }, // Prata
+        attachment: { bone: "rightArm", pos: [0, -0.6, 0.15], rot: [0, 0, 0] },
+        data: { power: 40 }
     },
 
     // --- OBJETOS DO MAPA (Props) ---
@@ -60,13 +80,7 @@ const GameDefinitions = {
         id: "prop_tree_log",
         name: "Tronco de Treino",
         type: "prop",
-        visual: {
-            model: "cylinder",
-            color: 0x8B4513,
-            scale: [0.4, 1.8, 0.4] 
-        },
-        // 'solid': Bloqueia movimento horizontal (Parede)
-        // 'standable': Bloqueia movimento vertical (Chão/Plataforma)
+        visual: { model: "cylinder", color: 0x8B4513, scale: [0.4, 1.8, 0.4] },
         physics: { solid: true, standable: true, mass: 50 } 
     }
 };

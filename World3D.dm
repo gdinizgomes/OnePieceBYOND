@@ -1,16 +1,24 @@
 #define SAVE_DIR "saves/"
 
-// --- ESTRUTURA DE ITENS (NOVO SISTEMA MODULAR) ---
+// --- ESTRUTURA DE ITENS (MODULARIZADO) ---
 obj/item
     var/id_visual = ""      
     var/slot = "none"       
     var/power = 0           
     var/price = 0           
-    var/weight = 0          
-
-// -- Definição de Armas --
+    // Precisamos armazenar a posição 3D Real para desenhar e interagir
+    var/real_x = 0
+    var/real_z = 0
+    
+// -- Armas: Espadas --
 obj/item/weapon
     slot = "hand"
+
+obj/item/weapon/sword_wood
+    name = "Espada de Treino"
+    id_visual = "weapon_sword_wood"
+    power = 5
+    price = 50
 
 obj/item/weapon/sword_iron
     name = "Espada de Ferro"
@@ -18,11 +26,30 @@ obj/item/weapon/sword_iron
     power = 10
     price = 100
 
+obj/item/weapon/sword_silver
+    name = "Espada de Prata"
+    id_visual = "weapon_sword_silver"
+    power = 20
+    price = 500
+
+// -- Armas: Pistolas --
+obj/item/weapon/gun_wood
+    name = "Pistola de Brinquedo"
+    id_visual = "weapon_gun_wood"
+    power = 12
+    price = 80
+
 obj/item/weapon/gun_flintlock
     name = "Pistola Velha"
     id_visual = "weapon_gun_flintlock"
     power = 25
     price = 250
+
+obj/item/weapon/gun_silver
+    name = "Pistola de Combate"
+    id_visual = "weapon_gun_silver"
+    power = 40
+    price = 800
 
 // -----------------------------------------------------
 
@@ -90,18 +117,15 @@ mob
     // --- GERENCIAMENTO DE INVENTÁRIO ---
     proc/GiveStarterItems()
         if(contents.len == 0)
-            new /obj/item/weapon/sword_iron(src)
-            new /obj/item/weapon/gun_flintlock(src)
-            src << output("Itens iniciais recebidos!", "map3d:mostrarNotificacao")
+            new /obj/item/weapon/sword_wood(src)
+            src << output("Item inicial recebido!", "map3d:mostrarNotificacao")
 
     proc/EquipItem(obj/item/I)
         if(!I || !(I in contents)) return
-        
         if(I.slot == "hand")
             equipped_item = I
             active_item_visual = I.id_visual
             src << output("Equipou [I.name]", "map3d:mostrarNotificacao")
-            // Atualiza a janela de inventário se estiver aberta
             RequestInventoryUpdate()
 
     proc/UnequipItem()
@@ -109,6 +133,38 @@ mob
         active_item_visual = ""
         src << output("Desequipou.", "map3d:mostrarNotificacao")
         RequestInventoryUpdate()
+
+    proc/DropItem(obj/item/I)
+        if(!I || !(I in contents)) return
+        if(I == equipped_item) UnequipItem()
+        
+        I.loc = locate(1,1,1) // Coloca no mundo físico do BYOND
+        I.real_x = src.real_x // Copia posição 3D
+        I.real_z = src.real_z
+        
+        src << output("Largou [I.name]", "map3d:mostrarNotificacao")
+        RequestInventoryUpdate()
+
+    proc/PickUpNearestItem()
+        var/obj/item/target = null
+        
+        // Procura itens no mesmo tile ou adjacente (range 1) no mapa do BYOND
+        // Como o drop coloca o item no 'locate(1,1,1)' ou 'src.loc', o view() deve achar
+        // se o player estiver sincronizado.
+        // Para garantir com nosso sistema híbrido, vamos usar uma checagem simples de view
+        // que o BYOND processa nativamente.
+        
+        for(var/obj/item/I in view(1, src))
+            if(I.loc == src) continue // Ignora itens no inventário
+            target = I
+            break 
+        
+        if(target)
+            target.loc = src
+            src << output("Pegou [target.name]", "map3d:mostrarNotificacao")
+            RequestInventoryUpdate()
+        else
+            src << output("Nada por perto.", "map3d:mostrarNotificacao")
 
     proc/RequestInventoryUpdate()
         var/list/inv_data = list()
@@ -127,10 +183,8 @@ mob
     proc/RecalculateStats()
         max_hp = 50 + (vitality * 10) 
         max_energy = 30 + (wisdom * 5)
-        
         if(current_hp > max_hp) current_hp = max_hp
         if(current_energy > max_energy) current_energy = max_energy
-
         calc_move_speed = 0.08 + (agility * 0.002) 
         calc_jump_power = 0.20 + (strength * 0.002) + (agility * 0.003)
 
@@ -139,7 +193,6 @@ mob
         if(!in_game) return
         experience += amount
         src << output("<span class='log-hit' style='color:#aaddff'>+ [amount] EXP</span>", "map3d:addLog")
-        
         var/safety = 0
         while(experience >= req_experience && safety < 50)
             LevelUp()
@@ -151,10 +204,8 @@ mob
         req_experience = round(req_experience * 1.5)
         if(req_experience < 100) req_experience = 100 
         stat_points += 3
-        
         RecalculateStats()
         current_hp = max_hp; current_energy = max_energy
-        
         src << output("<span class='log-hit' style='font-size:14px; color:#ffff00'>LEVEL UP! Nível [level]</span>", "map3d:addLog")
         src << output("Você ganhou 3 pontos de status.", "map3d:mostrarNotificacao")
         SaveCharacter()
@@ -164,7 +215,6 @@ mob
 
     proc/GainWeaponExp(type, amount)
         var/lvl = 1; var/exp = 0; var/req = 100
-        
         if(type == "fist") { exp = prof_punch_exp; lvl = prof_punch_lvl; }
         else if(type == "kick") { exp = prof_kick_exp; lvl = prof_kick_lvl; }
         else if(type == "sword") { exp = prof_sword_exp; lvl = prof_sword_lvl; }
@@ -186,7 +236,6 @@ mob
     // --- SISTEMA DE ENERGIA E DESMAIO ---
     proc/ConsumeEnergy(amount)
         if(is_fainted) return 0 
-
         var/efficiency = 1.0 - (vitality * 0.01) 
         if(efficiency < 0.5) efficiency = 0.5 
         
@@ -196,21 +245,17 @@ mob
         if(current_energy <= 0)
             current_energy = 0
             GoFaint()
-        
         return 1 
 
     proc/GoFaint()
         if(is_fainted) return
-        is_fainted = 1
-        is_resting = 1
+        is_fainted = 1; is_resting = 1
         faint_end_time = world.time + 150 
         src << output("<span class='log-hit' style='color:red; font-size:16px;'>VOCÊ DESMAIOU DE EXAUSTÃO!</span>", "map3d:addLog")
         spawn(150) if(src) WakeUp()
 
     proc/WakeUp()
-        is_fainted = 0
-        is_resting = 0
-        faint_end_time = 0
+        is_fainted = 0; is_resting = 0; faint_end_time = 0
         current_energy = max_energy * 0.10 
         src << output("Você acordou.", "map3d:mostrarNotificacao")
 
@@ -232,9 +277,7 @@ mob
                 var/run_cost = max_energy * 0.01
                 if(current_energy > 0)
                     current_energy -= run_cost
-                    if(current_energy <= 0) 
-                        current_energy = 0
-                        GoFaint()
+                    if(current_energy <= 0) { current_energy = 0; GoFaint(); }
             sleep(10)
 
     // -------------------------
@@ -264,8 +307,7 @@ mob
         src << browse_rsc(file("engine.js"), "engine.js")
         src << browse_rsc(file("game.js"), "game.js")
 
-        char_loaded = 1
-        in_game = 1
+        char_loaded = 1; in_game = 1
         is_resting = 0; is_fainted = 0; is_running = 0
         var/page = file2text('game.html')
         page = replacetext(page, "{{BYOND_REF}}", "\ref[src]")
@@ -346,6 +388,18 @@ mob
                     pData["skin"] = M.skin_color; pData["cloth"] = M.cloth_color
                     players_list[pid] = pData
 
+            // --- ENVIAR ITENS NO CHÃO ---
+            var/list/ground_items = list()
+            for(var/obj/item/I in range(20, src))
+                if(isturf(I.loc))
+                    ground_items += list(list(
+                        "ref" = "\ref[I]",
+                        "id" = I.id_visual,
+                        "x" = I.x + (I.step_x / 32), 
+                        "y" = 0, 
+                        "z" = I.y + (I.step_y / 32)
+                    ))
+
             var/faint_remaining = 0
             if(src.is_fainted && src.faint_end_time > world.time)
                 faint_remaining = round((src.faint_end_time - world.time) / 10)
@@ -354,25 +408,18 @@ mob
                 "my_id" = "\ref[src]",
                 "me" = list(
                     "loaded" = src.char_loaded, 
-                    "lvl" = src.level, 
-                    "exp" = src.experience, "req_exp" = src.req_experience, 
-                    "pts" = src.stat_points,
-                    "str" = src.strength, "vit" = src.vitality,
-                    "agi" = src.agility,  "wis" = src.wisdom,
-                    "gold" = src.gold, 
-                    "hp" = src.current_hp, "max_hp" = src.max_hp,
-                    "en" = src.current_energy, "max_en" = src.max_energy,
+                    "lvl" = src.level, "exp" = src.experience, "req_exp" = src.req_experience, "pts" = src.stat_points,
+                    "str" = src.strength, "vit" = src.vitality, "agi" = src.agility,  "wis" = src.wisdom,
+                    "gold" = src.gold, "hp" = src.current_hp, "max_hp" = src.max_hp, "en" = src.current_energy, "max_en" = src.max_energy,
                     "pp" = prof_punch_lvl, "pp_x" = prof_punch_exp, "pp_r" = GetProficiencyReq(prof_punch_lvl),
                     "pk" = prof_kick_lvl,  "pk_x" = prof_kick_exp,  "pk_r" = GetProficiencyReq(prof_kick_lvl),
                     "ps" = prof_sword_lvl, "ps_x" = prof_sword_exp, "ps_r" = GetProficiencyReq(prof_sword_lvl),
                     "pg" = prof_gun_lvl,   "pg_x" = prof_gun_exp,   "pg_r" = GetProficiencyReq(prof_gun_lvl),
-                    "mspd" = calc_move_speed,
-                    "jmp" = calc_jump_power,
-                    "rest" = src.is_resting,
-                    "ft" = src.is_fainted,
-                    "rem" = faint_remaining 
+                    "mspd" = calc_move_speed, "jmp" = calc_jump_power,
+                    "rest" = src.is_resting, "ft" = src.is_fainted, "rem" = faint_remaining 
                 ),
                 "others" = players_list,
+                "ground" = ground_items, 
                 "t" = world.time
             )
             src << output(json_encode(packet), "map3d:receberDadosMultiplayer")
@@ -380,8 +427,7 @@ mob
 
     proc/AutoSaveLoop()
         while(src && in_game)
-            SaveCharacter()
-            sleep(300)
+            SaveCharacter(); sleep(300)
 
     Topic(href, href_list[])
         ..()
@@ -395,8 +441,7 @@ mob
                     var/n; var/l; var/g
                     F["name"] >> n; F["level"] >> l; F["gold"] >> g
                     slots_data["slot[i]"] = list("name"=n, "lvl"=l, "gold"=g)
-                else
-                    slots_data["slot[i]"] = null
+                else slots_data["slot[i]"] = null
             src << output(json_encode(slots_data), "map3d:loadSlots")
 
         if(action == "delete_char")
@@ -423,8 +468,7 @@ mob
         if(action == "toggle_rest" && in_game) ToggleRest()
 
         // --- AÇÕES DE INVENTÁRIO ---
-        if(action == "request_inventory" && in_game)
-            RequestInventoryUpdate()
+        if(action == "request_inventory" && in_game) RequestInventoryUpdate()
 
         if(action == "equip_item" && in_game)
             var/ref_id = href_list["ref"]
@@ -433,33 +477,49 @@ mob
                 if(I == equipped_item) UnequipItem()
                 else EquipItem(I)
 
+        if(action == "drop_item" && in_game)
+            var/ref_id = href_list["ref"]
+            var/obj/item/I = locate(ref_id)
+            if(I && (I in contents)) DropItem(I)
+
+        if(action == "pick_up" && in_game)
+            // Procura item próximo nas coordenadas 3D reais
+            var/obj/item/best_target = null
+            var/min_dist = 2.0 
+            
+            for(var/obj/item/I in world)
+                if(I.loc == null) continue 
+                if(!isturf(I.loc)) continue 
+                
+                var/dx = I.real_x - src.real_x
+                var/dz = I.real_z - src.real_z
+                var/dist = sqrt(dx*dx + dz*dz)
+                
+                if(dist <= min_dist)
+                    best_target = I
+                    min_dist = dist
+                    break 
+            
+            if(best_target)
+                best_target.loc = src 
+                src << output("Pegou [best_target.name]", "map3d:mostrarNotificacao")
+                RequestInventoryUpdate()
+            else
+                src << output("Nada ao alcance.", "map3d:mostrarNotificacao")
+
         if(action == "attack" && in_game)
             if(is_resting) return 
-
             var/base_cost = max_energy * 0.03 
-            
             if(ConsumeEnergy(base_cost))
-                is_attacking = 1
-                attack_type = href_list["type"]
+                is_attacking = 1; attack_type = href_list["type"]
+                var/weapon_bonus = 0; var/prof_bonus = 0; var/prof_lvl = 1
                 
-                var/weapon_bonus = 0
-                var/prof_bonus = 0
-                var/prof_lvl = 1
-                
-                // VERIFICAÇÃO DE EQUIPAMENTO REAL
-                // Se o cliente diz que é espada, verifica se estamos SEGURANDO uma
                 if(attack_type == "sword")
-                    if(istype(equipped_item, /obj/item/weapon/sword_iron))
-                        weapon_bonus = equipped_item.power
-                    else
-                        // Se não tem espada equipada, vira soco
-                        attack_type = "fist" 
-                
+                    if(istype(equipped_item, /obj/item/weapon)) weapon_bonus = equipped_item.power
+                    else attack_type = "fist" 
                 if(attack_type == "gun")
-                    if(istype(equipped_item, /obj/item/weapon/gun_flintlock))
-                        weapon_bonus = equipped_item.power
-                    else
-                        attack_type = "fist"
+                    if(istype(equipped_item, /obj/item/weapon)) weapon_bonus = equipped_item.power
+                    else attack_type = "fist"
 
                 if(attack_type == "fist")  { prof_lvl = prof_punch_lvl; prof_bonus = prof_lvl * 2; }
                 if(attack_type == "kick")  { prof_lvl = prof_kick_lvl; prof_bonus = prof_lvl * 2; }
@@ -467,18 +527,13 @@ mob
                 if(attack_type == "gun")   { prof_lvl = prof_gun_lvl;  prof_bonus = prof_lvl * 2; }
                 
                 var/target = href_list["target"]
-
                 if(target == "dummy")
                     var/damage = round((strength * 0.5) + prof_bonus + weapon_bonus + rand(0, 2))
                     src << output("<span class='log-hit'>HIT! Dano: [damage]</span>", "map3d:addLog")
-                    GainExperience(10)
-                    GainWeaponExp(attack_type, 5) 
-                else
-                    src << output("Errou...", "map3d:addLog")
-                
+                    GainExperience(10); GainWeaponExp(attack_type, 5) 
+                else src << output("Errou...", "map3d:addLog")
                 spawn(3) is_attacking = 0
-            else
-                return
+            else return
 
         if(action == "add_stat" && in_game)
             if(stat_points > 0)
@@ -495,6 +550,7 @@ mob
         set category = "Debug"
         GainExperience(req_experience)
 
+// --- MOB NPC (RE-ADICIONADO) ---
 mob/npc
     in_game = 1
     char_loaded = 1
@@ -515,6 +571,27 @@ mob/npc
                 if(dir == 270) real_x -= 0.1
                 sleep(1)
             sleep(rand(20, 50))
+
+// --- SPAWN DE ITENS DE TESTE NO MUNDO ---
 world/New()
     ..()
     new /mob/npc() { name = "Pirata de Teste" }
+    
+    // Cria itens no chão em posições aleatórias
+    spawn(10)
+        var/list/types = list(
+            /obj/item/weapon/sword_wood,
+            /obj/item/weapon/sword_iron,
+            /obj/item/weapon/sword_silver,
+            /obj/item/weapon/gun_wood,
+            /obj/item/weapon/gun_flintlock,
+            /obj/item/weapon/gun_silver
+        )
+        
+        for(var/i=1 to 10)
+            var/t = pick(types)
+            var/obj/item/I = new t(locate(1,1,1)) // Cria no mapa
+            I.real_x = rand(-10, 10)
+            I.real_z = rand(-10, 10)
+            // Hack para garantir que o loop ache (loc deve ser valido)
+            I.loc = locate(1,1,1)

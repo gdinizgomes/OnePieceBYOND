@@ -8,6 +8,9 @@ let isCharacterReady = false;
 let lastPacketTime = Date.now();
 let blockSync = false;
 
+// Itens no Chão
+const groundItemsMeshes = {}; // Mapa ref_id -> Mesh
+
 // Estado do Jogo
 let charState = "DEFAULT"; 
 let isResting = false; 
@@ -25,7 +28,7 @@ const gravity = -0.015;
 
 // UI State
 let isStatWindowOpen = false;
-let isInvWindowOpen = false; // NOVO
+let isInvWindowOpen = false; 
 
 // Cache UI
 let cachedHP = -1; let cachedMaxHP = -1; 
@@ -56,7 +59,7 @@ function round2(num) { return Math.round((num + Number.EPSILON) * 100) / 100; }
 function toggleStats() {
     isStatWindowOpen = !isStatWindowOpen;
     document.getElementById('stat-window').style.display = isStatWindowOpen ? 'block' : 'none';
-    if(isStatWindowOpen) isInvWindowOpen = false; // Fecha um se abrir outro
+    if(isStatWindowOpen) isInvWindowOpen = false; 
     document.getElementById('inventory-window').style.display = 'none';
 }
 
@@ -68,12 +71,10 @@ function toggleInventory() {
     if(isInvWindowOpen) {
         isStatWindowOpen = false;
         document.getElementById('stat-window').style.display = 'none';
-        // Pede os dados ao servidor
         window.location.href = `byond://?src=${BYOND_REF}&action=request_inventory`;
     }
 }
 
-// Chamado pelo BYOND com os dados
 function loadInventory(json) {
     const list = document.getElementById('inv-list');
     list.innerHTML = "";
@@ -96,7 +97,10 @@ function loadInventory(json) {
                 <div style="font-weight:bold; color:${item.equipped ? '#f1c40f':'white'}">${item.name}</div>
                 <div style="font-size:10px; color:#aaa">Dano: ${item.power}</div>
             </div>
-            <button class="${btnClass}" onclick="equipItem('${item.ref}')">${btnText}</button>
+            <div>
+                <button class="${btnClass}" onclick="equipItem('${item.ref}')">${btnText}</button>
+                <button class="inv-btn drop" onclick="dropItem('${item.ref}')">LARGAR</button>
+            </div>
         `;
         list.appendChild(div);
     });
@@ -105,9 +109,17 @@ function loadInventory(json) {
 function equipItem(ref) {
     if(blockSync) return;
     blockSync = true;
-    // Envia comando de equipar/desequipar
     window.location.href = `byond://?src=${BYOND_REF}&action=equip_item&ref=${ref}`;
     setTimeout(() => { blockSync = false; }, 200);
+}
+
+function dropItem(ref) {
+    if(blockSync) return;
+    if(confirm("Tem certeza que quer jogar este item no chão?")) {
+        blockSync = true;
+        window.location.href = `byond://?src=${BYOND_REF}&action=drop_item&ref=${ref}`;
+        setTimeout(() => { blockSync = false; }, 200);
+    }
 }
 
 function addStat(statName) {
@@ -118,11 +130,19 @@ function addStat(statName) {
     setTimeout(function() { blockSync = false; }, 200);
 }
 
-// Input de Teclas Extras
+// Input de Teclas
 window.addEventListener('keydown', function(e) {
     const k = e.key.toLowerCase();
     if(k === 'c') toggleStats();
-    if(k === 'i') toggleInventory(); // NOVO
+    if(k === 'i') toggleInventory(); 
+    if(k === 'e') {
+        // PEGAR ITEM
+        if(typeof BYOND_REF !== 'undefined' && !blockSync) {
+            blockSync = true;
+            window.location.href = `byond://?src=${BYOND_REF}&action=pick_up`;
+            setTimeout(function() { blockSync = false; }, 300); 
+        }
+    }
     if(k === 'r') {
         if(typeof BYOND_REF !== 'undefined' && !blockSync) {
             blockSync = true;
@@ -181,8 +201,6 @@ window.addEventListener('game-action', function(e) {
     if(isFainted) return; 
     
     const k = e.detail;
-    // MODIFICADO: Removemos o EquipItem visual forçado. 
-    // Agora só disparamos a intenção de ataque. O visual depende do inventário.
     if(k === 'd') { performAttack("sword"); }
     else if(k === 'f') { performAttack("gun"); }
     else if(k === 'a') { performAttack("fist"); }
@@ -271,27 +289,56 @@ function receberDadosMultiplayer(json) {
     }
 
     if(isCharacterReady) {
+        // --- PROCESSAR ITENS NO CHÃO (GROUND ITEMS) ---
+        const serverGroundItems = packet.ground || [];
+        const seenItems = new Set();
+        let closestDist = 999;
+
+        serverGroundItems.forEach(itemData => {
+            seenItems.add(itemData.ref);
+            
+            if(!groundItemsMeshes[itemData.ref]) {
+                // Cria o mesh se não existir
+                const mesh = CharFactory.createFromDef(itemData.id);
+                mesh.position.set(itemData.x, 0.5, itemData.z); // Altura fixa para flutuar
+                Engine.scene.add(mesh);
+                groundItemsMeshes[itemData.ref] = mesh;
+            } else {
+                // Atualiza posição se mudou (por exemplo, ao dropar)
+                const mesh = groundItemsMeshes[itemData.ref];
+                // Interpolação suave para drops
+                mesh.position.x = lerp(mesh.position.x, itemData.x, 0.2);
+                mesh.position.z = lerp(mesh.position.z, itemData.z, 0.2);
+            }
+
+            // Checa distância para UI Hint
+            const d = playerGroup.position.distanceTo(groundItemsMeshes[itemData.ref].position);
+            if(d < closestDist) closestDist = d;
+        });
+
+        // Remove itens que sumiram (pegos)
+        for(let ref in groundItemsMeshes) {
+            if(!seenItems.has(ref)) {
+                Engine.scene.remove(groundItemsMeshes[ref]);
+                delete groundItemsMeshes[ref];
+            }
+        }
+
+        // Mostra dica [E]
+        const hint = document.getElementById('interaction-hint');
+        if(closestDist < 2.0) hint.style.display = 'block';
+        else hint.style.display = 'none';
+
+        // --- FIM GROUND ITEMS ---
+
         const myData = packet.others[myID];
-        
-        // Atualiza Estado Local
         isResting = me.rest;
         isFainted = me.ft; 
         
-        // NOVO: Atualiza equipamento do PRÓPRIO jogador baseado no servidor
-        // Antes fazíamos isso localmente ao apertar 'D'. Agora é o servidor quem manda.
-        // myData.it vem do servidor (item visual)
         if(myData && myData.it !== undefined) {
-            // Verifica cache local para não recriar mesh todo frame
             if(playerGroup.userData.lastItem !== myData.it) {
-                if(myData.it === "") {
-                    // Remove item atual se houver
-                    // CharFactory.equipItem lida com remoção se passarmos null? 
-                    // Melhor criar um método de remoção ou passar ID vazio que o factory ignore/limpe
-                    // Vamos usar um truque: equipItem remove o anterior. Se o ID não existe, ele só remove.
-                    CharFactory.equipItem(playerGroup, "none"); 
-                } else {
-                    CharFactory.equipItem(playerGroup, myData.it);
-                }
+                if(myData.it === "") CharFactory.equipItem(playerGroup, "none"); 
+                else CharFactory.equipItem(playerGroup, myData.it);
                 playerGroup.userData.lastItem = myData.it;
             }
         }
@@ -463,6 +510,13 @@ function animate() {
     requestAnimationFrame(animate);
     animTime += 0.1;
     const now = performance.now();
+
+    // ANIMAÇÃO DE ITENS NO CHÃO (Girar)
+    for(let ref in groundItemsMeshes) {
+        const item = groundItemsMeshes[ref];
+        item.rotation.y += 0.02;
+        item.position.y = 0.5 + Math.sin(animTime * 2) * 0.1; // Flutuar
+    }
 
     if (isCharacterReady) {
         // ... Logica de combate reset ...
