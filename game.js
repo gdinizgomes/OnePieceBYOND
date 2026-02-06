@@ -25,6 +25,7 @@ const gravity = -0.015;
 
 // UI State
 let isStatWindowOpen = false;
+let isInvWindowOpen = false; // NOVO
 
 // Cache UI
 let cachedHP = -1; let cachedMaxHP = -1; 
@@ -54,8 +55,59 @@ function round2(num) { return Math.round((num + Number.EPSILON) * 100) / 100; }
 // --- CONTROLE DA INTERFACE ---
 function toggleStats() {
     isStatWindowOpen = !isStatWindowOpen;
-    const win = document.getElementById('stat-window');
-    if(win) win.style.display = isStatWindowOpen ? 'block' : 'none';
+    document.getElementById('stat-window').style.display = isStatWindowOpen ? 'block' : 'none';
+    if(isStatWindowOpen) isInvWindowOpen = false; // Fecha um se abrir outro
+    document.getElementById('inventory-window').style.display = 'none';
+}
+
+function toggleInventory() {
+    if(blockSync) return;
+    isInvWindowOpen = !isInvWindowOpen;
+    document.getElementById('inventory-window').style.display = isInvWindowOpen ? 'flex' : 'none';
+    
+    if(isInvWindowOpen) {
+        isStatWindowOpen = false;
+        document.getElementById('stat-window').style.display = 'none';
+        // Pede os dados ao servidor
+        window.location.href = `byond://?src=${BYOND_REF}&action=request_inventory`;
+    }
+}
+
+// Chamado pelo BYOND com os dados
+function loadInventory(json) {
+    const list = document.getElementById('inv-list');
+    list.innerHTML = "";
+    let data = [];
+    try { data = JSON.parse(json); } catch(e) { return; }
+
+    if(data.length === 0) {
+        list.innerHTML = "<div style='padding:10px; color:#777'>Mochila vazia.</div>";
+        return;
+    }
+
+    data.forEach(item => {
+        const div = document.createElement('div');
+        div.className = 'inv-item';
+        const btnText = item.equipped ? "DESEQUIPAR" : "EQUIPAR";
+        const btnClass = item.equipped ? "inv-btn equipped" : "inv-btn";
+        
+        div.innerHTML = `
+            <div>
+                <div style="font-weight:bold; color:${item.equipped ? '#f1c40f':'white'}">${item.name}</div>
+                <div style="font-size:10px; color:#aaa">Dano: ${item.power}</div>
+            </div>
+            <button class="${btnClass}" onclick="equipItem('${item.ref}')">${btnText}</button>
+        `;
+        list.appendChild(div);
+    });
+}
+
+function equipItem(ref) {
+    if(blockSync) return;
+    blockSync = true;
+    // Envia comando de equipar/desequipar
+    window.location.href = `byond://?src=${BYOND_REF}&action=equip_item&ref=${ref}`;
+    setTimeout(() => { blockSync = false; }, 200);
 }
 
 function addStat(statName) {
@@ -70,6 +122,7 @@ function addStat(statName) {
 window.addEventListener('keydown', function(e) {
     const k = e.key.toLowerCase();
     if(k === 'c') toggleStats();
+    if(k === 'i') toggleInventory(); // NOVO
     if(k === 'r') {
         if(typeof BYOND_REF !== 'undefined' && !blockSync) {
             blockSync = true;
@@ -125,11 +178,13 @@ function checkCollision(x, y, z) {
 
 // --- SISTEMA DE COMBATE ---
 window.addEventListener('game-action', function(e) {
-    if(isFainted) return; // Se desmaiado, não faz nada
+    if(isFainted) return; 
     
     const k = e.detail;
-    if(k === 'd') { CharFactory.equipItem(playerGroup, "weapon_sword_iron"); performAttack("sword"); }
-    else if(k === 'f') { CharFactory.equipItem(playerGroup, "weapon_gun_flintlock"); performAttack("gun"); }
+    // MODIFICADO: Removemos o EquipItem visual forçado. 
+    // Agora só disparamos a intenção de ataque. O visual depende do inventário.
+    if(k === 'd') { performAttack("sword"); }
+    else if(k === 'f') { performAttack("gun"); }
     else if(k === 'a') { performAttack("fist"); }
     else if(k === 's') { performAttack("kick"); }
     else if(k === 'p' && !blockSync) {
@@ -222,7 +277,25 @@ function receberDadosMultiplayer(json) {
         isResting = me.rest;
         isFainted = me.ft; 
         
-        // Atualiza Overlay de Desmaio
+        // NOVO: Atualiza equipamento do PRÓPRIO jogador baseado no servidor
+        // Antes fazíamos isso localmente ao apertar 'D'. Agora é o servidor quem manda.
+        // myData.it vem do servidor (item visual)
+        if(myData && myData.it !== undefined) {
+            // Verifica cache local para não recriar mesh todo frame
+            if(playerGroup.userData.lastItem !== myData.it) {
+                if(myData.it === "") {
+                    // Remove item atual se houver
+                    // CharFactory.equipItem lida com remoção se passarmos null? 
+                    // Melhor criar um método de remoção ou passar ID vazio que o factory ignore/limpe
+                    // Vamos usar um truque: equipItem remove o anterior. Se o ID não existe, ele só remove.
+                    CharFactory.equipItem(playerGroup, "none"); 
+                } else {
+                    CharFactory.equipItem(playerGroup, myData.it);
+                }
+                playerGroup.userData.lastItem = myData.it;
+            }
+        }
+
         const overlay = document.getElementById('faint-overlay');
         if(me.rem > 0 && isFainted) {
             overlay.style.display = 'flex';
@@ -345,7 +418,8 @@ function receberDadosMultiplayer(json) {
             if(pData.name && other.label.innerText !== pData.name) other.label.innerText = pData.name; 
 
             if(pData.it !== undefined && pData.it !== other.lastItem) {
-                CharFactory.equipItem(other.mesh, pData.it);
+                if(pData.it === "") CharFactory.equipItem(other.mesh, "none");
+                else CharFactory.equipItem(other.mesh, pData.it);
                 other.lastItem = pData.it;
             }
         }
@@ -399,37 +473,23 @@ function animate() {
         const groundHeight = getGroundHeightAt(playerGroup.position.x, playerGroup.position.z);
 
         if(isFainted) {
-            // --- ESTADO DESMAIADO ---
-            // Deita completamente
             playerGroup.rotation.x = lerp(playerGroup.rotation.x, -Math.PI/2, 0.1); 
-            // Fixa a altura apenas um pouco acima do chão
             playerGroup.position.y = lerp(playerGroup.position.y, groundHeight + 0.2, 0.1);
-            
             playerGroup.userData.limbs.leftLeg.rotation.x = 0;
             playerGroup.userData.limbs.rightLeg.rotation.x = 0;
             
         } else if(isResting) {
-            // --- ESTADO DESCANSANDO (SENTAR) ---
             playerGroup.rotation.x = lerp(playerGroup.rotation.x, 0, 0.1); 
-            
-            // AJUSTE CRÍTICO: 
-            // Baixa a posição inteira do jogador para que, ao dobrar as pernas, 
-            // o quadril (que está a +/- 0.75 do chão) encoste na superfície.
-            // groundHeight - 0.75 faz o modelo "afundar" até sentar de verdade.
             playerGroup.position.y = lerp(playerGroup.position.y, groundHeight - 0.75, 0.1);
-            
             lerpLimbRotation(playerGroup.userData.limbs.leftLeg, {x: -Math.PI/2, y:0, z:0}, 0.1);
             lerpLimbRotation(playerGroup.userData.limbs.rightLeg, {x: -Math.PI/2, y:0, z:0}, 0.1);
             
         } else {
-            // --- ESTADO NORMAL ---
             let moveX = 0, moveZ = 0, moving = false;
-            
             let speed = currentMoveSpeed; 
             if(isRunning) speed *= 1.5; 
 
             const sin = Math.sin(Input.camAngle); const cos = Math.cos(Input.camAngle);
-            
             if(Input.keys.arrowup) { moveX -= sin*speed; moveZ -= cos*speed; moving = true; }
             if(Input.keys.arrowdown) { moveX += sin*speed; moveZ += cos*speed; moving = true; }
             if(Input.keys.arrowleft) { moveX -= cos*speed; moveZ += sin*speed; moving = true; }
@@ -518,21 +578,13 @@ function animate() {
             mesh.userData.limbs.rightLeg.rotation.x = 0;
         } else if(other.resting) { 
              mesh.rotation.x = lerp(mesh.rotation.x, 0, 0.1); 
-             
-             // AJUSTE REMOTO:
-             // Agora usamos 'other.targetY' diretamente.
-             // Como o jogador dono do personagem já calculou "groundHeight - 0.75" e enviou para o servidor,
-             // 'targetY' já contém a altura correta (baixa). Não precisamos forçar 0.1 aqui.
              mesh.position.y = lerp(mesh.position.y, other.targetY, 0.1); 
-             
              lerpLimbRotation(mesh.userData.limbs.leftLeg, {x: -Math.PI/2, y:0, z:0}, 0.1);
              lerpLimbRotation(mesh.userData.limbs.rightLeg, {x: -Math.PI/2, y:0, z:0}, 0.1);
         } else {
             mesh.rotation.x = lerp(mesh.rotation.x, 0, 0.2);
-            
             const dist = Math.sqrt(Math.pow(other.targetX - mesh.position.x, 2) + Math.pow(other.targetZ - mesh.position.z, 2));
             const isMoving = dist > 0.05;
-            
             let remoteStance = STANCES.DEFAULT; 
             
             if(other.attacking) {
@@ -540,12 +592,10 @@ function animate() {
                 else if(other.attackType === "fist") remoteStance = STANCES.FIST_ATK;
                 else if(other.attackType === "kick") remoteStance = STANCES.KICK_ATK;
                 else if(other.attackType === "gun") remoteStance = STANCES.GUN_ATK;
-                
                 lerpLimbRotation(mesh.userData.limbs.leftArm, remoteStance.leftArm, 0.4);
                 lerpLimbRotation(mesh.userData.limbs.rightArm, remoteStance.rightArm, 0.4);
                 lerpLimbRotation(mesh.userData.limbs.leftLeg, remoteStance.leftLeg, 0.4);
                 lerpLimbRotation(mesh.userData.limbs.rightLeg, remoteStance.rightLeg, 0.4);
-
             } else if(isMoving) {
                 mesh.userData.limbs.leftLeg.rotation.x = Math.sin(animTime)*0.8;
                 mesh.userData.limbs.rightLeg.rotation.x = -Math.sin(animTime)*0.8;

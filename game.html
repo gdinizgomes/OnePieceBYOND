@@ -20,20 +20,16 @@
         body { margin: 0; overflow: hidden; user-select: none; font-family: 'Segoe UI', sans-serif; }
         #ui-layer { position: absolute; width: 100%; height: 100%; pointer-events: none; }
         
-        /* HUD Principal */
         .char-info { position: absolute; top: 20px; left: 20px; background: rgba(0,0,0,0.6); padding: 15px; border-radius: 8px; color: white; border: 2px solid #d4af37; pointer-events: auto; min-width: 200px; }
         
-        /* Barras Principais */
         .bar-container { width: 100%; height: 10px; background: #333; margin-top: 2px; overflow: hidden; border: 1px solid #555; }
         .hp-bar { width: 100%; height: 100%; background: #e74c3c; transition: width 0.2s; }
         .en-bar { width: 100%; height: 100%; background: #3498db; transition: width 0.2s; }
         .xp-bar { width: 0%; height: 100%; background: #9b59b6; transition: width 0.2s; } 
 
-        /* Mini-barras de Proficiência */
         .prof-bar-bg { width: 100px; height: 4px; background: #333; display: inline-block; margin-left: 10px; vertical-align: middle; }
         .prof-bar-fill { width: 0%; height: 100%; background: #2ecc71; transition: width 0.5s; }
 
-        /* Lista de Comandos */
         #controls-help {
             position: absolute; bottom: 20px; left: 20px;
             background: rgba(0,0,0,0.5); color: #ccc;
@@ -41,7 +37,6 @@
             font-family: monospace;
         }
 
-        /* Janela de Status */
         #stat-window {
             position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
             width: 340px; background: rgba(0, 0, 0, 0.9); color: white;
@@ -58,13 +53,31 @@
         .stat-btn:hover { background: #f1c40f; }
         .stat-btn:disabled { background: #555; cursor: default; }
 
+        /* --- NOVO: JANELA DE INVENTÁRIO --- */
+        #inventory-window {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            width: 400px; height: 300px; background: rgba(20, 20, 30, 0.95);
+            border: 2px solid #3498db; border-radius: 10px; padding: 10px;
+            display: none; pointer-events: auto; color: white;
+            flex-direction: column;
+        }
+        #inv-list { flex-grow: 1; overflow-y: auto; margin-top: 10px; border: 1px solid #444; background: rgba(0,0,0,0.3); }
+        .inv-item {
+            padding: 8px; border-bottom: 1px solid #444; display: flex; justify-content: space-between; align-items: center;
+            background: rgba(255,255,255,0.05); margin: 2px;
+        }
+        .inv-item:hover { background: rgba(255,255,255,0.1); }
+        .inv-btn {
+            background: #2980b9; color: white; border: none; padding: 5px 10px; cursor: pointer; font-size: 11px; border-radius: 4px;
+        }
+        .inv-btn.equipped { background: #e67e22; }
+
         #combat-log { position: absolute; bottom: 20px; right: 20px; width: 300px; height: 150px; background: rgba(0,0,0,0.5); color: #fff; font-size: 12px; overflow-y: auto; padding: 10px; border-radius: 5px; font-family: monospace; pointer-events: auto; }
         .log-hit { color: #e74c3c; font-weight: bold; } 
         .log-miss { color: #95a5a6; } 
         #notif-area { position: absolute; bottom: 100px; left: 50%; transform: translateX(-50%); text-align: center; }
         .name-label { position: absolute; color: white; background: rgba(0,0,0,0.5); padding: 2px 5px; border-radius: 4px; font-size: 10px; pointer-events: none; text-shadow: 1px 1px 0 #000; display: none; }
 
-        /* NOVO: Overlay de Desmaio */
         #faint-overlay {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
             background: rgba(50, 0, 0, 0.6);
@@ -97,7 +110,7 @@
             <div class="bar-container" style="height: 4px;"><div id="xp-bar-fill" class="xp-bar"></div></div>
             
             <div style="margin-top:5px; color:#f1c40f">💰 <span id="gold-display">0</span> Berries</div>
-            <div style="margin-top:5px; font-size: 10px; color: #ccc;">[C] Status</div>
+            <div style="margin-top:5px; font-size: 10px; color: #ccc;">[C] Status | [I] Mochila</div>
         </div>
 
         <div id="controls-help">
@@ -108,7 +121,7 @@
             [A] Soco &nbsp; [S] Chute<br>
             [D] Espada [F] Arma<br>
             [R] Descansar<br>
-            [C] Menu Stats
+            [C] Stats [I] Itens
         </div>
 
         <div id="stat-window">
@@ -125,25 +138,24 @@
             <hr style="border-color: #333; margin: 10px 0;">
             <div style="text-align: center; margin-bottom: 5px;"><strong>PROFICIÊNCIAS</strong></div>
             
-            <div class="stat-row">
-                <span class="stat-sub">Soco Lv.<span id="prof-punch">1</span></span> 
-                <div class="prof-bar-bg"><div id="bar-punch" class="prof-bar-fill"></div></div>
-            </div>
-            <div class="stat-row">
-                <span class="stat-sub">Chute Lv.<span id="prof-kick">1</span></span> 
-                <div class="prof-bar-bg"><div id="bar-kick" class="prof-bar-fill"></div></div>
-            </div>
-            <div class="stat-row">
-                <span class="stat-sub">Espada Lv.<span id="prof-sword">1</span></span> 
-                <div class="prof-bar-bg"><div id="bar-sword" class="prof-bar-fill"></div></div>
-            </div>
-            <div class="stat-row">
-                <span class="stat-sub">Arma Lv.<span id="prof-gun">1</span></span> 
-                <div class="prof-bar-bg"><div id="bar-gun" class="prof-bar-fill"></div></div>
-            </div>
+            <div class="stat-row"><span class="stat-sub">Soco Lv.<span id="prof-punch">1</span></span><div class="prof-bar-bg"><div id="bar-punch" class="prof-bar-fill"></div></div></div>
+            <div class="stat-row"><span class="stat-sub">Chute Lv.<span id="prof-kick">1</span></span><div class="prof-bar-bg"><div id="bar-kick" class="prof-bar-fill"></div></div></div>
+            <div class="stat-row"><span class="stat-sub">Espada Lv.<span id="prof-sword">1</span></span><div class="prof-bar-bg"><div id="bar-sword" class="prof-bar-fill"></div></div></div>
+            <div class="stat-row"><span class="stat-sub">Arma Lv.<span id="prof-gun">1</span></span><div class="prof-bar-bg"><div id="bar-gun" class="prof-bar-fill"></div></div></div>
 
             <div style="text-align: center; margin-top: 15px;">
                 <button onclick="toggleStats()" style="padding: 5px 15px; cursor: pointer;">Fechar</button>
+            </div>
+        </div>
+
+        <div id="inventory-window">
+            <div style="text-align: center; border-bottom: 1px solid #3498db; padding-bottom: 5px; font-weight: bold;">
+                MOCHILA
+            </div>
+            <div id="inv-list">
+                </div>
+            <div style="text-align: center; margin-top: 10px;">
+                <button onclick="toggleInventory()" style="padding: 5px 15px; cursor: pointer;">Fechar</button>
             </div>
         </div>
 

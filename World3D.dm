@@ -1,13 +1,12 @@
 #define SAVE_DIR "saves/"
 
 // --- ESTRUTURA DE ITENS (NOVO SISTEMA MODULAR) ---
-// Todos os itens do jogo herdarão desta estrutura base.
 obj/item
-    var/id_visual = ""      // O ID que o definitions.js usa (ex: "weapon_sword_iron")
-    var/slot = "none"       // Onde equipa? "hand", "body", etc.
-    var/power = 0           // Dano ou Defesa
-    var/price = 0           // Valor em Berries
-    var/weight = 0          // Peso (futuro)
+    var/id_visual = ""      
+    var/slot = "none"       
+    var/power = 0           
+    var/price = 0           
+    var/weight = 0          
 
 // -- Definição de Armas --
 obj/item/weapon
@@ -69,12 +68,9 @@ mob
     var/real_x = 0; var/real_y = 0; var/real_z = 0; var/real_rot = 0
     var/in_game = 0
     
-    // --- COMBATE E EQUIPAMENTO (MODULARIZADO) ---
+    // --- COMBATE E EQUIPAMENTO ---
     var/is_attacking = 0
     var/attack_type = "" 
-    
-    // Agora 'active_item' é apenas para envio de rede (string).
-    // A lógica real usa 'equipped_item' (referência ao objeto).
     var/tmp/obj/item/equipped_item = null 
     var/active_item_visual = "" 
 
@@ -93,7 +89,6 @@ mob
 
     // --- GERENCIAMENTO DE INVENTÁRIO ---
     proc/GiveStarterItems()
-        // Apenas para testes ou novos chars: dá itens se não tiver
         if(contents.len == 0)
             new /obj/item/weapon/sword_iron(src)
             new /obj/item/weapon/gun_flintlock(src)
@@ -106,11 +101,27 @@ mob
             equipped_item = I
             active_item_visual = I.id_visual
             src << output("Equipou [I.name]", "map3d:mostrarNotificacao")
+            // Atualiza a janela de inventário se estiver aberta
+            RequestInventoryUpdate()
 
     proc/UnequipItem()
         equipped_item = null
         active_item_visual = ""
-        src << output("Desequipou arma", "map3d:mostrarNotificacao")
+        src << output("Desequipou.", "map3d:mostrarNotificacao")
+        RequestInventoryUpdate()
+
+    proc/RequestInventoryUpdate()
+        var/list/inv_data = list()
+        for(var/obj/item/I in contents)
+            var/is_eq = (I == equipped_item)
+            inv_data += list(list(
+                "name" = I.name,
+                "ref" = "\ref[I]",
+                "equipped" = is_eq,
+                "power" = I.power,
+                "type" = I.type
+            ))
+        src << output(json_encode(inv_data), "map3d:loadInventory")
 
     // --- CÁLCULO DE STATUS ---
     proc/RecalculateStats()
@@ -193,11 +204,8 @@ mob
         is_fainted = 1
         is_resting = 1
         faint_end_time = world.time + 150 
-        
         src << output("<span class='log-hit' style='color:red; font-size:16px;'>VOCÊ DESMAIOU DE EXAUSTÃO!</span>", "map3d:addLog")
-        
-        spawn(150) 
-            if(src) WakeUp()
+        spawn(150) if(src) WakeUp()
 
     proc/WakeUp()
         is_fainted = 0
@@ -227,7 +235,6 @@ mob
                     if(current_energy <= 0) 
                         current_energy = 0
                         GoFaint()
-            
             sleep(10)
 
     // -------------------------
@@ -249,10 +256,7 @@ mob
             RecalculateStats()
             current_hp = max_hp; current_energy = max_energy
             active_item_visual = "" 
-            
-            // Novos personagens ganham itens iniciais
             GiveStarterItems()
-            
             src << output("Novo char!", "map3d:mostrarNotificacao")
 
         src << browse_rsc(file("definitions.js"), "definitions.js")
@@ -286,11 +290,7 @@ mob
         F["p_gun"] << prof_gun_lvl; F["exp_gun"] << prof_gun_exp
         F["pos_x"] << src.real_x; F["pos_y"] << src.real_y; F["pos_z"] << src.real_z
         F["skin"] << src.skin_color; F["cloth"] << src.cloth_color
-        
-        // SALVAMENTO DE INVENTÁRIO (MODERNO)
-        // O BYOND lida automaticamente com listas de objetos ao salvar.
         F["inventory"] << src.contents
-        
         src << output("Salvo!", "map3d:mostrarNotificacao")
 
     proc/LoadCharacter(slot)
@@ -319,8 +319,6 @@ mob
         if(F["pos_y"]) F["pos_y"] >> src.real_y;
         F["pos_z"] >> src.real_z
         F["skin"] >> src.skin_color; F["cloth"] >> src.cloth_color
-
-        // CARREGAMENTO DE INVENTÁRIO
         if(F["inventory"]) F["inventory"] >> src.contents
 
         if(!src.req_experience || src.req_experience <= 0)
@@ -340,7 +338,7 @@ mob
                     var/list/pData = list(
                         "x" = M.real_x, "y" = M.real_y, "z" = M.real_z, "rot" = M.real_rot,
                         "a" = M.is_attacking, "at" = M.attack_type,
-                        "it" = M.active_item_visual, // Usa a variável visual agora
+                        "it" = M.active_item_visual,
                         "rest" = M.is_resting,
                         "ft" = M.is_fainted 
                     )
@@ -364,12 +362,10 @@ mob
                     "gold" = src.gold, 
                     "hp" = src.current_hp, "max_hp" = src.max_hp,
                     "en" = src.current_energy, "max_en" = src.max_energy,
-                    
                     "pp" = prof_punch_lvl, "pp_x" = prof_punch_exp, "pp_r" = GetProficiencyReq(prof_punch_lvl),
                     "pk" = prof_kick_lvl,  "pk_x" = prof_kick_exp,  "pk_r" = GetProficiencyReq(prof_kick_lvl),
                     "ps" = prof_sword_lvl, "ps_x" = prof_sword_exp, "ps_r" = GetProficiencyReq(prof_sword_lvl),
                     "pg" = prof_gun_lvl,   "pg_x" = prof_gun_exp,   "pg_r" = GetProficiencyReq(prof_gun_lvl),
-                    
                     "mspd" = calc_move_speed,
                     "jmp" = calc_jump_power,
                     "rest" = src.is_resting,
@@ -426,6 +422,17 @@ mob
 
         if(action == "toggle_rest" && in_game) ToggleRest()
 
+        // --- AÇÕES DE INVENTÁRIO ---
+        if(action == "request_inventory" && in_game)
+            RequestInventoryUpdate()
+
+        if(action == "equip_item" && in_game)
+            var/ref_id = href_list["ref"]
+            var/obj/item/I = locate(ref_id)
+            if(I && (I in contents))
+                if(I == equipped_item) UnequipItem()
+                else EquipItem(I)
+
         if(action == "attack" && in_game)
             if(is_resting) return 
 
@@ -433,30 +440,26 @@ mob
             
             if(ConsumeEnergy(base_cost))
                 is_attacking = 1
-                attack_type = href_list["type"] // Tipo Visual (fist, sword, gun)
+                attack_type = href_list["type"]
                 
-                // --- LÓGICA DE DANO MODULARIZADA ---
                 var/weapon_bonus = 0
                 var/prof_bonus = 0
                 var/prof_lvl = 1
                 
-                // Verifica o item equipado REALMENTE, não só o visual
-                if(attack_type == "sword" || attack_type == "gun")
-                    // Se o player diz que ataca de espada, vamos ver se ele TEM UMA equipada
-                    // Neste passo simples, buscamos no inventário um item desse tipo
-                    // para simular a troca de "test weapon" por "real item"
-                    if(attack_type == "sword")
-                        var/obj/item/weapon/sword_iron/W = locate() in src
-                        if(W) 
-                            EquipItem(W) // Garante equip
-                            weapon_bonus = W.power
-                    if(attack_type == "gun")
-                        var/obj/item/weapon/gun_flintlock/G = locate() in src
-                        if(G) 
-                            EquipItem(G)
-                            weapon_bonus = G.power
-                else
-                    UnequipItem() // Socos desequipam
+                // VERIFICAÇÃO DE EQUIPAMENTO REAL
+                // Se o cliente diz que é espada, verifica se estamos SEGURANDO uma
+                if(attack_type == "sword")
+                    if(istype(equipped_item, /obj/item/weapon/sword_iron))
+                        weapon_bonus = equipped_item.power
+                    else
+                        // Se não tem espada equipada, vira soco
+                        attack_type = "fist" 
+                
+                if(attack_type == "gun")
+                    if(istype(equipped_item, /obj/item/weapon/gun_flintlock))
+                        weapon_bonus = equipped_item.power
+                    else
+                        attack_type = "fist"
 
                 if(attack_type == "fist")  { prof_lvl = prof_punch_lvl; prof_bonus = prof_lvl * 2; }
                 if(attack_type == "kick")  { prof_lvl = prof_kick_lvl; prof_bonus = prof_lvl * 2; }
@@ -468,14 +471,12 @@ mob
                 if(target == "dummy")
                     var/damage = round((strength * 0.5) + prof_bonus + weapon_bonus + rand(0, 2))
                     src << output("<span class='log-hit'>HIT! Dano: [damage]</span>", "map3d:addLog")
-                    
                     GainExperience(10)
                     GainWeaponExp(attack_type, 5) 
                 else
                     src << output("Errou...", "map3d:addLog")
                 
-                spawn(3) 
-                    is_attacking = 0
+                spawn(3) is_attacking = 0
             else
                 return
 
