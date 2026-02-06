@@ -13,15 +13,15 @@ mob
     // Atributos Principais
     var/strength = 5
     var/vitality = 5
-    var/agility = 5   // Influencia Velocidade e Pulo
-    var/wisdom = 5    // Influencia Energia
+    var/agility = 5   
+    var/wisdom = 5    
     
     // Status Vitais
     var/current_hp = 50; var/max_hp = 50
     var/current_energy = 50; var/max_energy = 50 
     var/gold = 0
 
-    // Proficiências (Nível e XP)
+    // Proficiências
     var/prof_punch_lvl = 1; var/prof_punch_exp = 0
     var/prof_kick_lvl = 1;  var/prof_kick_exp = 0
     var/prof_sword_lvl = 1; var/prof_sword_exp = 0
@@ -29,10 +29,11 @@ mob
 
     // Estados
     var/is_resting = 0 
-    var/is_fainted = 0 // Desmaiado
-    var/is_running = 0 // Correndo
+    var/is_fainted = 0 
+    var/faint_end_time = 0 // NOVO: Armazena quando o desmaio acaba (em world.time)
+    var/is_running = 0 
 
-    // Variáveis Físicas Calculadas
+    // Variáveis Físicas
     var/calc_move_speed = 0.08
     var/calc_jump_power = 0.20
 
@@ -44,7 +45,7 @@ mob
     // --- COMBATE E SINCRONIZAÇÃO ---
     var/is_attacking = 0
     var/attack_type = "" 
-    var/active_item = "" // NOVO: Guarda o ID do item atual (ex: weapon_sword_iron)
+    var/active_item = "" 
 
     Login()
         ..()
@@ -121,6 +122,8 @@ mob
 
     // --- SISTEMA DE ENERGIA E DESMAIO ---
     proc/ConsumeEnergy(amount)
+        if(is_fainted) return 0 
+
         var/efficiency = 1.0 - (vitality * 0.01) 
         if(efficiency < 0.5) efficiency = 0.5 
         
@@ -130,22 +133,25 @@ mob
         if(current_energy <= 0)
             current_energy = 0
             GoFaint()
-            return 0 
+        
         return 1 
 
     proc/GoFaint()
         if(is_fainted) return
         is_fainted = 1
-        is_resting = 1 
-        src << output("<span class='log-hit' style='color:red; font-size:16px;'>VOCÊ DESMAIOU DE EXAUSTÃO!</span>", "map3d:addLog")
-        src << output("Desmaiado! Aguarde 15s...", "map3d:mostrarNotificacao")
+        is_resting = 1
+        faint_end_time = world.time + 150 // Define o tempo alvo (15s)
         
-        spawn(150) // 15 segundos
+        src << output("<span class='log-hit' style='color:red; font-size:16px;'>VOCÊ DESMAIOU DE EXAUSTÃO!</span>", "map3d:addLog")
+        
+        // Timer de recuperação
+        spawn(150) 
             if(src) WakeUp()
 
     proc/WakeUp()
         is_fainted = 0
         is_resting = 0
+        faint_end_time = 0
         current_energy = max_energy * 0.10 
         src << output("Você acordou.", "map3d:mostrarNotificacao")
 
@@ -167,7 +173,9 @@ mob
                 var/run_cost = max_energy * 0.01
                 if(current_energy > 0)
                     current_energy -= run_cost
-                    if(current_energy <= 0) GoFaint()
+                    if(current_energy <= 0) 
+                        current_energy = 0
+                        GoFaint()
             
             sleep(10)
 
@@ -189,7 +197,7 @@ mob
             prof_punch_lvl=1; prof_kick_lvl=1; prof_sword_lvl=1; prof_gun_lvl=1
             RecalculateStats()
             current_hp = max_hp; current_energy = max_energy
-            active_item = "" // Reset item
+            active_item = "" 
             src << output("Novo char!", "map3d:mostrarNotificacao")
 
         src << browse_rsc(file("definitions.js"), "definitions.js")
@@ -269,12 +277,18 @@ mob
                     var/list/pData = list(
                         "x" = M.real_x, "y" = M.real_y, "z" = M.real_z, "rot" = M.real_rot,
                         "a" = M.is_attacking, "at" = M.attack_type,
-                        "it" = M.active_item, // NOVO: Item ativo
-                        "rest" = M.is_resting
+                        "it" = M.active_item,
+                        "rest" = M.is_resting,
+                        "ft" = M.is_fainted 
                     )
                     pData["name"] = M.name
                     pData["skin"] = M.skin_color; pData["cloth"] = M.cloth_color
                     players_list[pid] = pData
+
+            // Calcula tempo restante do desmaio em segundos
+            var/faint_remaining = 0
+            if(src.is_fainted && src.faint_end_time > world.time)
+                faint_remaining = round((src.faint_end_time - world.time) / 10)
 
             var/list/packet = list(
                 "my_id" = "\ref[src]",
@@ -296,13 +310,15 @@ mob
                     
                     "mspd" = calc_move_speed,
                     "jmp" = calc_jump_power,
-                    "rest" = src.is_resting
+                    "rest" = src.is_resting,
+                    "ft" = src.is_fainted,
+                    "rem" = faint_remaining // NOVO: Segundos restantes
                 ),
                 "others" = players_list,
                 "t" = world.time
             )
             src << output(json_encode(packet), "map3d:receberDadosMultiplayer")
-            sleep(2) // 200ms tick rate
+            sleep(2) 
 
     proc/AutoSaveLoop()
         while(src && in_game)
@@ -340,7 +356,7 @@ mob
         if(action == "force_save" && in_game) SaveCharacter()
         
         if(action == "update_pos" && in_game)
-            if(!is_resting)
+            if(!is_fainted) // Se estiver desmaiado, não aceita update de posição
                 real_x = text2num(href_list["x"]); real_y = text2num(href_list["y"]);
                 real_z = text2num(href_list["z"]); real_rot = text2num(href_list["rot"])
                 if(href_list["run"] == "1") is_running = 1
@@ -357,10 +373,9 @@ mob
                 is_attacking = 1
                 attack_type = href_list["type"]
                 
-                // NOVO: Define o item ativo baseado no ataque
                 if(attack_type == "sword") active_item = "weapon_sword_iron"
                 else if(attack_type == "gun") active_item = "weapon_gun_flintlock"
-                else active_item = "" // Mão vazia
+                else active_item = "" 
 
                 var/target = href_list["target"]
 
@@ -384,8 +399,6 @@ mob
                 
                 spawn(3) 
                     is_attacking = 0
-                    // Não limpamos o active_item aqui, para que o outro jogador
-                    // continue vendo a espada na mão dele depois do ataque.
             else
                 return
 
