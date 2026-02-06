@@ -29,8 +29,8 @@ mob
 
     // Estados
     var/is_resting = 0 
-    var/is_fainted = 0 // NOVO: Desmaiado
-    var/is_running = 0 // NOVO: Correndo
+    var/is_fainted = 0 // Desmaiado
+    var/is_running = 0 // Correndo
 
     // Variáveis Físicas Calculadas
     var/calc_move_speed = 0.08
@@ -40,8 +40,11 @@ mob
     var/skin_color = "FFCCAA"; var/cloth_color = "FF0000"
     var/real_x = 0; var/real_y = 0; var/real_z = 0; var/real_rot = 0
     var/in_game = 0
+    
+    // --- COMBATE E SINCRONIZAÇÃO ---
     var/is_attacking = 0
     var/attack_type = "" 
+    var/active_item = "" // NOVO: Guarda o ID do item atual (ex: weapon_sword_iron)
 
     Login()
         ..()
@@ -58,19 +61,13 @@ mob
 
     // --- CÁLCULO DE STATUS ---
     proc/RecalculateStats()
-        max_hp = 50 + (vitality * 10) // HP escala melhor
+        max_hp = 50 + (vitality * 10) 
         max_energy = 30 + (wisdom * 5)
         
-        // Validação
         if(current_hp > max_hp) current_hp = max_hp
         if(current_energy > max_energy) current_energy = max_energy
 
-        // Física Progressiva
-        // Base Speed 0.08 (Lento). A cada 10 AGI ganha +0.02.
         calc_move_speed = 0.08 + (agility * 0.002) 
-        
-        // Base Jump 0.20 (Não pula tronco). Precisa de STR e AGI.
-        // Tronco tem 1.8m. Pulo precisa chegar a ~0.28 para passar com folga.
         calc_jump_power = 0.20 + (strength * 0.002) + (agility * 0.003)
 
     // --- LÓGICA DE EVOLUÇÃO ---
@@ -91,7 +88,6 @@ mob
         if(req_experience < 100) req_experience = 100 
         stat_points += 3
         
-        // Ao upar recupera tudo
         RecalculateStats()
         current_hp = max_hp; current_energy = max_energy
         
@@ -125,10 +121,8 @@ mob
 
     // --- SISTEMA DE ENERGIA E DESMAIO ---
     proc/ConsumeEnergy(amount)
-        // Redução de custo baseada em Vitalidade (Eficiência)
-        // A cada 10 VIT reduz 10% do custo
         var/efficiency = 1.0 - (vitality * 0.01) 
-        if(efficiency < 0.5) efficiency = 0.5 // Máximo 50% de desconto
+        if(efficiency < 0.5) efficiency = 0.5 
         
         var/final_cost = amount * efficiency
         current_energy -= final_cost
@@ -136,13 +130,13 @@ mob
         if(current_energy <= 0)
             current_energy = 0
             GoFaint()
-            return 0 // Falhou (desmaiou)
-        return 1 // Sucesso
+            return 0 
+        return 1 
 
     proc/GoFaint()
         if(is_fainted) return
         is_fainted = 1
-        is_resting = 1 // Trava movimento e muda animação
+        is_resting = 1 
         src << output("<span class='log-hit' style='color:red; font-size:16px;'>VOCÊ DESMAIOU DE EXAUSTÃO!</span>", "map3d:addLog")
         src << output("Desmaiado! Aguarde 15s...", "map3d:mostrarNotificacao")
         
@@ -152,7 +146,7 @@ mob
     proc/WakeUp()
         is_fainted = 0
         is_resting = 0
-        current_energy = max_energy * 0.10 // Acorda com 10%
+        current_energy = max_energy * 0.10 
         src << output("Você acordou.", "map3d:mostrarNotificacao")
 
     proc/ToggleRest()
@@ -163,22 +157,19 @@ mob
 
     proc/RestLoop()
         while(src && in_game)
-            // Regeneração (Só se estiver descansando e NÃO desmaiado)
             if(is_resting && !is_fainted)
                 var/hp_regen = max_hp * 0.05
                 var/en_regen = max_energy * 0.05
                 if(current_hp < max_hp) current_hp = min(max_hp, current_hp + hp_regen)
                 if(current_energy < max_energy) current_energy = min(max_energy, current_energy + en_regen)
             
-            // Gasto de Corrida (Se estiver correndo e não descansando)
             if(is_running && !is_resting && !is_fainted)
-                // Custo: 1% da Max Energy por segundo
                 var/run_cost = max_energy * 0.01
                 if(current_energy > 0)
                     current_energy -= run_cost
                     if(current_energy <= 0) GoFaint()
             
-            sleep(10) // Loop a cada 1s
+            sleep(10)
 
     // -------------------------
 
@@ -198,6 +189,7 @@ mob
             prof_punch_lvl=1; prof_kick_lvl=1; prof_sword_lvl=1; prof_gun_lvl=1
             RecalculateStats()
             current_hp = max_hp; current_energy = max_energy
+            active_item = "" // Reset item
             src << output("Novo char!", "map3d:mostrarNotificacao")
 
         src << browse_rsc(file("definitions.js"), "definitions.js")
@@ -224,11 +216,11 @@ mob
         F["stat_pts"] << src.stat_points; F["gold"] << src.gold
         F["hp"] << src.current_hp; F["en"] << src.current_energy
         F["str"] << src.strength; F["vit"] << src.vitality
-        F["agi"] << src.agility;  F["wis"] << src.wisdom
+        F["agi"] << src.agility; F["wis"] << src.wisdom
         F["p_punch"] << prof_punch_lvl; F["exp_punch"] << prof_punch_exp
-        F["p_kick"] << prof_kick_lvl;   F["exp_kick"] << prof_kick_exp
+        F["p_kick"] << prof_kick_lvl; F["exp_kick"] << prof_kick_exp
         F["p_sword"] << prof_sword_lvl; F["exp_sword"] << prof_sword_exp
-        F["p_gun"] << prof_gun_lvl;     F["exp_gun"] << prof_gun_exp
+        F["p_gun"] << prof_gun_lvl; F["exp_gun"] << prof_gun_exp
         F["pos_x"] << src.real_x; F["pos_y"] << src.real_y; F["pos_z"] << src.real_z
         F["skin"] << src.skin_color; F["cloth"] << src.cloth_color
         src << output("Salvo!", "map3d:mostrarNotificacao")
@@ -243,8 +235,8 @@ mob
         if(F["en"]) F["en"] >> src.current_energy; else src.current_energy = 50
         if(F["str"]) F["str"] >> src.strength; else src.strength = 5
         if(F["vit"]) F["vit"] >> src.vitality; else src.vitality = 5
-        if(F["agi"]) F["agi"] >> src.agility;  else src.agility = 5
-        if(F["wis"]) F["wis"] >> src.wisdom;   else src.wisdom = 5
+        if(F["agi"]) F["agi"] >> src.agility; else src.agility = 5
+        if(F["wis"]) F["wis"] >> src.wisdom; else src.wisdom = 5
         
         if(F["p_punch"]) F["p_punch"] >> prof_punch_lvl; else prof_punch_lvl = 1
         if(F["exp_punch"]) F["exp_punch"] >> prof_punch_exp
@@ -255,7 +247,7 @@ mob
         if(F["p_gun"]) F["p_gun"] >> prof_gun_lvl; else prof_gun_lvl = 1
         if(F["exp_gun"]) F["exp_gun"] >> prof_gun_exp
 
-        F["pos_x"] >> src.real_x; 
+        F["pos_x"] >> src.real_x;
         if(F["pos_y"]) F["pos_y"] >> src.real_y;
         F["pos_z"] >> src.real_z
         F["skin"] >> src.skin_color; F["cloth"] >> src.cloth_color
@@ -272,11 +264,12 @@ mob
             var/list/players_list = list()
             for(var/mob/M in world)
                 if(M.in_game && M.char_loaded)
-                    if(abs(M.real_x - src.real_x) > 15 || abs(M.real_z - src.real_z) > 15) continue
+                    if(abs(M.real_x - src.real_x) > 30 || abs(M.real_z - src.real_z) > 30) continue
                     var/pid = "\ref[M]"
                     var/list/pData = list(
                         "x" = M.real_x, "y" = M.real_y, "z" = M.real_z, "rot" = M.real_rot,
                         "a" = M.is_attacking, "at" = M.attack_type,
+                        "it" = M.active_item, // NOVO: Item ativo
                         "rest" = M.is_resting
                     )
                     pData["name"] = M.name
@@ -296,7 +289,6 @@ mob
                     "hp" = src.current_hp, "max_hp" = src.max_hp,
                     "en" = src.current_energy, "max_en" = src.max_energy,
                     
-                    // Proficiências e XP delas (para a barrinha)
                     "pp" = prof_punch_lvl, "pp_x" = prof_punch_exp, "pp_r" = GetProficiencyReq(prof_punch_lvl),
                     "pk" = prof_kick_lvl,  "pk_x" = prof_kick_exp,  "pk_r" = GetProficiencyReq(prof_kick_lvl),
                     "ps" = prof_sword_lvl, "ps_x" = prof_sword_exp, "ps_r" = GetProficiencyReq(prof_sword_lvl),
@@ -310,7 +302,7 @@ mob
                 "t" = world.time
             )
             src << output(json_encode(packet), "map3d:receberDadosMultiplayer")
-            sleep(2)
+            sleep(2) // 200ms tick rate
 
     proc/AutoSaveLoop()
         while(src && in_game)
@@ -351,7 +343,6 @@ mob
             if(!is_resting)
                 real_x = text2num(href_list["x"]); real_y = text2num(href_list["y"]);
                 real_z = text2num(href_list["z"]); real_rot = text2num(href_list["rot"])
-                // Atualiza estado de corrida
                 if(href_list["run"] == "1") is_running = 1
                 else is_running = 0
 
@@ -360,14 +351,17 @@ mob
         if(action == "attack" && in_game)
             if(is_resting) return 
 
-            // Custo percentual: 3% do MAX energy
             var/base_cost = max_energy * 0.03 
             
-            // Consome energia (com redução de vitalidade)
-            // Se retornar 0, desmaiou
             if(ConsumeEnergy(base_cost))
                 is_attacking = 1
                 attack_type = href_list["type"]
+                
+                // NOVO: Define o item ativo baseado no ataque
+                if(attack_type == "sword") active_item = "weapon_sword_iron"
+                else if(attack_type == "gun") active_item = "weapon_gun_flintlock"
+                else active_item = "" // Mão vazia
+
                 var/target = href_list["target"]
 
                 if(target == "dummy")
@@ -376,14 +370,10 @@ mob
                     var/prof_lvl = 1
                     
                     if(attack_type == "fist")  { prof_lvl = prof_punch_lvl; prof_bonus = prof_lvl * 2; }
-                    if(attack_type == "kick")  { prof_lvl = prof_kick_lvl;  prof_bonus = prof_lvl * 2; }
+                    if(attack_type == "kick")  { prof_lvl = prof_kick_lvl; prof_bonus = prof_lvl * 2; }
                     if(attack_type == "sword") { weapon_bonus = 5; prof_lvl = prof_sword_lvl; prof_bonus = prof_lvl * 2; }
                     if(attack_type == "gun")   { weapon_bonus = 10; prof_lvl = prof_gun_lvl;  prof_bonus = prof_lvl * 2; }
                     
-                    // FÓRMULA DE DANO:
-                    // (Força Base * 0.5) + (Proficiência * 2) + Arma + Random
-                    // Ex: 20 STR, 10 Fist = (10) + (20) = 30 Dano.
-                    // Ex: 20 STR, 1 Fist  = (10) + (2)  = 12 Dano.
                     var/damage = round((strength * 0.5) + prof_bonus + weapon_bonus + rand(0, 2))
                     src << output("<span class='log-hit'>HIT! Dano: [damage]</span>", "map3d:addLog")
                     
@@ -394,9 +384,9 @@ mob
                 
                 spawn(3) 
                     is_attacking = 0
-                    attack_type = ""
+                    // Não limpamos o active_item aqui, para que o outro jogador
+                    // continue vendo a espada na mão dele depois do ataque.
             else
-                // Já desmaiou no ConsumeEnergy
                 return
 
         if(action == "add_stat" && in_game)

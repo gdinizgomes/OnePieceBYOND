@@ -327,7 +327,8 @@ function receberDadosMultiplayer(json) {
                     lastPacketTime: now,
                     lerpDuration: 180,
                     attacking: pData.a, attackType: pData.at, 
-                    resting: pData.rest 
+                    resting: pData.rest,
+                    lastItem: "" // Cache para evitar troca desnecessária
                 };
             }
         } else {
@@ -345,6 +346,12 @@ function receberDadosMultiplayer(json) {
             if (pData.at) other.attackType = pData.at;
             if (pData.rest !== undefined) other.resting = pData.rest; 
             if(pData.name && other.label.innerText !== pData.name) other.label.innerText = pData.name; 
+
+            // NOVO: Atualização de Equipamento Remoto
+            if(pData.it !== undefined && pData.it !== other.lastItem) {
+                CharFactory.equipItem(other.mesh, pData.it);
+                other.lastItem = pData.it;
+            }
         }
     }
     
@@ -501,16 +508,32 @@ function animate() {
             
             const dist = Math.sqrt(Math.pow(other.targetX - mesh.position.x, 2) + Math.pow(other.targetZ - mesh.position.z, 2));
             const isMoving = dist > 0.05;
+            
+            // NOVO: Lógica de Animação de Ataque Remota
             let remoteStance = STANCES.DEFAULT; 
             
             if(other.attacking) {
-                // ...
+                // Mapeia o tipo de ataque do servidor para STANCES visuais
+                if(other.attackType === "sword") remoteStance = STANCES.SWORD_ATK_1;
+                else if(other.attackType === "fist") remoteStance = STANCES.FIST_ATK;
+                else if(other.attackType === "kick") remoteStance = STANCES.KICK_ATK;
+                else if(other.attackType === "gun") remoteStance = STANCES.GUN_ATK;
+                
+                // Aplica a rotação de ataque (rápida)
+                lerpLimbRotation(mesh.userData.limbs.leftArm, remoteStance.leftArm, 0.4);
+                lerpLimbRotation(mesh.userData.limbs.rightArm, remoteStance.rightArm, 0.4);
+                lerpLimbRotation(mesh.userData.limbs.leftLeg, remoteStance.leftLeg, 0.4);
+                lerpLimbRotation(mesh.userData.limbs.rightLeg, remoteStance.rightLeg, 0.4);
+
             } else if(isMoving) {
                 mesh.userData.limbs.leftLeg.rotation.x = Math.sin(animTime)*0.8;
                 mesh.userData.limbs.rightLeg.rotation.x = -Math.sin(animTime)*0.8;
                 mesh.userData.limbs.leftArm.rotation.x = -Math.sin(animTime)*0.8;
                 mesh.userData.limbs.rightArm.rotation.x = Math.sin(animTime)*0.8;
             } else {
+                // Idle (mantém item se tiver, mas pose base)
+                // Se tiver item equipado (sword), ideal seria SWORD_IDLE, mas simplificaremos para DEFAULT por enquanto
+                // para garantir que os membros voltem ao lugar.
                 mesh.userData.limbs.leftLeg.rotation.x = 0;
                 mesh.userData.limbs.rightLeg.rotation.x = 0;
                 mesh.userData.limbs.leftArm.rotation.x = 0;
