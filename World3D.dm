@@ -8,6 +8,7 @@ obj/item
     var/price = 0           
     // Precisamos armazenar a posição 3D Real para desenhar e interagir
     var/real_x = 0
+    var/real_y = 0 // Altura (0 = chão)
     var/real_z = 0
     
 // -- Armas: Espadas --
@@ -140,27 +141,30 @@ mob
         
         I.loc = locate(1,1,1) // Coloca no mundo físico do BYOND
         I.real_x = src.real_x // Copia posição 3D
-        I.real_z = src.real_z
+        I.real_z = src.real_z // Copia posição Z
+        I.real_y = 0          // Define altura como 0 (chão)
         
         src << output("Largou [I.name]", "map3d:mostrarNotificacao")
         RequestInventoryUpdate()
 
     proc/PickUpNearestItem()
         var/obj/item/target = null
+        var/min_dist = 2.0 // Distância de coleta (metros)
         
-        // Procura itens no mesmo tile ou adjacente (range 1) no mapa do BYOND
-        // Como o drop coloca o item no 'locate(1,1,1)' ou 'src.loc', o view() deve achar
-        // se o player estiver sincronizado.
-        // Para garantir com nosso sistema híbrido, vamos usar uma checagem simples de view
-        // que o BYOND processa nativamente.
-        
-        for(var/obj/item/I in view(1, src))
-            if(I.loc == src) continue // Ignora itens no inventário
-            target = I
-            break 
+        for(var/obj/item/I in world)
+            if(I.loc == null) continue 
+            if(!isturf(I.loc)) continue // Ignora itens dentro de inventários
+            
+            var/dx = I.real_x - src.real_x
+            var/dz = I.real_z - src.real_z
+            var/dist = sqrt(dx*dx + dz*dz)
+            
+            if(dist <= min_dist)
+                target = I
+                break 
         
         if(target)
-            target.loc = src
+            target.loc = src // Move para inventário
             src << output("Pegou [target.name]", "map3d:mostrarNotificacao")
             RequestInventoryUpdate()
         else
@@ -388,17 +392,21 @@ mob
                     pData["skin"] = M.skin_color; pData["cloth"] = M.cloth_color
                     players_list[pid] = pData
 
-            // --- ENVIAR ITENS NO CHÃO ---
+            // --- ENVIAR ITENS COM COORDENADAS REAIS ---
             var/list/ground_items = list()
-            for(var/obj/item/I in range(20, src))
+            for(var/obj/item/I in world)
                 if(isturf(I.loc))
-                    ground_items += list(list(
-                        "ref" = "\ref[I]",
-                        "id" = I.id_visual,
-                        "x" = I.x + (I.step_x / 32), 
-                        "y" = 0, 
-                        "z" = I.y + (I.step_y / 32)
-                    ))
+                    // Checa distância do player
+                    var/dx = I.real_x - src.real_x
+                    var/dz = I.real_z - src.real_z
+                    if(abs(dx) < 20 && abs(dz) < 20)
+                        ground_items += list(list(
+                            "ref" = "\ref[I]",
+                            "id" = I.id_visual,
+                            "x" = I.real_x, 
+                            "y" = I.real_y,
+                            "z" = I.real_z  
+                        ))
 
             var/faint_remaining = 0
             if(src.is_fainted && src.faint_end_time > world.time)
@@ -483,7 +491,6 @@ mob
             if(I && (I in contents)) DropItem(I)
 
         if(action == "pick_up" && in_game)
-            // Procura item próximo nas coordenadas 3D reais
             var/obj/item/best_target = null
             var/min_dist = 2.0 
             
@@ -550,7 +557,6 @@ mob
         set category = "Debug"
         GainExperience(req_experience)
 
-// --- MOB NPC (RE-ADICIONADO) ---
 mob/npc
     in_game = 1
     char_loaded = 1
@@ -574,11 +580,24 @@ mob/npc
 
 // --- SPAWN DE ITENS DE TESTE NO MUNDO ---
 world/New()
+    // Inicializa um "mapa virtual" mínimo para que locate(1,1,1) funcione
+    world.maxx = 1; world.maxy = 1; world.maxz = 1
     ..()
     new /mob/npc() { name = "Pirata de Teste" }
     
-    // Cria itens no chão em posições aleatórias
+    // Cria itens no chão em posições FIXAS para teste
     spawn(10)
+        // Espada de madeira no lado esquerdo do log (Log está em 5,0,5)
+        var/obj/item/weapon/sword_wood/S = new(locate(1,1,1))
+        S.real_x = 4; S.real_z = 5 
+        S.loc = locate(1,1,1) // Garante que fique "no mundo"
+
+        // Arma no lado direito do log
+        var/obj/item/weapon/gun_flintlock/G = new(locate(1,1,1))
+        G.real_x = 6; G.real_z = 5 
+        G.loc = locate(1,1,1)
+        
+        // Outros itens aleatórios
         var/list/types = list(
             /obj/item/weapon/sword_wood,
             /obj/item/weapon/sword_iron,
@@ -590,8 +609,7 @@ world/New()
         
         for(var/i=1 to 10)
             var/t = pick(types)
-            var/obj/item/I = new t(locate(1,1,1)) // Cria no mapa
+            var/obj/item/I = new t(locate(1,1,1)) 
             I.real_x = rand(-10, 10)
             I.real_z = rand(-10, 10)
-            // Hack para garantir que o loop ache (loc deve ser valido)
             I.loc = locate(1,1,1)
