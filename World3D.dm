@@ -1,5 +1,32 @@
 #define SAVE_DIR "saves/"
 
+// --- ESTRUTURA DE ITENS (NOVO SISTEMA MODULAR) ---
+// Todos os itens do jogo herdarão desta estrutura base.
+obj/item
+    var/id_visual = ""      // O ID que o definitions.js usa (ex: "weapon_sword_iron")
+    var/slot = "none"       // Onde equipa? "hand", "body", etc.
+    var/power = 0           // Dano ou Defesa
+    var/price = 0           // Valor em Berries
+    var/weight = 0          // Peso (futuro)
+
+// -- Definição de Armas --
+obj/item/weapon
+    slot = "hand"
+
+obj/item/weapon/sword_iron
+    name = "Espada de Ferro"
+    id_visual = "weapon_sword_iron"
+    power = 10
+    price = 100
+
+obj/item/weapon/gun_flintlock
+    name = "Pistola Velha"
+    id_visual = "weapon_gun_flintlock"
+    power = 25
+    price = 250
+
+// -----------------------------------------------------
+
 mob
     var/current_slot = 0
     var/char_loaded = 0
@@ -30,7 +57,7 @@ mob
     // Estados
     var/is_resting = 0 
     var/is_fainted = 0 
-    var/faint_end_time = 0 // NOVO: Armazena quando o desmaio acaba (em world.time)
+    var/faint_end_time = 0 
     var/is_running = 0 
 
     // Variáveis Físicas
@@ -42,10 +69,14 @@ mob
     var/real_x = 0; var/real_y = 0; var/real_z = 0; var/real_rot = 0
     var/in_game = 0
     
-    // --- COMBATE E SINCRONIZAÇÃO ---
+    // --- COMBATE E EQUIPAMENTO (MODULARIZADO) ---
     var/is_attacking = 0
     var/attack_type = "" 
-    var/active_item = "" 
+    
+    // Agora 'active_item' é apenas para envio de rede (string).
+    // A lógica real usa 'equipped_item' (referência ao objeto).
+    var/tmp/obj/item/equipped_item = null 
+    var/active_item_visual = "" 
 
     Login()
         ..()
@@ -59,6 +90,27 @@ mob
         char_loaded = 0
         del(src)
         ..()
+
+    // --- GERENCIAMENTO DE INVENTÁRIO ---
+    proc/GiveStarterItems()
+        // Apenas para testes ou novos chars: dá itens se não tiver
+        if(contents.len == 0)
+            new /obj/item/weapon/sword_iron(src)
+            new /obj/item/weapon/gun_flintlock(src)
+            src << output("Itens iniciais recebidos!", "map3d:mostrarNotificacao")
+
+    proc/EquipItem(obj/item/I)
+        if(!I || !(I in contents)) return
+        
+        if(I.slot == "hand")
+            equipped_item = I
+            active_item_visual = I.id_visual
+            src << output("Equipou [I.name]", "map3d:mostrarNotificacao")
+
+    proc/UnequipItem()
+        equipped_item = null
+        active_item_visual = ""
+        src << output("Desequipou arma", "map3d:mostrarNotificacao")
 
     // --- CÁLCULO DE STATUS ---
     proc/RecalculateStats()
@@ -140,11 +192,10 @@ mob
         if(is_fainted) return
         is_fainted = 1
         is_resting = 1
-        faint_end_time = world.time + 150 // Define o tempo alvo (15s)
+        faint_end_time = world.time + 150 
         
         src << output("<span class='log-hit' style='color:red; font-size:16px;'>VOCÊ DESMAIOU DE EXAUSTÃO!</span>", "map3d:addLog")
         
-        // Timer de recuperação
         spawn(150) 
             if(src) WakeUp()
 
@@ -197,7 +248,11 @@ mob
             prof_punch_lvl=1; prof_kick_lvl=1; prof_sword_lvl=1; prof_gun_lvl=1
             RecalculateStats()
             current_hp = max_hp; current_energy = max_energy
-            active_item = "" 
+            active_item_visual = "" 
+            
+            // Novos personagens ganham itens iniciais
+            GiveStarterItems()
+            
             src << output("Novo char!", "map3d:mostrarNotificacao")
 
         src << browse_rsc(file("definitions.js"), "definitions.js")
@@ -231,6 +286,11 @@ mob
         F["p_gun"] << prof_gun_lvl; F["exp_gun"] << prof_gun_exp
         F["pos_x"] << src.real_x; F["pos_y"] << src.real_y; F["pos_z"] << src.real_z
         F["skin"] << src.skin_color; F["cloth"] << src.cloth_color
+        
+        // SALVAMENTO DE INVENTÁRIO (MODERNO)
+        // O BYOND lida automaticamente com listas de objetos ao salvar.
+        F["inventory"] << src.contents
+        
         src << output("Salvo!", "map3d:mostrarNotificacao")
 
     proc/LoadCharacter(slot)
@@ -260,6 +320,9 @@ mob
         F["pos_z"] >> src.real_z
         F["skin"] >> src.skin_color; F["cloth"] >> src.cloth_color
 
+        // CARREGAMENTO DE INVENTÁRIO
+        if(F["inventory"]) F["inventory"] >> src.contents
+
         if(!src.req_experience || src.req_experience <= 0)
             src.req_experience = 100 * (1.5 ** (src.level - 1)) 
             if(src.req_experience < 100) src.req_experience = 100
@@ -277,7 +340,7 @@ mob
                     var/list/pData = list(
                         "x" = M.real_x, "y" = M.real_y, "z" = M.real_z, "rot" = M.real_rot,
                         "a" = M.is_attacking, "at" = M.attack_type,
-                        "it" = M.active_item,
+                        "it" = M.active_item_visual, // Usa a variável visual agora
                         "rest" = M.is_resting,
                         "ft" = M.is_fainted 
                     )
@@ -285,7 +348,6 @@ mob
                     pData["skin"] = M.skin_color; pData["cloth"] = M.cloth_color
                     players_list[pid] = pData
 
-            // Calcula tempo restante do desmaio em segundos
             var/faint_remaining = 0
             if(src.is_fainted && src.faint_end_time > world.time)
                 faint_remaining = round((src.faint_end_time - world.time) / 10)
@@ -312,7 +374,7 @@ mob
                     "jmp" = calc_jump_power,
                     "rest" = src.is_resting,
                     "ft" = src.is_fainted,
-                    "rem" = faint_remaining // NOVO: Segundos restantes
+                    "rem" = faint_remaining 
                 ),
                 "others" = players_list,
                 "t" = world.time
@@ -356,7 +418,7 @@ mob
         if(action == "force_save" && in_game) SaveCharacter()
         
         if(action == "update_pos" && in_game)
-            if(!is_fainted) // Se estiver desmaiado, não aceita update de posição
+            if(!is_fainted) 
                 real_x = text2num(href_list["x"]); real_y = text2num(href_list["y"]);
                 real_z = text2num(href_list["z"]); real_rot = text2num(href_list["rot"])
                 if(href_list["run"] == "1") is_running = 1
@@ -371,24 +433,39 @@ mob
             
             if(ConsumeEnergy(base_cost))
                 is_attacking = 1
-                attack_type = href_list["type"]
+                attack_type = href_list["type"] // Tipo Visual (fist, sword, gun)
                 
-                if(attack_type == "sword") active_item = "weapon_sword_iron"
-                else if(attack_type == "gun") active_item = "weapon_gun_flintlock"
-                else active_item = "" 
+                // --- LÓGICA DE DANO MODULARIZADA ---
+                var/weapon_bonus = 0
+                var/prof_bonus = 0
+                var/prof_lvl = 1
+                
+                // Verifica o item equipado REALMENTE, não só o visual
+                if(attack_type == "sword" || attack_type == "gun")
+                    // Se o player diz que ataca de espada, vamos ver se ele TEM UMA equipada
+                    // Neste passo simples, buscamos no inventário um item desse tipo
+                    // para simular a troca de "test weapon" por "real item"
+                    if(attack_type == "sword")
+                        var/obj/item/weapon/sword_iron/W = locate() in src
+                        if(W) 
+                            EquipItem(W) // Garante equip
+                            weapon_bonus = W.power
+                    if(attack_type == "gun")
+                        var/obj/item/weapon/gun_flintlock/G = locate() in src
+                        if(G) 
+                            EquipItem(G)
+                            weapon_bonus = G.power
+                else
+                    UnequipItem() // Socos desequipam
 
+                if(attack_type == "fist")  { prof_lvl = prof_punch_lvl; prof_bonus = prof_lvl * 2; }
+                if(attack_type == "kick")  { prof_lvl = prof_kick_lvl; prof_bonus = prof_lvl * 2; }
+                if(attack_type == "sword") { prof_lvl = prof_sword_lvl; prof_bonus = prof_lvl * 2; }
+                if(attack_type == "gun")   { prof_lvl = prof_gun_lvl;  prof_bonus = prof_lvl * 2; }
+                
                 var/target = href_list["target"]
 
                 if(target == "dummy")
-                    var/weapon_bonus = 0
-                    var/prof_bonus = 0
-                    var/prof_lvl = 1
-                    
-                    if(attack_type == "fist")  { prof_lvl = prof_punch_lvl; prof_bonus = prof_lvl * 2; }
-                    if(attack_type == "kick")  { prof_lvl = prof_kick_lvl; prof_bonus = prof_lvl * 2; }
-                    if(attack_type == "sword") { weapon_bonus = 5; prof_lvl = prof_sword_lvl; prof_bonus = prof_lvl * 2; }
-                    if(attack_type == "gun")   { weapon_bonus = 10; prof_lvl = prof_gun_lvl;  prof_bonus = prof_lvl * 2; }
-                    
                     var/damage = round((strength * 0.5) + prof_bonus + weapon_bonus + rand(0, 2))
                     src << output("<span class='log-hit'>HIT! Dano: [damage]</span>", "map3d:addLog")
                     
