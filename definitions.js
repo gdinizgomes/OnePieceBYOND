@@ -1,6 +1,5 @@
 // definitions.js - O Banco de Dados de Objetos do Jogo
 // REGRA DE COLISÃO: Tudo é SÓLIDO (collision=true) por padrão.
-// PHYSICS: { solid: true/false, standable: true/false }
 
 const GameDefinitions = {
     // --- PARTES DO CORPO ---
@@ -21,27 +20,33 @@ const GameDefinitions = {
     "weapon_sword_wood": {
         id: "weapon_sword_wood",
         name: "Espada de Treino",
+        desc: "Uma espada de madeira simples. Não corta, mas dói.",
         type: "equipment",
         tags: ["sword"],
-        visual: { model: "box", color: 0x8B4513, scale: [0.1, 0.8, 0.05] }, // Marrom
+        visual: { model: "box", color: 0x8B4513, scale: [0.1, 0.8, 0.05] }, 
+        icon_color: "#8B4513",
         attachment: { bone: "rightArm", pos: [0, -0.6, 0.15], rot: [Math.PI / 2, 0, 0] },
         data: { power: 5 }
     },
     "weapon_sword_iron": {
         id: "weapon_sword_iron",
         name: "Espada de Ferro",
+        desc: "Lâmina padrão usada por marinheiros e piratas novatos.",
         type: "equipment",
         tags: ["sword", "metal"],
-        visual: { model: "box", color: 0xCCCCCC, scale: [0.1, 0.8, 0.05] }, // Cinza
+        visual: { model: "box", color: 0xCCCCCC, scale: [0.1, 0.8, 0.05] }, 
+        icon_color: "#CCCCCC",
         attachment: { bone: "rightArm", pos: [0, -0.6, 0.15], rot: [Math.PI / 2, 0, 0] },
         data: { power: 10 }
     },
     "weapon_sword_silver": {
         id: "weapon_sword_silver",
         name: "Espada de Prata",
+        desc: "Uma lâmina refinada, leve e letal.",
         type: "equipment",
         tags: ["sword", "precious"],
-        visual: { model: "box", color: 0xFFFFFF, scale: [0.1, 0.8, 0.05] }, // Branco Brilhante
+        visual: { model: "box", color: 0xFFFFFF, scale: [0.1, 0.8, 0.05] }, 
+        icon_color: "#FFFFFF",
         attachment: { bone: "rightArm", pos: [0, -0.6, 0.15], rot: [Math.PI / 2, 0, 0] },
         data: { power: 20 }
     },
@@ -50,27 +55,33 @@ const GameDefinitions = {
     "weapon_gun_wood": {
         id: "weapon_gun_wood",
         name: "Pistola de Brinquedo",
+        desc: "Dispara rolhas. Boa para assustar gaivotas.",
         type: "equipment",
         tags: ["gun"],
-        visual: { model: "box", color: 0x8B4513, scale: [0.1, 0.1, 0.4] }, // Marrom
+        visual: { model: "box", color: 0x8B4513, scale: [0.1, 0.1, 0.4] }, 
+        icon_color: "#D2691E",
         attachment: { bone: "rightArm", pos: [0, -0.6, 0.15], rot: [0, 0, 0] },
         data: { power: 12 }
     },
     "weapon_gun_flintlock": {
         id: "weapon_gun_flintlock",
         name: "Pistola Velha",
+        desc: "Uma arma de pólvora antiga e enferrujada.",
         type: "equipment",
         tags: ["gun", "gunpowder"],
-        visual: { model: "box", color: 0x553311, scale: [0.1, 0.1, 0.4] }, // Escura
+        visual: { model: "box", color: 0x553311, scale: [0.1, 0.1, 0.4] }, 
+        icon_color: "#553311",
         attachment: { bone: "rightArm", pos: [0, -0.6, 0.15], rot: [0, 0, 0] },
         data: { power: 25 }
     },
     "weapon_gun_silver": {
         id: "weapon_gun_silver",
         name: "Pistola de Combate",
+        desc: "Arma moderna com acabamento em prata.",
         type: "equipment",
         tags: ["gun", "modern"],
-        visual: { model: "box", color: 0xAAAAAA, scale: [0.1, 0.1, 0.4] }, // Prata
+        visual: { model: "box", color: 0xAAAAAA, scale: [0.1, 0.1, 0.4] }, 
+        icon_color: "#AAAAAA",
         attachment: { bone: "rightArm", pos: [0, -0.6, 0.15], rot: [0, 0, 0] },
         data: { power: 40 }
     },

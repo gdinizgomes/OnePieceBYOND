@@ -9,7 +9,7 @@ let lastPacketTime = Date.now();
 let blockSync = false;
 
 // Itens no Chão
-const groundItemsMeshes = {}; // Mapa ref_id -> Mesh
+const groundItemsMeshes = {}; 
 
 // Estado do Jogo
 let charState = "DEFAULT"; 
@@ -38,7 +38,6 @@ let cachedExp = -1; let cachedReqExp = -1; let cachedPts = -1;
 let cachedStats = { str: -1, vit: -1, agi: -1, wis: -1 };
 let cachedProfs = { pp: -1, pk: -1, ps: -1, pg: -1, bars: "" };
 
-// Sync
 const POSITION_SYNC_INTERVAL = 100;
 const POSITION_EPSILON = 0.01;
 let lastSentTime = 0;
@@ -75,35 +74,63 @@ function toggleInventory() {
     }
 }
 
+// Renderiza o Grid de 12 Slots
 function loadInventory(json) {
-    const list = document.getElementById('inv-list');
-    list.innerHTML = "";
+    const grid = document.getElementById('inv-grid');
+    grid.innerHTML = "";
     let data = [];
     try { data = JSON.parse(json); } catch(e) { return; }
 
-    if(data.length === 0) {
-        list.innerHTML = "<div style='padding:10px; color:#777'>Mochila vazia.</div>";
-        return;
-    }
-
-    data.forEach(item => {
-        const div = document.createElement('div');
-        div.className = 'inv-item';
-        const btnText = item.equipped ? "DESEQUIPAR" : "EQUIPAR";
-        const btnClass = item.equipped ? "inv-btn equipped" : "inv-btn";
+    // Cria 12 slots fixos
+    for(let i = 0; i < 12; i++) {
+        const slotDiv = document.createElement('div');
+        slotDiv.className = 'inv-slot';
         
-        div.innerHTML = `
-            <div>
-                <div style="font-weight:bold; color:${item.equipped ? '#f1c40f':'white'}">${item.name}</div>
-                <div style="font-size:10px; color:#aaa">Dano: ${item.power}</div>
-            </div>
-            <div>
-                <button class="${btnClass}" onclick="equipItem('${item.ref}')">${btnText}</button>
-                <button class="inv-btn drop" onclick="dropItem('${item.ref}')">LARGAR</button>
-            </div>
-        `;
-        list.appendChild(div);
-    });
+        // Se existe item neste índice (lógica simples de preenchimento sequencial)
+        if (i < data.length) {
+            const item = data[i];
+            const def = GameDefinitions[item.id];
+            
+            // Estilo se equipado
+            if(item.equipped) slotDiv.classList.add('equipped');
+            
+            // Simula ícone com cor
+            const iconColor = def && def.icon_color ? def.icon_color : '#555';
+            slotDiv.innerHTML = `<div class="inv-icon" style="background:${iconColor}"></div>`;
+            
+            // Quantidade (Stack)
+            if(item.amount > 1) {
+                slotDiv.innerHTML += `<div class="inv-qty">x${item.amount}</div>`;
+            }
+
+            // Tooltip events
+            slotDiv.onmousemove = function(e) {
+                const tip = document.getElementById('tooltip');
+                tip.style.display = 'block';
+                tip.style.left = (e.pageX + 10) + 'px';
+                tip.style.top = (e.pageY + 10) + 'px';
+                tip.innerHTML = `<strong>${item.name}</strong>${item.desc}<br><span style='color:#aaa'>Dano: ${item.power}</span>`;
+            };
+            slotDiv.onmouseout = function() { document.getElementById('tooltip').style.display = 'none'; };
+
+            // Ações ao clicar (menu contextual simplificado)
+            const actionsDiv = document.createElement('div');
+            actionsDiv.className = 'inv-actions';
+            
+            const btnText = item.equipped ? "Desequipar" : "Equipar";
+            
+            actionsDiv.innerHTML = `
+                <button class="action-btn" onclick="equipItem('${item.ref}')">${btnText}</button>
+                <button class="action-btn" onclick="dropItem('${item.ref}')">Largar</button>
+            `;
+            slotDiv.appendChild(actionsDiv);
+        } else {
+            // Slot vazio
+            slotDiv.style.opacity = "0.3";
+        }
+        
+        grid.appendChild(slotDiv);
+    }
 }
 
 function equipItem(ref) {
@@ -115,7 +142,7 @@ function equipItem(ref) {
 
 function dropItem(ref) {
     if(blockSync) return;
-    if(confirm("Tem certeza que quer jogar este item no chão?")) {
+    if(confirm("Largar item?")) {
         blockSync = true;
         window.location.href = `byond://?src=${BYOND_REF}&action=drop_item&ref=${ref}`;
         setTimeout(() => { blockSync = false; }, 200);
@@ -136,7 +163,6 @@ window.addEventListener('keydown', function(e) {
     if(k === 'c') toggleStats();
     if(k === 'i') toggleInventory(); 
     if(k === 'e') {
-        // PEGAR ITEM
         if(typeof BYOND_REF !== 'undefined' && !blockSync) {
             blockSync = true;
             window.location.href = `byond://?src=${BYOND_REF}&action=pick_up`;
@@ -247,7 +273,7 @@ function performAttack(type) {
                 setTimeout(function(){mat.color.setHex(0xFF0000)}, 150);
             }
         } else {
-            addLog("Errou...", "log-miss");
+            // Miss visual local (o servidor confirma o hit real)
         }
         
         if(typeof BYOND_REF !== 'undefined') {
@@ -289,34 +315,27 @@ function receberDadosMultiplayer(json) {
     }
 
     if(isCharacterReady) {
-        // --- PROCESSAR ITENS NO CHÃO (GROUND ITEMS) ---
+        // --- PROCESSAR ITENS NO CHÃO ---
         const serverGroundItems = packet.ground || [];
         const seenItems = new Set();
         let closestDist = 999;
 
         serverGroundItems.forEach(itemData => {
             seenItems.add(itemData.ref);
-            
             if(!groundItemsMeshes[itemData.ref]) {
-                // Cria o mesh se não existir
                 const mesh = CharFactory.createFromDef(itemData.id);
-                mesh.position.set(itemData.x, 0.5, itemData.z); // Altura fixa para flutuar
+                mesh.position.set(itemData.x, 0.5, itemData.z); 
                 Engine.scene.add(mesh);
                 groundItemsMeshes[itemData.ref] = mesh;
             } else {
-                // Atualiza posição se mudou (por exemplo, ao dropar)
                 const mesh = groundItemsMeshes[itemData.ref];
-                // Interpolação suave para drops
                 mesh.position.x = lerp(mesh.position.x, itemData.x, 0.2);
                 mesh.position.z = lerp(mesh.position.z, itemData.z, 0.2);
             }
-
-            // Checa distância para UI Hint
             const d = playerGroup.position.distanceTo(groundItemsMeshes[itemData.ref].position);
             if(d < closestDist) closestDist = d;
         });
 
-        // Remove itens que sumiram (pegos)
         for(let ref in groundItemsMeshes) {
             if(!seenItems.has(ref)) {
                 Engine.scene.remove(groundItemsMeshes[ref]);
@@ -324,21 +343,23 @@ function receberDadosMultiplayer(json) {
             }
         }
 
-        // Mostra dica [E]
         const hint = document.getElementById('interaction-hint');
         if(closestDist < 2.0) hint.style.display = 'block';
         else hint.style.display = 'none';
 
-        // --- FIM GROUND ITEMS ---
-
+        // --- ATUALIZAÇÃO DO JOGADOR LOCAL ---
         const myData = packet.others[myID];
         isResting = me.rest;
         isFainted = me.ft; 
         
+        // BUG FIX VISUAL: Se 'it' for vazio, removemos o item.
         if(myData && myData.it !== undefined) {
             if(playerGroup.userData.lastItem !== myData.it) {
-                if(myData.it === "") CharFactory.equipItem(playerGroup, "none"); 
-                else CharFactory.equipItem(playerGroup, myData.it);
+                if(myData.it === "" || myData.it === null) {
+                    CharFactory.equipItem(playerGroup, "none"); 
+                } else {
+                    CharFactory.equipItem(playerGroup, myData.it);
+                }
                 playerGroup.userData.lastItem = myData.it;
             }
         }
@@ -435,16 +456,12 @@ function receberDadosMultiplayer(json) {
                 document.getElementById('labels-container').appendChild(label);
                 
                 otherPlayers[id] = {
-                    mesh: newChar,
-                    label: label,
+                    mesh: newChar, label: label,
                     startX: pData.x, startY: pData.y, startZ: pData.z, startRot: pData.rot,
                     targetX: pData.x, targetY: pData.y, targetZ: pData.z, targetRot: pData.rot,
-                    lastPacketTime: now,
-                    lerpDuration: 180,
+                    lastPacketTime: now, lerpDuration: 180,
                     attacking: pData.a, attackType: pData.at, 
-                    resting: pData.rest,
-                    fainted: pData.ft,
-                    lastItem: "" 
+                    resting: pData.rest, fainted: pData.ft, lastItem: "" 
                 };
             }
         } else {
@@ -465,7 +482,7 @@ function receberDadosMultiplayer(json) {
             if(pData.name && other.label.innerText !== pData.name) other.label.innerText = pData.name; 
 
             if(pData.it !== undefined && pData.it !== other.lastItem) {
-                if(pData.it === "") CharFactory.equipItem(other.mesh, "none");
+                if(pData.it === "" || pData.it === null) CharFactory.equipItem(other.mesh, "none");
                 else CharFactory.equipItem(other.mesh, pData.it);
                 other.lastItem = pData.it;
             }
@@ -511,15 +528,14 @@ function animate() {
     animTime += 0.1;
     const now = performance.now();
 
-    // ANIMAÇÃO DE ITENS NO CHÃO (Girar)
+    // Anima itens no chão
     for(let ref in groundItemsMeshes) {
         const item = groundItemsMeshes[ref];
         item.rotation.y += 0.02;
-        item.position.y = 0.5 + Math.sin(animTime * 2) * 0.1; // Flutuar
+        item.position.y = 0.5 + Math.sin(animTime * 2) * 0.1; 
     }
 
     if (isCharacterReady) {
-        // ... Logica de combate reset ...
         if(!isAttacking && charState !== "DEFAULT") {
             if(Date.now() - lastCombatActionTime > 3000) charState = "DEFAULT";
         }
