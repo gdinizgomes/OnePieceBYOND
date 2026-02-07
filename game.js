@@ -143,6 +143,9 @@ function updateStatusMenu(json) {
     document.getElementById('stat-name').innerText = data.nick;
     document.getElementById('stat-class').innerText = data.class;
     document.getElementById('stat-title').innerText = data.title;
+
+    // --- CORREÇÃO AQUI: Atualiza o nível na tela ---
+    if(data.lvl) document.getElementById('stat-lvl').innerText = data.lvl;
     
     function updateSlot(slotName, itemData) {
         const div = document.getElementById('slot-' + slotName);
