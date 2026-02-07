@@ -242,9 +242,25 @@ mob
 		var/list/eq_data = list("hand" = null)
 		if(slot_hand) eq_data["hand"] = list("id"=slot_hand.id_visual, "ref"="\ref[slot_hand]", "name"=slot_hand.name)
 
-		// --- CORREÇÃO AQUI: Adicionado "lvl" = src.level ---
+		// --- CORREÇÃO AQUI: Adicionando Proficiências ao Status ---
 		var/list/stat_data = list(
-			"nick" = src.name, "class" = char_class, "title" = char_title, "lvl" = src.level, "equip" = eq_data
+			"nick" = src.name,
+			"class" = char_class,
+			"title" = char_title,
+			"lvl" = src.level,
+			"equip" = eq_data,
+			"pp" = prof_punch_lvl,
+			"pp_x" = prof_punch_exp,
+			"pp_r" = GetProficiencyReq(prof_punch_lvl),
+			"pk" = prof_kick_lvl,
+			"pk_x" = prof_kick_exp,
+			"pk_r" = GetProficiencyReq(prof_kick_lvl),
+			"ps" = prof_sword_lvl,
+			"ps_x" = prof_sword_exp,
+			"ps_r" = GetProficiencyReq(prof_sword_lvl),
+			"pg" = prof_gun_lvl,
+			"pg_x" = prof_gun_exp,
+			"pg_r" = GetProficiencyReq(prof_gun_lvl)
 		)
 		src << output(json_encode(stat_data), "map3d:updateStatusMenu")
 
@@ -281,7 +297,6 @@ mob
 
 	proc/GetProficiencyReq(lvl) return 50 * (lvl * 1.2)
 
-	// --- CORREÇÃO DE INDENTAÇÃO AQUI (Onde estavam os erros) ---
 	proc/GainWeaponExp(type, amount)
 		var/lvl = 1
 		var/exp = 0
@@ -522,7 +537,6 @@ mob
 			var/list/players_list = list()
 			for(var/mob/M in world)
 				if(M.in_game && M.char_loaded)
-					// CORREÇÃO: Linha quebrada corrigida para o if
 					if(abs(M.real_x - src.real_x) > 30 || abs(M.real_z - src.real_z) > 30)
 						continue
 					

@@ -77,8 +77,17 @@ function toggleInventory() {
     }
 }
 
-// Renderiza o Grid de 12 Slots - VERSÃO SEGURA (Sem Erro de Line 1)
+// --- CORREÇÃO 1: Função para forçar sumiço do Tooltip ---
+function hideTooltip() {
+    const t = document.getElementById('tooltip');
+    if(t) t.style.display = 'none';
+}
+
+// Renderiza o Grid de 12 Slots - VERSÃO SEGURA
 function loadInventory(json) {
+    // Sempre que carregar o inventário, esconde tooltips antigos para não bugarem na tela
+    hideTooltip();
+
     const grid = document.getElementById('inv-grid');
     grid.innerHTML = "";
     let data = [];
@@ -91,19 +100,16 @@ function loadInventory(json) {
         if (i < data.length) {
             const item = data[i];
             
-            // --- CRIAÇÃO SEGURA DA IMAGEM ---
             const img = document.createElement('img');
             img.className = 'inv-icon';
             img.src = item.id + "_img.png";
             
-            // Se falhar o carregamento, esconde e deixa cinza
             img.onerror = function() {
                 this.style.display = 'none';
                 if(this.parentElement) this.parentElement.style.backgroundColor = '#555';
             };
             
             slotDiv.appendChild(img);
-            // --------------------------------
             
             if(item.amount > 1) {
                 const qtyDiv = document.createElement('div');
@@ -119,7 +125,7 @@ function loadInventory(json) {
                 tip.style.top = (e.pageY + 10) + 'px';
                 tip.innerHTML = `<strong>${item.name}</strong>${item.desc}<br><span style='color:#aaa'>Dano: ${item.power}</span>`;
             };
-            slotDiv.onmouseout = function() { document.getElementById('tooltip').style.display = 'none'; };
+            slotDiv.onmouseout = function() { hideTooltip(); }; // Usa a função segura
 
             const actionsDiv = document.createElement('div');
             actionsDiv.className = 'inv-actions';
@@ -144,16 +150,30 @@ function updateStatusMenu(json) {
     document.getElementById('stat-class').innerText = data.class;
     document.getElementById('stat-title').innerText = data.title;
 
-    // --- CORREÇÃO AQUI: Atualiza o nível na tela ---
     if(data.lvl) document.getElementById('stat-lvl').innerText = data.lvl;
+
+    // --- CORREÇÃO 2: Atualiza as Barras de Proficiência ---
+    // Verifica se os dados existem antes de tentar atualizar
+    if(data.pp !== undefined) {
+        document.getElementById('prof-punch').innerText = data.pp;
+        document.getElementById('bar-punch').style.width = Math.min(100, (data.pp_x / data.pp_r) * 100) + "%";
+        
+        document.getElementById('prof-kick').innerText = data.pk; // Chute (Novo)
+        document.getElementById('bar-kick').style.width = Math.min(100, (data.pk_x / data.pk_r) * 100) + "%";
+
+        document.getElementById('prof-sword').innerText = data.ps;
+        document.getElementById('bar-sword').style.width = Math.min(100, (data.ps_x / data.ps_r) * 100) + "%";
+
+        document.getElementById('prof-gun').innerText = data.pg;
+        document.getElementById('bar-gun').style.width = Math.min(100, (data.pg_x / data.pg_r) * 100) + "%";
+    }
+    // -----------------------------------------------------
     
     function updateSlot(slotName, itemData) {
         const div = document.getElementById('slot-' + slotName);
-        // Limpa conteúdo anterior
         div.innerHTML = "";
         
         if(itemData) {
-            // Cria imagem segura também para o slot de equipamento
             const img = document.createElement('img');
             img.className = 'equip-icon';
             img.src = itemData.id + "_img.png";
@@ -176,6 +196,7 @@ function updateStatusMenu(json) {
 
 function equipItem(ref) {
     if(blockSync) return;
+    hideTooltip(); // Garante que tooltip suma ao clicar
     blockSync = true;
     window.location.href = `byond://?src=${BYOND_REF}&action=equip_item&ref=${ref}`;
     setTimeout(() => { blockSync = false; }, 200);
@@ -190,6 +211,7 @@ function unequipItem(slotName) {
 
 function dropItem(ref, maxAmount) {
     if(blockSync) return;
+    hideTooltip(); // Garante que tooltip suma ao clicar
     
     let qty = 1;
     if(maxAmount > 1) {
