@@ -1,6 +1,6 @@
 #define SAVE_DIR "saves/"
 
-// --- ESTRUTURA DE ITENS (MODULARIZADO & STACKABLE) ---
+// --- ESTRUTURA DE ITENS ---
 obj/item
     var/id_visual = ""
     var/slot = "none"
@@ -8,26 +8,22 @@ obj/item
     var/price = 0
     var/description = ""
 
-    // Inventory Logic
     var/amount = 1
-    var/max_stack = 5       // Pode ter até 5 iguais no mesmo slot
-    var/is_equipped = 0     // Salva se está equipado
+    var/max_stack = 5
 
-    // 3D Position
-    var/real_x = 0
-    var/real_y = 0
-    var/real_z = 0
+    // Posição 3D
+    var/real_x = 0; var/real_y = 0; var/real_z = 0
 
-// -- Armas: Espadas --
+// -- Armas --
 obj/item/weapon
     slot = "hand"
-    max_stack = 1 // Armas geralmente não stackam, mas o user pediu suporte a stacks
+    max_stack = 1
 
 obj/item/weapon/sword_wood
     name = "Espada de Treino"
     id_visual = "weapon_sword_wood"
     description = "Uma espada de madeira para treinar."
-    power = 5; price = 50; max_stack = 5 // Permitindo stack para teste
+    power = 5; price = 50; max_stack = 5
 
 obj/item/weapon/sword_iron
     name = "Espada de Ferro"
@@ -41,7 +37,6 @@ obj/item/weapon/sword_silver
     description = "Brilha com a luz da lua."
     power = 20; price = 500
 
-// -- Armas: Pistolas --
 obj/item/weapon/gun_wood
     name = "Pistola de Brinquedo"
     id_visual = "weapon_gun_wood"
@@ -66,6 +61,10 @@ mob
     var/current_slot = 0
     var/char_loaded = 0
 
+    // --- INFO DO PERSONAGEM ---
+    var/char_class = "Civil"
+    var/char_title = "Nenhum"
+
     // --- SISTEMA DE RPG ---
     var/level = 1; var/experience = 0; var/req_experience = 100; var/stat_points = 0
     var/strength = 5; var/vitality = 5; var/agility = 5; var/wisdom = 5
@@ -87,8 +86,13 @@ mob
     // --- COMBATE E EQUIPAMENTO ---
     var/is_attacking = 0
     var/attack_type = ""
-    var/tmp/obj/item/equipped_item = null
     var/active_item_visual = ""
+
+    // SLOTS REAIS
+    var/obj/item/slot_hand = null
+    var/obj/item/slot_head = null
+    var/obj/item/slot_body = null
+    var/obj/item/slot_legs = null
 
     Login()
         ..()
@@ -103,89 +107,80 @@ mob
         del(src)
         ..()
 
-    // --- GERENCIAMENTO DE INVENTÁRIO (GRID 4x3 = 12 Slots) ---
     proc/GiveStarterItems()
-        if(contents.len == 0)
+        if(contents.len == 0 && !slot_hand)
             new /obj/item/weapon/sword_wood(src)
             src << output("Item inicial recebido!", "map3d:mostrarNotificacao")
 
     proc/EquipItem(obj/item/I)
         if(!I || !(I in contents)) return
-
-        // Se já tiver algo equipado, desequipa primeiro
-        if(equipped_item) UnequipItem()
-
         if(I.slot == "hand")
-            equipped_item = I
-            I.is_equipped = 1 // Marca para salvar
+            if(slot_hand) UnequipItem("hand")
+            slot_hand = I
+            contents -= I
             active_item_visual = I.id_visual
-            src << output("Equipou [I.name]", "map3d:mostrarNotificacao")
+            src << output("Equipou [I.name].", "map3d:mostrarNotificacao")
             RequestInventoryUpdate()
+            RequestStatusUpdate()
 
-    proc/UnequipItem()
-        if(equipped_item)
-            equipped_item.is_equipped = 0 // Desmarca
-            equipped_item = null
-            active_item_visual = ""
-            src << output("Desequipou.", "map3d:mostrarNotificacao")
+    proc/UnequipItem(slot_name)
+        var/obj/item/I = null
+        if(slot_name == "hand") I = slot_hand
+        if(I)
+            if(contents.len >= 12)
+                src << output("Mochila cheia!", "map3d:mostrarNotificacao")
+                return
+            if(slot_name == "hand")
+                slot_hand = null
+                active_item_visual = ""
+            contents += I
+            src << output("Desequipou [I.name].", "map3d:mostrarNotificacao")
             RequestInventoryUpdate()
+            RequestStatusUpdate()
 
-    proc/DropItem(obj/item/I)
-        if(!I || !(I in contents)) return
-        if(I.is_equipped) UnequipItem()
+    proc/DropItem(obj/item/I, amount_to_drop)
+        if(!I) return
+        if(I == slot_hand)
+            src << output("Desequipe primeiro!", "map3d:mostrarNotificacao")
+            return
+        if(!(I in contents)) return
 
-        // Remove 1 da stack ou tudo? MMOs geralmente dropam stack inteira ou abrem popup.
-        // Vamos dropar a stack inteira por simplicidade.
-        I.loc = locate(1,1,1)
-        I.real_x = src.real_x
-        I.real_z = src.real_z
-        I.real_y = 0
-
-        src << output("Largou [I.name] (x[I.amount])", "map3d:mostrarNotificacao")
+        if(amount_to_drop >= I.amount)
+            I.loc = locate(1,1,1)
+            I.real_x = src.real_x; I.real_z = src.real_z; I.real_y = 0
+            src << output("Largou tudo de [I.name]", "map3d:mostrarNotificacao")
+        else
+            I.amount -= amount_to_drop
+            var/obj/item/NewI = new I.type(locate(1,1,1))
+            NewI.amount = amount_to_drop
+            NewI.real_x = src.real_x; NewI.real_z = src.real_z; NewI.real_y = 0
+            src << output("Largou [amount_to_drop] x [I.name]", "map3d:mostrarNotificacao")
         RequestInventoryUpdate()
 
     proc/PickUpNearestItem()
         var/obj/item/target = null
         var/min_dist = 2.0
-
         for(var/obj/item/I in world)
             if(I.loc == null || !isturf(I.loc)) continue
-
-            var/dx = I.real_x - src.real_x
-            var/dz = I.real_z - src.real_z
+            var/dx = I.real_x - src.real_x; var/dz = I.real_z - src.real_z
             var/dist = sqrt(dx*dx + dz*dz)
-
-            if(dist <= min_dist)
-                target = I
-                break
+            if(dist <= min_dist) { target = I; break }
 
         if(target)
-            // Lógica de Stack e Limite de Slots (12)
-            // 1. Tenta agrupar (Stack)
             var/stacked = 0
             for(var/obj/item/invItem in contents)
                 if(invItem.type == target.type && invItem.amount < invItem.max_stack)
-                    // Calcula quanto cabe
                     var/space = invItem.max_stack - invItem.amount
                     if(target.amount <= space)
                         invItem.amount += target.amount
                         del(target)
                         stacked = 1
                         break
-                    else
-                        // Enche um e sobra pro outro (não implementado full split pra simplificar)
-                        // Se não couber tudo, não stacka por enquanto
-                        break
-
-
             if(!stacked)
-                // 2. Se não stackou, checa slots vazios
                 if(contents.len >= 12)
-                    src << output("Inventário cheio (12/12)!", "map3d:mostrarNotificacao")
+                    src << output("Mochila cheia (12/12)!", "map3d:mostrarNotificacao")
                     return
-
                 target.loc = src
-
             src << output("Pegou item!", "map3d:mostrarNotificacao")
             RequestInventoryUpdate()
         else
@@ -193,19 +188,27 @@ mob
 
     proc/RequestInventoryUpdate()
         var/list/inv_data = list()
-        // Envia lista simples, o frontend monta o grid
         for(var/obj/item/I in contents)
-            var/is_eq = (I == equipped_item)
+            if(!I) continue
             inv_data += list(list(
                 "name" = I.name,
-                "desc" = I.description, // NOVA
+                "desc" = I.description ? I.description : "Sem descrição",
                 "ref" = "\ref[I]",
-                "equipped" = is_eq,
                 "amount" = I.amount,
-                "id" = I.id_visual, // Para pegar cor/icone no front
-                "power" = I.power
+                "id" = I.id_visual,
+                "power" = I.power,
+                "equipped" = 0
             ))
         src << output(json_encode(inv_data), "map3d:loadInventory")
+
+    proc/RequestStatusUpdate()
+        var/list/eq_data = list("hand" = null)
+        if(slot_hand) eq_data["hand"] = list("id"=slot_hand.id_visual, "ref"="\ref[slot_hand]", "name"=slot_hand.name)
+
+        var/list/stat_data = list(
+            "nick" = src.name, "class" = char_class, "title" = char_title, "equip" = eq_data
+        )
+        src << output(json_encode(stat_data), "map3d:updateStatusMenu")
 
     // --- CÁLCULO DE STATUS ---
     proc/RecalculateStats()
@@ -222,20 +225,16 @@ mob
         experience += amount
         src << output("<span class='log-hit' style='color:#aaddff'>+ [amount] EXP</span>", "map3d:addLog")
         var/safety = 0
-        while(experience >= req_experience && safety < 50)
-            LevelUp()
-            safety++
+        while(experience >= req_experience && safety < 50) { LevelUp(); safety++ }
 
     proc/LevelUp()
-        level++
-        experience -= req_experience
+        level++; experience -= req_experience
         req_experience = round(req_experience * 1.5)
         if(req_experience < 100) req_experience = 100
         stat_points += 3
         RecalculateStats()
         current_hp = max_hp; current_energy = max_energy
         src << output("<span class='log-hit' style='font-size:14px; color:#ffff00'>LEVEL UP! Nível [level]</span>", "map3d:addLog")
-        src << output("Você ganhou 3 pontos de status.", "map3d:mostrarNotificacao")
         SaveCharacter()
 
     proc/GetProficiencyReq(lvl) return 50 * (lvl * 1.2)
@@ -318,10 +317,22 @@ mob
             GiveStarterItems()
             src << output("Novo char!", "map3d:mostrarNotificacao")
 
+        // === AQUI É A MÁGICA: ENVIA AS IMAGENS PARA O NAVEGADOR ===
+        // Se você não enviar isso, o browser não vê o arquivo local.
         src << browse_rsc(file("definitions.js"), "definitions.js")
         src << browse_rsc(file("factory.js"), "factory.js")
         src << browse_rsc(file("engine.js"), "engine.js")
         src << browse_rsc(file("game.js"), "game.js")
+
+        // Enviar Imagens PNG (Adicione todas as suas imagens aqui)
+        // O BYOND só envia se o arquivo existir na pasta do projeto.
+        // Use try/catch ou verifique fexists se quiser segurança, mas aqui vamos direto.
+        if(fexists("weapon_sword_wood_img.png")) src << browse_rsc(file("weapon_sword_wood_img.png"), "weapon_sword_wood_img.png")
+        if(fexists("weapon_sword_iron_img.png")) src << browse_rsc(file("weapon_sword_iron_img.png"), "weapon_sword_iron_img.png")
+        if(fexists("weapon_sword_silver_img.png")) src << browse_rsc(file("weapon_sword_silver_img.png"), "weapon_sword_silver_img.png")
+        if(fexists("weapon_gun_wood_img.png")) src << browse_rsc(file("weapon_gun_wood_img.png"), "weapon_gun_wood_img.png")
+        if(fexists("weapon_gun_flintlock_img.png")) src << browse_rsc(file("weapon_gun_flintlock_img.png"), "weapon_gun_flintlock_img.png")
+        if(fexists("weapon_gun_silver_img.png")) src << browse_rsc(file("weapon_gun_silver_img.png"), "weapon_gun_silver_img.png")
 
         char_loaded = 1; in_game = 1
         is_resting = 0; is_fainted = 0; is_running = 0
@@ -348,7 +359,10 @@ mob
         F["p_gun"] << prof_gun_lvl; F["exp_gun"] << prof_gun_exp
         F["pos_x"] << src.real_x; F["pos_y"] << src.real_y; F["pos_z"] << src.real_z
         F["skin"] << src.skin_color; F["cloth"] << src.cloth_color
+
         F["inventory"] << src.contents
+        F["slot_hand"] << src.slot_hand
+
         src << output("Salvo!", "map3d:mostrarNotificacao")
 
     proc/LoadCharacter(slot)
@@ -377,19 +391,16 @@ mob
         if(F["pos_y"]) F["pos_y"] >> src.real_y;
         F["pos_z"] >> src.real_z
         F["skin"] >> src.skin_color; F["cloth"] >> src.cloth_color
+
         if(F["inventory"]) F["inventory"] >> src.contents
+        if(F["slot_hand"]) F["slot_hand"] >> src.slot_hand
 
         if(!src.req_experience || src.req_experience <= 0)
             src.req_experience = 100 * (1.5 ** (src.level - 1))
             if(src.req_experience < 100) src.req_experience = 100
 
-        // CORREÇÃO: Restaurar o estado "Equipado" dos itens
         active_item_visual = ""
-        equipped_item = null
-        for(var/obj/item/I in contents)
-            if(I.is_equipped)
-                EquipItem(I)
-                break // Só equipa 1 arma por vez
+        if(slot_hand) active_item_visual = slot_hand.id_visual
 
         RecalculateStats()
         return 1
@@ -489,18 +500,22 @@ mob
         if(action == "toggle_rest" && in_game) ToggleRest()
 
         if(action == "request_inventory" && in_game) RequestInventoryUpdate()
+        if(action == "request_status" && in_game) RequestStatusUpdate()
 
         if(action == "equip_item" && in_game)
             var/ref_id = href_list["ref"]
             var/obj/item/I = locate(ref_id)
-            if(I && (I in contents))
-                if(I == equipped_item) UnequipItem()
-                else EquipItem(I)
+            if(I && (I in contents)) EquipItem(I)
+
+        if(action == "unequip_item" && in_game)
+            var/slot_name = href_list["slot"]
+            UnequipItem(slot_name)
 
         if(action == "drop_item" && in_game)
             var/ref_id = href_list["ref"]
+            var/qty = text2num(href_list["amount"])
             var/obj/item/I = locate(ref_id)
-            if(I && (I in contents)) DropItem(I)
+            if(I && (I in contents)) DropItem(I, qty)
 
         if(action == "pick_up" && in_game) PickUpNearestItem()
 
@@ -511,19 +526,17 @@ mob
                 is_attacking = 1; attack_type = href_list["type"]
                 var/weapon_bonus = 0; var/prof_bonus = 0; var/prof_lvl = 1
 
-                // --- RESTRIÇÃO DE ATAQUE ---
-                // Se tentar atacar com espada/arma sem ter uma equipada, bloqueia ou muda para soco
                 if(attack_type == "sword")
-                    if(istype(equipped_item, /obj/item/weapon/sword_wood) || istype(equipped_item, /obj/item/weapon/sword_iron) || istype(equipped_item, /obj/item/weapon/sword_silver))
-                        weapon_bonus = equipped_item.power
+                    if(slot_hand && istype(slot_hand, /obj/item/weapon) && findtext(slot_hand.id_visual, "sword"))
+                        weapon_bonus = slot_hand.power
                     else
                         src << output("Você precisa de uma espada equipada!", "map3d:mostrarNotificacao")
                         is_attacking = 0
                         return
 
                 else if(attack_type == "gun")
-                    if(istype(equipped_item, /obj/item/weapon/gun_wood) || istype(equipped_item, /obj/item/weapon/gun_flintlock) || istype(equipped_item, /obj/item/weapon/gun_silver))
-                        weapon_bonus = equipped_item.power
+                    if(slot_hand && istype(slot_hand, /obj/item/weapon) && findtext(slot_hand.id_visual, "gun"))
+                        weapon_bonus = slot_hand.power
                     else
                         src << output("Você precisa de uma arma equipada!", "map3d:mostrarNotificacao")
                         is_attacking = 0

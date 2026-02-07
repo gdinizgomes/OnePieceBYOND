@@ -58,8 +58,11 @@ function round2(num) { return Math.round((num + Number.EPSILON) * 100) / 100; }
 function toggleStats() {
     isStatWindowOpen = !isStatWindowOpen;
     document.getElementById('stat-window').style.display = isStatWindowOpen ? 'block' : 'none';
-    if(isStatWindowOpen) isInvWindowOpen = false; 
-    document.getElementById('inventory-window').style.display = 'none';
+    if(isStatWindowOpen) {
+        isInvWindowOpen = false; 
+        document.getElementById('inventory-window').style.display = 'none';
+        window.location.href = `byond://?src=${BYOND_REF}&action=request_status`;
+    }
 }
 
 function toggleInventory() {
@@ -74,36 +77,41 @@ function toggleInventory() {
     }
 }
 
-// Renderiza o Grid de 12 Slots
+// Renderiza o Grid de 12 Slots - VERSÃO SEGURA (Sem Erro de Line 1)
 function loadInventory(json) {
     const grid = document.getElementById('inv-grid');
     grid.innerHTML = "";
     let data = [];
-    try { data = JSON.parse(json); } catch(e) { return; }
+    try { data = JSON.parse(json); } catch(e) { console.log(e); return; }
 
-    // Cria 12 slots fixos
     for(let i = 0; i < 12; i++) {
         const slotDiv = document.createElement('div');
         slotDiv.className = 'inv-slot';
         
-        // Se existe item neste índice (lógica simples de preenchimento sequencial)
         if (i < data.length) {
             const item = data[i];
-            const def = GameDefinitions[item.id];
             
-            // Estilo se equipado
-            if(item.equipped) slotDiv.classList.add('equipped');
+            // --- CRIAÇÃO SEGURA DA IMAGEM ---
+            const img = document.createElement('img');
+            img.className = 'inv-icon';
+            img.src = item.id + "_img.png";
             
-            // Simula ícone com cor
-            const iconColor = def && def.icon_color ? def.icon_color : '#555';
-            slotDiv.innerHTML = `<div class="inv-icon" style="background:${iconColor}"></div>`;
+            // Se falhar o carregamento, esconde e deixa cinza
+            img.onerror = function() {
+                this.style.display = 'none';
+                if(this.parentElement) this.parentElement.style.backgroundColor = '#555';
+            };
             
-            // Quantidade (Stack)
+            slotDiv.appendChild(img);
+            // --------------------------------
+            
             if(item.amount > 1) {
-                slotDiv.innerHTML += `<div class="inv-qty">x${item.amount}</div>`;
+                const qtyDiv = document.createElement('div');
+                qtyDiv.className = 'inv-qty';
+                qtyDiv.innerText = "x" + item.amount;
+                slotDiv.appendChild(qtyDiv);
             }
 
-            // Tooltip events
             slotDiv.onmousemove = function(e) {
                 const tip = document.getElementById('tooltip');
                 tip.style.display = 'block';
@@ -113,24 +121,54 @@ function loadInventory(json) {
             };
             slotDiv.onmouseout = function() { document.getElementById('tooltip').style.display = 'none'; };
 
-            // Ações ao clicar (menu contextual simplificado)
             const actionsDiv = document.createElement('div');
             actionsDiv.className = 'inv-actions';
-            
-            const btnText = item.equipped ? "Desequipar" : "Equipar";
-            
             actionsDiv.innerHTML = `
-                <button class="action-btn" onclick="equipItem('${item.ref}')">${btnText}</button>
-                <button class="action-btn" onclick="dropItem('${item.ref}')">Largar</button>
+                <button class="action-btn" onclick="equipItem('${item.ref}')">Equipar</button>
+                <button class="action-btn" onclick="dropItem('${item.ref}', ${item.amount})">Largar</button>
             `;
             slotDiv.appendChild(actionsDiv);
         } else {
-            // Slot vazio
             slotDiv.style.opacity = "0.3";
         }
-        
         grid.appendChild(slotDiv);
     }
+}
+
+// Atualiza o Menu C
+function updateStatusMenu(json) {
+    let data;
+    try { data = JSON.parse(json); } catch(e) { return; }
+    
+    document.getElementById('stat-name').innerText = data.nick;
+    document.getElementById('stat-class').innerText = data.class;
+    document.getElementById('stat-title').innerText = data.title;
+    
+    function updateSlot(slotName, itemData) {
+        const div = document.getElementById('slot-' + slotName);
+        // Limpa conteúdo anterior
+        div.innerHTML = "";
+        
+        if(itemData) {
+            // Cria imagem segura também para o slot de equipamento
+            const img = document.createElement('img');
+            img.className = 'equip-icon';
+            img.src = itemData.id + "_img.png";
+            img.onerror = function() { this.style.backgroundColor = '#777'; };
+            
+            div.appendChild(img);
+            div.onclick = function() { unequipItem(slotName); };
+            div.title = "Desequipar " + itemData.name;
+        } else {
+            const label = document.createElement('label');
+            label.innerText = slotName.charAt(0).toUpperCase() + slotName.slice(1);
+            div.appendChild(label);
+            div.onclick = null;
+            div.title = "Vazio";
+        }
+    }
+    
+    updateSlot('hand', data.equip.hand);
 }
 
 function equipItem(ref) {
@@ -140,13 +178,28 @@ function equipItem(ref) {
     setTimeout(() => { blockSync = false; }, 200);
 }
 
-function dropItem(ref) {
+function unequipItem(slotName) {
     if(blockSync) return;
-    if(confirm("Largar item?")) {
-        blockSync = true;
-        window.location.href = `byond://?src=${BYOND_REF}&action=drop_item&ref=${ref}`;
-        setTimeout(() => { blockSync = false; }, 200);
+    blockSync = true;
+    window.location.href = `byond://?src=${BYOND_REF}&action=unequip_item&slot=${slotName}`;
+    setTimeout(() => { blockSync = false; }, 200);
+}
+
+function dropItem(ref, maxAmount) {
+    if(blockSync) return;
+    
+    let qty = 1;
+    if(maxAmount > 1) {
+        let input = prompt(`Quantos itens largar? (Máx: ${maxAmount})`, "1");
+        if(input === null) return;
+        qty = parseInt(input);
+        if(isNaN(qty) || qty <= 0) return;
+        if(qty > maxAmount) qty = maxAmount;
     }
+
+    blockSync = true;
+    window.location.href = `byond://?src=${BYOND_REF}&action=drop_item&ref=${ref}&amount=${qty}`;
+    setTimeout(() => { blockSync = false; }, 200);
 }
 
 function addStat(statName) {
@@ -273,7 +326,7 @@ function performAttack(type) {
                 setTimeout(function(){mat.color.setHex(0xFF0000)}, 150);
             }
         } else {
-            // Miss visual local (o servidor confirma o hit real)
+            // Miss
         }
         
         if(typeof BYOND_REF !== 'undefined') {
@@ -315,7 +368,6 @@ function receberDadosMultiplayer(json) {
     }
 
     if(isCharacterReady) {
-        // --- PROCESSAR ITENS NO CHÃO ---
         const serverGroundItems = packet.ground || [];
         const seenItems = new Set();
         let closestDist = 999;
@@ -347,20 +399,26 @@ function receberDadosMultiplayer(json) {
         if(closestDist < 2.0) hint.style.display = 'block';
         else hint.style.display = 'none';
 
-        // --- ATUALIZAÇÃO DO JOGADOR LOCAL ---
         const myData = packet.others[myID];
         isResting = me.rest;
         isFainted = me.ft; 
         
-        // BUG FIX VISUAL: Se 'it' for vazio, removemos o item.
         if(myData && myData.it !== undefined) {
             if(playerGroup.userData.lastItem !== myData.it) {
                 if(myData.it === "" || myData.it === null) {
-                    CharFactory.equipItem(playerGroup, "none"); 
+                    const rightArm = playerGroup.userData.limbs.rightArm;
+                    if(rightArm) {
+                        for(let i = rightArm.children.length - 1; i >= 0; i--) {
+                            if(rightArm.children[i].userData.type === 'equipment') {
+                                rightArm.remove(rightArm.children[i]);
+                            }
+                        }
+                    }
+                    playerGroup.userData.lastItem = "";
                 } else {
                     CharFactory.equipItem(playerGroup, myData.it);
+                    playerGroup.userData.lastItem = myData.it;
                 }
-                playerGroup.userData.lastItem = myData.it;
             }
         }
 
@@ -456,12 +514,16 @@ function receberDadosMultiplayer(json) {
                 document.getElementById('labels-container').appendChild(label);
                 
                 otherPlayers[id] = {
-                    mesh: newChar, label: label,
+                    mesh: newChar,
+                    label: label,
                     startX: pData.x, startY: pData.y, startZ: pData.z, startRot: pData.rot,
                     targetX: pData.x, targetY: pData.y, targetZ: pData.z, targetRot: pData.rot,
-                    lastPacketTime: now, lerpDuration: 180,
+                    lastPacketTime: now,
+                    lerpDuration: 180,
                     attacking: pData.a, attackType: pData.at, 
-                    resting: pData.rest, fainted: pData.ft, lastItem: "" 
+                    resting: pData.rest,
+                    fainted: pData.ft,
+                    lastItem: "" 
                 };
             }
         } else {
@@ -528,7 +590,6 @@ function animate() {
     animTime += 0.1;
     const now = performance.now();
 
-    // Anima itens no chão
     for(let ref in groundItemsMeshes) {
         const item = groundItemsMeshes[ref];
         item.rotation.y += 0.02;
