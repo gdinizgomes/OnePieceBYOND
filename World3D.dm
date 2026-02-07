@@ -9,7 +9,7 @@ obj/item
 	var/description = ""
 
 	var/amount = 1
-	var/max_stack = 5
+	var/max_stack = 5 // Padrão para itens gerais (consumíveis, etc)
 
 	// Posição 3D
 	var/real_x = 0
@@ -19,7 +19,7 @@ obj/item
 // -- Armas --
 obj/item/weapon
 	slot = "hand"
-	max_stack = 1
+	max_stack = 1 // Armas não agrupam!
 
 obj/item/weapon/sword_wood
 	name = "Espada de Treino"
@@ -27,7 +27,7 @@ obj/item/weapon/sword_wood
 	description = "Uma espada de madeira para treinar."
 	power = 5
 	price = 50
-	max_stack = 5
+	// CORREÇÃO: Removido max_stack = 5 daqui para herdar 1
 
 obj/item/weapon/sword_iron
 	name = "Espada de Ferro"
@@ -49,7 +49,7 @@ obj/item/weapon/gun_wood
 	description = "Dispara rolhas."
 	power = 12
 	price = 80
-	max_stack = 5
+	// CORREÇÃO: Removido max_stack = 5 daqui para herdar 1
 
 obj/item/weapon/gun_flintlock
 	name = "Pistola Velha"
@@ -206,6 +206,7 @@ mob
 		if(target)
 			var/stacked = 0
 			for(var/obj/item/invItem in contents)
+				// Lógica de Stack: Só agrupa se amount < max_stack
 				if(invItem.type == target.type && invItem.amount < invItem.max_stack)
 					var/space = invItem.max_stack - invItem.amount
 					if(target.amount <= space)
@@ -242,7 +243,6 @@ mob
 		var/list/eq_data = list("hand" = null)
 		if(slot_hand) eq_data["hand"] = list("id"=slot_hand.id_visual, "ref"="\ref[slot_hand]", "name"=slot_hand.name)
 
-		// --- CORREÇÃO AQUI: Adicionando Proficiências ao Status ---
 		var/list/stat_data = list(
 			"nick" = src.name,
 			"class" = char_class,
