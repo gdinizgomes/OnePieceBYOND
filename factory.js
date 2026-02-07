@@ -1,8 +1,8 @@
-// factory.js - Construtor Universal com Correção de Escala
+// factory.js - Construtor Universal (Suporte a Objetos Compostos/Lego)
 const CharFactory = {
     textureLoader: new THREE.TextureLoader(),
 
-    // Cache de Geometrias
+    // Cache de Geometrias Básicas para performance
     geoCache: {
         box: new THREE.BoxGeometry(1, 1, 1),
         cylinder: new THREE.CylinderGeometry(1, 1, 1, 12),
@@ -10,112 +10,109 @@ const CharFactory = {
         plane: new THREE.PlaneGeometry(1, 1)
     },
 
-    // Cria um objeto 3D baseado na Definição
-    createFromDef: function(defId, overrides = {}) {
-        const def = GameDefinitions[defId];
-        if (!def) {
-            console.error(`Factory: Definição '${defId}' não encontrada.`);
-            return new THREE.Mesh(this.geoCache.box, new THREE.MeshBasicMaterial({color: 0xFF00FF}));
-        }
-
-        const geometry = this.geoCache[def.visual.model] || this.geoCache.box;
-
+    // Cria um Bloco Único
+    createMesh: function(visualData, overrides = {}) {
+        // Seleciona a geometria (padrão é box)
+        const geometry = this.geoCache[visualData.model] || this.geoCache.box;
         let material;
-        const finalColor = overrides.color ? parseInt("0x" + overrides.color) : def.visual.color;
 
-        if (def.visual.texture) {
-            const tex = this.textureLoader.load(def.visual.texture);
-            tex.magFilter = THREE.NearestFilter;
-            material = new THREE.MeshPhongMaterial({ map: tex, transparent: true, color: 0xFFFFFF });
+        // Prioridade de cor: Override > VisualData > Branco Padrão
+        const colorHex = overrides.color ? parseInt("0x" + overrides.color) : (visualData.color || 0xFFFFFF);
+
+        if (visualData.texture) {
+            const tex = this.textureLoader.load(visualData.texture);
+            tex.magFilter = THREE.NearestFilter; // Mantém o Pixel Art nítido
+            material = new THREE.MeshPhongMaterial({ map: tex, transparent: true, alphaTest: 0.5, color: colorHex });
         } else {
-            material = new THREE.MeshPhongMaterial({ color: finalColor });
+            material = new THREE.MeshPhongMaterial({ color: colorHex });
         }
 
         const mesh = new THREE.Mesh(geometry, material);
         mesh.castShadow = true;
         mesh.receiveShadow = true;
 
-        if (def.visual.scale) {
-            mesh.scale.set(def.visual.scale[0], def.visual.scale[1], def.visual.scale[2]);
+        // Aplica escala se definida
+        if (visualData.scale) {
+            mesh.scale.set(visualData.scale[0], visualData.scale[1], visualData.scale[2]);
         }
-
-        mesh.userData = { 
-            id: def.id, 
-            type: def.type, 
-            tags: def.data?.tags || [] 
-        };
+        
+        // Aplica posição relativa (essencial para peças de Lego)
+        if (visualData.pos) {
+            mesh.position.set(visualData.pos[0], visualData.pos[1], visualData.pos[2]);
+        }
+        
+        // Aplica rotação relativa
+        if (visualData.rot) {
+            mesh.rotation.set(visualData.rot[0], visualData.rot[1], visualData.rot[2]);
+        }
 
         return mesh;
     },
 
-    // --- CORREÇÃO AQUI: Montagem usando Âncoras (Groups) ---
-    createCharacter: function(skinColor, clothColor) {
-        const root = new THREE.Group(); // O Personagem inteiro
+    // Função Principal: Cria o objeto baseado no ID
+    createFromDef: function(defId, overrides = {}) {
+        const def = GameDefinitions[defId];
+        if (!def) {
+            console.error(`Factory: Definição '${defId}' não encontrada.`);
+            return new THREE.Mesh(this.geoCache.box, new THREE.MeshBasicMaterial({color: 0xFF00FF})); // Erro rosa
+        }
 
-        // 1. Criar a "Espinha Dorsal" (Torso Anchor)
-        // Usamos um Grupo invisível para segurar tudo. Ele tem escala 1,1,1, então não deforma os filhos.
+        // --- SISTEMA LEGO (NOVO) ---
+        // Se o modelo for "group" e tiver "parts", montamos peça por peça
+        if (def.visual.model === "group" && def.visual.parts) {
+            const group = new THREE.Group();
+            
+            def.visual.parts.forEach(partDef => {
+                const mesh = this.createMesh(partDef);
+                group.add(mesh);
+            });
+
+            // Metadados para o jogo saber o que é isso
+            group.userData = { id: def.id, type: def.type, tags: def.data?.tags || [] };
+            return group;
+        } 
+        // ---------------------------
+
+        // Comportamento Antigo (Bloco Único)
+        const mesh = this.createMesh(def.visual, overrides);
+        mesh.userData = { id: def.id, type: def.type, tags: def.data?.tags || [] };
+        return mesh;
+    },
+
+    createCharacter: function(skinColor, clothColor) {
+        const root = new THREE.Group(); 
+
+        // Âncora do Torso (para não deformar filhos ao escalar)
         const torsoAnchor = new THREE.Group();
         torsoAnchor.position.y = 1.1; 
         root.add(torsoAnchor);
 
-        // 2. O Visual do Torso (A caixa vermelha/azul)
-        // Adicionamos à âncora, não somos pai de ninguém visualmente
         const torsoMesh = this.createFromDef("char_human_torso", { color: clothColor });
-        // O mesh do torso já tem scale ajustado pelo createFromDef. 
-        // Como ele é filho da âncora (scale 1), ele fica correto.
         torsoAnchor.add(torsoMesh);
 
-        // 3. A Cabeça
-        // Adicionamos à âncora também.
         const head = this.createFromDef("char_human_head", { color: skinColor });
-        head.position.y = 0.55; // Posição relativa ao centro da âncora
+        head.position.y = 0.55; 
         torsoAnchor.add(head);
 
-        // Olhos (filhos da cabeça, ok herdar escala da cabeça pois são decorativos ou ajustados)
-        const eyeDef = { visual: { model: "box", color: 0x000000, scale: [0.05, 0.05, 0.05] } }; // Definição temporária interna ou do JSON
-        // Para simplificar, vou criar olhos manuais aqui ou usar createFromDef se tiver no JSON.
-        // Vou usar box manual para garantir, já que não estão no definitions.js padrão acima
+        // Olhos simples
         const eyeGeo = this.geoCache.box;
         const eyeMat = new THREE.MeshBasicMaterial({color: 0x000000});
         
-        const createEye = (x) => {
-            const eye = new THREE.Mesh(eyeGeo, eyeMat);
-            eye.scale.set(0.05, 0.05, 0.05);
-            // Ajuste fino: como a cabeça tem escala, precisamos posicionar "dentro" da escala dela
-            // A cabeça tem tamanho ~0.35. O olho deve estar na frente.
-            eye.position.set(x * (1/0.35), 0.05 * (1/0.35), 0.18 * (1/0.35)); 
-            // Nota: Se a cabeça for escalada, posições filhas também são.
-            // No código antigo: position.set(0.1, 0.05, 0.18).
-            // Como head.scale é 0.35, a posição real seria 0.1*0.35 = 0.035. Muito perto.
-            // SOLUÇÃO: Não adicione olhos como filhos de uma malha escalada se quiser controle preciso sem matemática chata.
-            // Mas vamos manter simples:
-            eye.position.set(x, 0.2, 0.6); // Valores chutados para compensar a escala da cabeça (0.35)
-            return eye;
-        };
-        // Melhor abordagem para os olhos no sistema novo: 
-        // Adicionar olhos ao JSON 'char_human_head' seria o ideal no futuro.
-        // Por agora, vamos pular os olhos ou adicioná-los com valores testados:
-        const eyeL = new THREE.Mesh(this.geoCache.box, eyeMat);
-        eyeL.scale.set(0.15, 0.15, 0.15); // Relativo à cabeça pequena
-        eyeL.position.set(0.3, 0.1, 0.51); // "Na cara" da cabeça
+        const eyeL = new THREE.Mesh(eyeGeo, eyeMat);
+        eyeL.scale.set(0.15, 0.15, 0.15); 
+        eyeL.position.set(0.3, 0.1, 0.51); 
         head.add(eyeL);
 
-        const eyeR = new THREE.Mesh(this.geoCache.box, eyeMat);
+        const eyeR = new THREE.Mesh(eyeGeo, eyeMat);
         eyeR.scale.set(0.15, 0.15, 0.15);
         eyeR.position.set(-0.3, 0.1, 0.51);
         head.add(eyeR);
 
-
-        // 4. Membros (Pivots)
-        // Adicionamos à âncora (TorsoAnchor).
         const createLimb = (defId, color, x, y, z) => {
             const pivot = new THREE.Group();
             pivot.position.set(x, y, z);
-            
             const mesh = this.createFromDef(defId, { color: color });
-            // Desloca visualmente para baixo do pivot
-            mesh.position.y = -mesh.scale.y / 2; 
-            
+            mesh.position.y = -mesh.scale.y / 2; // Centraliza no pivô
             pivot.add(mesh);
             return { pivot, mesh };
         };
@@ -125,25 +122,32 @@ const CharFactory = {
         const lLeg = createLimb("char_human_limb", clothColor, 0.12, -0.35, 0);
         const rLeg = createLimb("char_human_limb", clothColor, -0.12, -0.35, 0);
 
-        torsoAnchor.add(lArm.pivot); 
-        torsoAnchor.add(rArm.pivot);
-        torsoAnchor.add(lLeg.pivot); 
-        torsoAnchor.add(rLeg.pivot);
+        torsoAnchor.add(lArm.pivot); torsoAnchor.add(rArm.pivot);
+        torsoAnchor.add(lLeg.pivot); torsoAnchor.add(rLeg.pivot);
 
-        // Salva referências para animação
         root.userData.limbs = {
-            leftArm: lArm.pivot,
-            rightArm: rArm.pivot,
-            leftLeg: lLeg.pivot,
-            rightLeg: rLeg.pivot,
-            head: head,
-            torso: torsoAnchor // Para girar o corpo todo se precisar
+            leftArm: lArm.pivot, rightArm: rArm.pivot,
+            leftLeg: lLeg.pivot, rightLeg: rLeg.pivot,
+            head: head, torso: torsoAnchor
         };
-
         return root;
     },
 
     equipItem: function(characterGroup, itemId) {
+        if(!itemId || itemId === "none") {
+             // Lógica de desequipar
+             const limbs = characterGroup.userData.limbs;
+             // Limpa ambas as mãos por segurança ou apenas a direita
+             // Aqui assumimos destro
+             const targetBone = limbs.rightArm;
+             for(let i = targetBone.children.length - 1; i >= 0; i--) {
+                if(targetBone.children[i].userData.type === 'equipment') {
+                    targetBone.remove(targetBone.children[i]);
+                }
+            }
+            return;
+        }
+        
         const def = GameDefinitions[itemId];
         if (!def || def.type !== 'equipment') return;
 
@@ -151,19 +155,21 @@ const CharFactory = {
         const targetBone = limbs[def.attachment.bone];
 
         if (targetBone) {
-            // Remove item antigo (simples)
+            // Remove item antigo antes de por o novo
             for(let i = targetBone.children.length - 1; i >= 0; i--) {
                 if(targetBone.children[i].userData.type === 'equipment') {
                     targetBone.remove(targetBone.children[i]);
                 }
             }
 
-            const itemMesh = this.createFromDef(itemId);
+            // Cria o novo item
+            const itemObj = this.createFromDef(itemId);
+            itemObj.userData.type = 'equipment'; // Marca para remoção futura
             
-            if (def.attachment.pos) itemMesh.position.set(...def.attachment.pos);
-            if (def.attachment.rot) itemMesh.rotation.set(...def.attachment.rot);
+            if (def.attachment.pos) itemObj.position.set(...def.attachment.pos);
+            if (def.attachment.rot) itemObj.rotation.set(...def.attachment.rot);
 
-            targetBone.add(itemMesh);
+            targetBone.add(itemObj);
         }
     }
 };
