@@ -13,6 +13,8 @@ const groundItemsMeshes = {};
 
 // --- SISTEMA DE PROJÉTEIS ---
 const activeProjectiles = []; 
+// --- SISTEMA DE HITBOX MELEE ---
+const activeHitboxes = []; // Armazena hitboxes temporárias (socos, skills)
 
 // Estado do Jogo
 let charState = "DEFAULT"; 
@@ -444,55 +446,115 @@ function fireProjectile(projectileDef, isMine) {
         speed: projectileDef.speed,
         distTraveled: 0,
         maxDist: projectileDef.range || 10,
-        isMine: isMine // IMPORTANTE: Só calculamos colisão das NOSSAS balas
+        isMine: isMine 
     });
 }
 
-// ATUALIZADO: Lógica de Colisão precisa (Bounding Box)
-const tempBoxBullet = new THREE.Box3();
+// --- NOVO: FUNÇÃO PARA CRIAR HITBOX DE MELEE ---
+function spawnHitbox(size, forwardOffset, lifetime) {
+    // Cria a geometria da Hitbox
+    const geo = new THREE.BoxGeometry(size.x, size.y, size.z);
+    
+    // MATERIAL: Wireframe vermelho para Debug (depois você pode colocar transparent: true, opacity: 0)
+    const mat = new THREE.MeshBasicMaterial({ color: 0xFF0000, wireframe: true, transparent: true, opacity: 0.3 });
+    const hitbox = new THREE.Mesh(geo, mat);
+    
+    // Posiciona
+    hitbox.position.copy(playerGroup.position);
+    hitbox.position.y += 1.0; // Altura do peito
+
+    // Rotaciona e avança para frente
+    const bodyRot = playerGroup.rotation.y;
+    const sin = Math.sin(bodyRot);
+    const cos = Math.cos(bodyRot);
+    
+    hitbox.position.x += sin * forwardOffset;
+    hitbox.position.z += cos * forwardOffset;
+    hitbox.rotation.y = bodyRot;
+
+    Engine.scene.add(hitbox);
+
+    // Registra na lista de ativos
+    activeHitboxes.push({
+        mesh: hitbox,
+        startTime: Date.now(),
+        duration: lifetime,
+        hasHit: [] // Lista de IDs que essa hitbox já acertou para não dar hit duplo
+    });
+}
+
+// --- ATUALIZAÇÃO UNIFICADA (TIRO + MELEE) ---
+const tempBoxAttacker = new THREE.Box3();
 const tempBoxTarget = new THREE.Box3();
 
-function updateProjectiles() {
+function updateCombatHitboxes() {
+    // 1. PROJÉTEIS
     for (let i = activeProjectiles.length - 1; i >= 0; i--) {
         const p = activeProjectiles[i];
-        
         p.mesh.position.x += p.dirX * p.speed;
         p.mesh.position.z += p.dirZ * p.speed;
         p.distTraveled += p.speed;
 
-        // VERIFICAÇÃO DE COLISÃO DO CLIENTE
         if (p.isMine) {
-            tempBoxBullet.setFromObject(p.mesh);
-
-            for (let id in otherPlayers) {
-                const target = otherPlayers[id];
-                // Ignora se estiver morto ou longe demais para poupar CPU
-                if(target.fainted) continue;
-
-                // CRIA A HITZONE baseada na MALHA do alvo (Funciona pra players e Troncos grandes)
-                tempBoxTarget.setFromObject(target.mesh);
-
-                if (tempBoxBullet.intersectsBox(tempBoxTarget)) {
-                    // COLISÃO VISUAL CONFIRMADA!
-                    console.log("Acertou visualmente: " + id);
-                    
-                    // Envia para o servidor validar e dar dano
-                    if(typeof BYOND_REF !== 'undefined') {
-                        window.location.href = `byond://?src=${BYOND_REF}&action=projectile_hit&target_ref=${id}`;
-                    }
-                    
-                    // Remove bala
-                    Engine.scene.remove(p.mesh);
-                    activeProjectiles.splice(i, 1);
-                    p.distTraveled = 9999; // Força saída do loop
-                    break;
-                }
-            }
+            tempBoxAttacker.setFromObject(p.mesh);
+            checkCollisions(tempBoxAttacker, "projectile", p); // Função Helper
         }
 
         if (p.distTraveled >= p.maxDist) {
             Engine.scene.remove(p.mesh);
             activeProjectiles.splice(i, 1);
+        }
+    }
+
+    // 2. MELEE HITBOXES
+    const now = Date.now();
+    for (let i = activeHitboxes.length - 1; i >= 0; i--) {
+        const hb = activeHitboxes[i];
+        
+        // Verifica tempo de vida
+        if (now - hb.startTime > hb.duration) {
+            Engine.scene.remove(hb.mesh);
+            activeHitboxes.splice(i, 1);
+            continue;
+        }
+
+        // A Hitbox melee segue o player (opcional, mas bom pra espada)
+        // Aqui deixamos ela estática no ponto do golpe (estilo Dark Souls)
+        
+        tempBoxAttacker.setFromObject(hb.mesh);
+        checkCollisions(tempBoxAttacker, "melee", hb);
+    }
+}
+
+// Helper para verificar colisões
+function checkCollisions(attackerBox, type, objRef) {
+    for (let id in otherPlayers) {
+        const target = otherPlayers[id];
+        if(target.fainted) continue;
+
+        // Se for Melee, verifica se já bateu nesse alvo nessa instância
+        if(type === "melee" && objRef.hasHit.includes(id)) continue;
+
+        tempBoxTarget.setFromObject(target.mesh);
+
+        if (attackerBox.intersectsBox(tempBoxTarget)) {
+            console.log("HIT " + type + " em " + id);
+            
+            // Envia para o servidor
+            if(typeof BYOND_REF !== 'undefined') {
+                window.location.href = `byond://?src=${BYOND_REF}&action=register_hit&target_ref=${id}&hit_type=${type}`;
+            }
+
+            // Lógica pós-hit
+            if(type === "projectile") {
+                Engine.scene.remove(objRef.mesh);
+                // Gambiarra para remover do array no próximo loop
+                objRef.distTraveled = 99999; 
+            } else if(type === "melee") {
+                objRef.hasHit.push(id); // Marca que esse cara já tomou dano desse soco
+                // Feedback visual (flash vermelho na hitbox)
+                objRef.mesh.material.color.setHex(0xFFFFFF);
+            }
         }
     }
 }
@@ -532,13 +594,29 @@ function performAttack(type) {
 
     charState = windupStance; 
 
+    // --- CRIAÇÃO DAS HITBOXES NO MOMENTO CERTO ---
     setTimeout(function() {
         charState = atkStance;
         
         if(type === "gun" && projectileData) {
-            fireProjectile(projectileData, true); // TRUE = Eu atirei
+            fireProjectile(projectileData, true);
+        } 
+        else if (type === "fist") {
+            // Soco: Hitbox pequena, perto
+            spawnHitbox({x:1, y:1, z:1}, 1.0, 200); 
         }
+        else if (type === "kick") {
+             // Chute: Hitbox média
+            spawnHitbox({x:1.2, y:1, z:1.2}, 1.2, 300);
+        }
+        else if (type === "sword") {
+            // Espada: Hitbox longa e larga
+            spawnHitbox({x:2.5, y:1, z:2.5}, 1.5, 300);
+        }
+        // SE FOSSE UMA SKILL (Ex: Explosão)
+        // spawnHitbox({x:5, y:5, z:5}, 0, 1000);
 
+        // Envia ação para servidor (apenas para gastar energia e tocar som)
         if(typeof BYOND_REF !== 'undefined') {
             blockSync = true; 
             window.location.href = `byond://?src=${BYOND_REF}&action=attack&type=${type}`; 
@@ -798,10 +876,7 @@ function receberDadosMultiplayer(json) {
                 other.lastItem = pData.it;
             }
 
-            // ATUALIZADO: Quando alguém ataca à distância, visualizamos o tiro dele
             if (other.attacking && other.attackType === "gun" && !other.hasFiredThisCycle) {
-                // Aqui precisaríamos de mais dados (tipo da arma) vindos do servidor
-                // para saber qual projétil desenhar. Por enquanto, hardcoded para teste:
                 fireProjectile({ speed: 0.6, color: 0xFFFF00, ownerID: id }, false);
                 other.hasFiredThisCycle = true;
                 setTimeout(() => { other.hasFiredThisCycle = false; }, 500);
@@ -848,7 +923,8 @@ function animate() {
     animTime += 0.1;
     const now = performance.now();
 
-    updateProjectiles(); 
+    // NOVO: ATUALIZAÇÃO UNIFICADA
+    updateCombatHitboxes(); 
 
     for(let ref in groundItemsMeshes) {
         const item = groundItemsMeshes[ref];

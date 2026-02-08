@@ -21,7 +21,7 @@ obj/item/weapon
 	slot = "hand"
 	max_stack = 1
 	var/range = 1.0 
-	var/projectile_speed = 0 // 0 = Instantâneo (Melee), >0 = Client detecta
+	var/projectile_speed = 0 // 0 = Melee, >0 = Projétil
 
 obj/item/weapon/sword_wood
 	name = "Espada de Treino"
@@ -29,7 +29,8 @@ obj/item/weapon/sword_wood
 	description = "Uma espada de madeira para treinar."
 	power = 5
 	price = 50
-	range = 2.5
+	range = 3.0 // Alcance da Hitbox
+	projectile_speed = 0
 
 obj/item/weapon/sword_iron
 	name = "Espada de Ferro"
@@ -37,7 +38,8 @@ obj/item/weapon/sword_iron
 	description = "Lâmina afiada e resistente."
 	power = 10
 	price = 100
-	range = 2.5
+	range = 3.0
+	projectile_speed = 0
 
 obj/item/weapon/sword_silver
 	name = "Espada de Prata"
@@ -45,7 +47,8 @@ obj/item/weapon/sword_silver
 	description = "Brilha com a luz da lua."
 	power = 20
 	price = 500
-	range = 3.0
+	range = 3.5
+	projectile_speed = 0
 
 obj/item/weapon/gun_wood
 	name = "Pistola de Brinquedo"
@@ -634,91 +637,69 @@ mob
 					RequestInventoryUpdate()
 
 		if(action == "attack" && in_game)
-			// Apenas inicia a animação/estado. O dano de projétil agora vem do 'projectile_hit'
+			// Inicia o ataque no servidor (consome energia, atualiza estado)
 			if(is_resting) return
 			var/base_cost = max_energy * 0.03
 			if(ConsumeEnergy(base_cost))
 				is_attacking = 1
 				attack_type = href_list["type"]
-				
-				// Lógica de ataque corpo a corpo ainda pode ficar aqui ou ser movida pro client
-				// Para manter consistência com o pedido, focamos na correção dos PROJÉTEIS.
-				// Se for Melee (fist/kick/sword), o client ainda não detecta colisão,
-				// então mantemos a lógica antiga simplificada SÓ para Melee.
-				
-				var/is_projectile = 0
-				if(attack_type == "gun") is_projectile = 1
-				
-				if(!is_projectile)
-					// Lógica Melee Simples (Cone)
-					var/damage_delay = 3 // 0.3s para bater
-					var/prof_lvl = 1
-					var/weapon_bonus = 0
-					var/range = 2.5
-					
-					if(attack_type == "sword")
-						if(slot_hand && istype(slot_hand, /obj/item/weapon/sword_wood)) weapon_bonus=5
-						if(slot_hand && istype(slot_hand, /obj/item/weapon/sword_iron)) weapon_bonus=10
-						if(slot_hand && istype(slot_hand, /obj/item/weapon/sword_silver)) weapon_bonus=20
-						prof_lvl = prof_sword_lvl
-					else if(attack_type == "fist") prof_lvl = prof_punch_lvl
-					else if(attack_type == "kick") prof_lvl = prof_kick_lvl
-
-					spawn(damage_delay)
-						if(src && is_attacking)
-							var/look_x = sin(src.real_rot * 180 / 3.14159)
-							var/look_z = cos(src.real_rot * 180 / 3.14159)
-							
-							for(var/mob/npc/N in global_npcs)
-								var/dx = N.real_x - src.real_x
-								var/dz = N.real_z - src.real_z
-								var/dist = sqrt(dx*dx + dz*dz)
-								if(dist <= range)
-									var/norm_dx = dx / dist
-									var/norm_dz = dz / dist
-									var/dot = (norm_dx * look_x) + (norm_dz * look_z)
-									if(dot > 0.5) // Cone frontal
-										var/dmg = round((strength * 0.5) + (prof_lvl*2) + weapon_bonus + rand(0,2))
-										src.pending_visuals += list(list("type"="dmg", "val"=dmg, "tid"="\ref[N]"))
-										if(N.npc_type == "prop")
-											GainExperience(2); GainWeaponExp(attack_type, 2)
-										else
-											N.current_hp -= dmg
-											if(N.current_hp <= 0)
-												N.current_hp = N.max_hp
-												N.real_x = rand(-10,10); N.real_z = rand(-10,10)
-											GainExperience(10); GainWeaponExp(attack_type, 5)
-				
 				spawn(3) is_attacking = 0
 
-		// NOVA AÇÃO: O Cliente detectou colisão de projétil
-		if(action == "projectile_hit" && in_game)
+		// --- SISTEMA DE HITBOX UNIFICADO (MELEE & TIRO) ---
+		if(action == "register_hit" && in_game)
 			var/target_ref = href_list["target_ref"]
+			var/hit_type = href_list["hit_type"] // "melee" ou "projectile"
 			var/obj/target = locate(target_ref)
 			
-			// Validações de Segurança
 			if(!target) return
-			if(!slot_hand || !istype(slot_hand, /obj/item/weapon)) return // Tem arma?
-			var/obj/item/weapon/W = slot_hand
-			if(W.projectile_speed <= 0) return // É arma de tiro?
 
-			// Valida Distância (Anti-Cheat básico: não deixar acertar mapa todo)
-			// Damos uma margem de tolerância (buffer) de +5 unidades por causa do lag
+			// 1. Validar Alcance (Segurança do Servidor)
+			var/max_dist = 3.0 // Padrão curto (soco)
+			var/bonus_dmg = 0
+			var/skill_exp_type = ""
+			
+			// Se tiver arma, pega o alcance real dela
+			if(hit_type == "projectile")
+				if(slot_hand && istype(slot_hand, /obj/item/weapon))
+					max_dist = slot_hand:range + 5 // +5 de tolerância lag
+					bonus_dmg = slot_hand:power
+					skill_exp_type = "gun"
+				else return // Tentou atirar sem arma? Cheat.
+			else if(hit_type == "melee")
+				if(attack_type == "sword")
+					if(slot_hand && istype(slot_hand, /obj/item/weapon))
+						max_dist = slot_hand:range + 2
+						bonus_dmg = slot_hand:power
+						skill_exp_type = "sword"
+				else if(attack_type == "kick")
+					max_dist = 3.5; skill_exp_type = "kick"
+				else 
+					max_dist = 2.5; skill_exp_type = "fist" // Soco
+			
+			// Validação de Distância Euclidiana
 			var/dist = get_dist_euclid(src.real_x, src.real_z, target:real_x, target:real_z)
-			if(dist > (W.range + 5)) return 
+			if(dist > max_dist) return // Hit inválido (muito longe)
 
-			// Aplica o Dano
-			var/damage = round((strength * 0.4) + (prof_gun_lvl * 2) + W.power + rand(0, 3))
+			// 2. Calcular Dano
+			var/prof_bonus = 0
+			if(skill_exp_type == "sword") prof_bonus = prof_sword_lvl * 2
+			else if(skill_exp_type == "gun") prof_bonus = prof_gun_lvl * 2
+			else if(skill_exp_type == "kick") prof_bonus = prof_kick_lvl * 2
+			else prof_bonus = prof_punch_lvl * 2
+
+			var/damage = round((strength * 0.4) + prof_bonus + bonus_dmg + rand(0, 3))
+			
+			// 3. Aplicar Dano
 			src.pending_visuals += list(list("type"="dmg", "val"=damage, "tid"=target_ref))
 
 			if(istype(target, /mob/npc))
 				var/mob/npc/N = target
 				if(N.npc_type == "prop")
-					src << output("<span class='log-hit' style='color:orange'>TREINO: Dano [damage] no Tronco</span>", "map3d:addLog")
+					src << output("<span class='log-hit' style='color:orange'>TREINO: [damage] dmg</span>", "map3d:addLog")
 					GainExperience(5)
-					GainWeaponExp("gun", 3)
+					if(skill_exp_type) GainWeaponExp(skill_exp_type, 3)
 				else
-					src << output("<span class='log-hit'>TIRO em [N.name]! Dano: [damage]</span>", "map3d:addLog")
+					src << output("<span class='log-hit'>HIT em [N.name]! Dano: [damage]</span>", "map3d:addLog")
 					N.current_hp -= damage
 					if(N.current_hp <= 0)
 						src << output("<span class='log-hit' style='color:red'>[N.name] eliminado!</span>", "map3d:addLog")
@@ -726,7 +707,7 @@ mob
 						N.real_x = rand(-10, 10)
 						N.real_z = rand(-10, 10)
 					GainExperience(10)
-					GainWeaponExp("gun", 5)
+					if(skill_exp_type) GainWeaponExp(skill_exp_type, 5)
 
 		if(action == "add_stat" && in_game)
 			if(stat_points > 0)
@@ -778,7 +759,7 @@ mob/npc/prop
 mob/npc/prop/log
 	name = "Tronco de Treino"
 	skin_color = "8B4513" 
-	hit_radius = 0.8 // Usado no melee, mas no gun usamos a Box3 do client
+	hit_radius = 0.8 
 	New()
 		..()
 		real_x = 5
