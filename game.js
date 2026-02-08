@@ -56,16 +56,14 @@ function addLog(msg, css) {
     }
 }
 
-// NOVA FUNÇÃO: Dano Flutuante
+// Dano Flutuante
 function spawnDamageNumber(targetRef, amount) {
     if(!otherPlayers[targetRef]) return;
     
     const mesh = otherPlayers[targetRef].mesh;
-    // Calcula posição na tela (Acima da cabeça)
     const tempV = new THREE.Vector3(mesh.position.x, mesh.position.y + 2.5, mesh.position.z);
     tempV.project(Engine.camera);
     
-    // Converte para coordenadas da tela
     const x = (tempV.x * .5 + .5) * window.innerWidth;
     const y = (-(tempV.y * .5) + .5) * window.innerHeight;
 
@@ -76,8 +74,6 @@ function spawnDamageNumber(targetRef, amount) {
     div.style.top = y + 'px';
     
     document.body.appendChild(div);
-    
-    // Remove do DOM após 1 segundo (tempo da animação CSS)
     setTimeout(() => { div.remove(); }, 1000);
 }
 
@@ -410,39 +406,50 @@ window.addEventListener('game-action', function(e) {
     }
 });
 
+// NOVA FUNÇÃO: Dispara o visual do projétil (CORRIGIDO PARA FRENTE)
 function fireProjectile(projectileDef) {
     const geo = new THREE.BoxGeometry(1, 1, 1);
     const mat = new THREE.MeshBasicMaterial({ color: projectileDef.color });
     const bullet = new THREE.Mesh(geo, mat);
     
+    // Escala
     const s = projectileDef.scale || [0.1, 0.1, 0.1];
     bullet.scale.set(s[0], s[1], s[2]);
 
-    const sin = Math.sin(Input.camAngle); 
-    const cos = Math.cos(Input.camAngle);
+    // Rotação do corpo do personagem
+    const bodyRot = playerGroup.rotation.y;
+    
+    // CORREÇÃO: Usar POSITIVO para ir para frente (Z+ no sistema visual)
+    const sin = Math.sin(bodyRot); 
+    const cos = Math.cos(bodyRot);
     
     bullet.position.copy(playerGroup.position);
     bullet.position.y += 1.3; 
     
-    bullet.position.x += cos * 0.4; 
-    bullet.position.z -= sin * 0.4; 
-    bullet.position.x -= sin * 0.5;
-    bullet.position.z -= cos * 0.5;
+    // Offset para sair da arma (Ajustado)
+    bullet.position.x += cos * 0.4; // Lado
+    bullet.position.z -= sin * 0.4; // Lado
+    
+    // Frente (Invertido para +)
+    bullet.position.x += sin * 0.5;
+    bullet.position.z += cos * 0.5;
 
-    bullet.rotation.y = Input.camAngle + Math.PI;
+    // Rotação da bala
+    bullet.rotation.y = bodyRot;
 
     Engine.scene.add(bullet);
 
     activeProjectiles.push({
         mesh: bullet,
-        dirX: -sin, 
-        dirZ: -cos,
+        dirX: sin,  // Positivo para frente
+        dirZ: cos,  // Positivo para frente
         speed: projectileDef.speed,
         distTraveled: 0,
         maxDist: projectileDef.range || 10
     });
 }
 
+// Atualiza posição das balas
 function updateProjectiles() {
     for (let i = activeProjectiles.length - 1; i >= 0; i--) {
         const p = activeProjectiles[i];
@@ -451,6 +458,7 @@ function updateProjectiles() {
         p.mesh.position.z += p.dirZ * p.speed;
         p.distTraveled += p.speed;
 
+        // Se passar do alcance, some
         if (p.distTraveled >= p.maxDist) {
             Engine.scene.remove(p.mesh);
             activeProjectiles.splice(i, 1);
@@ -496,6 +504,7 @@ function performAttack(type) {
     setTimeout(function() {
         charState = atkStance;
         
+        // DISPARA O EFEITO VISUAL SE FOR ARMA
         if(type === "gun" && projectileData) {
             fireProjectile(projectileData);
         }
@@ -538,7 +547,6 @@ function receberDadosMultiplayer(json) {
     }
 
     if(isCharacterReady) {
-        // ... (Itens no chão) ...
         const serverGroundItems = packet.ground || [];
         const seenItems = new Set();
         let closestDist = 999;
@@ -955,7 +963,6 @@ function animate() {
         
         const tempV = new THREE.Vector3(mesh.position.x, mesh.position.y + 2, mesh.position.z);
         tempV.project(Engine.camera);
-        // CORREÇÃO: Aplica as coordenadas na div do label
         other.label.style.display = (Math.abs(tempV.z) > 1) ? 'none' : 'block';
         other.label.style.left = (tempV.x * .5 + .5) * window.innerWidth + 'px';
         other.label.style.top = (-(tempV.y * .5) + .5) * window.innerHeight + 'px';

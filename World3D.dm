@@ -487,7 +487,7 @@ mob
 			if(src.is_fainted && src.faint_end_time > world.time)
 				faint_remaining = round((src.faint_end_time - world.time) / 10)
 			
-			// --- MONTAGEM DO PACOTE DE REDE ---
+			// --- ENVIA O PACOTE COM EVENTOS VISUAIS ---
 			var/list/packet = list(
 				"my_id" = "\ref[src]",
 				"me" = list(
@@ -503,11 +503,11 @@ mob
 					"rest" = src.is_resting, "ft" = src.is_fainted, "rem" = faint_remaining
 				),
 				"others" = players_list, "ground" = ground_items, "t" = world.time,
-				"evts" = src.pending_visuals // LISTA DE EVENTOS (Dano, Efeitos)
+				"evts" = src.pending_visuals
 			)
 			src << output(json_encode(packet), "map3d:receberDadosMultiplayer")
 			
-			// Limpa a lista de eventos após enviar
+			// Limpa eventos
 			if(src.pending_visuals.len > 0) src.pending_visuals = list()
 			
 			sleep(2)
@@ -640,7 +640,7 @@ mob
 				attack_type = href_list["type"]
 				var/weapon_bonus = 0
 				var/prof_lvl = 1
-				var/attack_range = 2.5 // Alcance padrão
+				var/attack_range = 2.5 
 
 				if(attack_type == "sword")
 					if(slot_hand && istype(slot_hand, /obj/item/weapon) && findtext(slot_hand.id_visual, "sword"))
@@ -671,18 +671,16 @@ mob
 
 				var/prof_bonus = prof_lvl * 2
 				
-				// --- LÓGICA DE ALVO ---
 				var/mob/npc/best_target = null 
 				var/best_dist = attack_range 
 
-				// Vetor direção do player (Corrigido, sem negativos para alinhar com cliente)
+				// VETOR DE MIRA (SINAIS POSITIVOS)
 				var/look_x = sin(src.real_rot * 180 / 3.14159)
 				var/look_z = cos(src.real_rot * 180 / 3.14159)
 
 				for(var/mob/npc/N in global_npcs)
 					if(N.npc_type == "vendor") continue
 
-					// 1. Distância 3D
 					var/dx = N.real_x - src.real_x
 					var/dy = N.real_y - src.real_y 
 					var/dz = N.real_z - src.real_z
@@ -690,17 +688,16 @@ mob
 					var/dist = sqrt(dx*dx + dy*dy + dz*dz)
 
 					if(dist <= best_dist)
-						// 2. VALIDAÇÃO DE ACERTO
 						var/hit_confirmed = 0
 						
 						if(attack_type == "gun")
-							// --- LÓGICA DE ARMA (PERPENDICULAR / RAYCAST) ---
+							// RAYCAST (PERPENDICULAR) PARA ARMAS
 							var/dot = (dx * look_x) + (dz * look_z)
 							if(dot > 0)
 								var/perp_dist = abs((look_x * dz) - (look_z * dx))
 								if(perp_dist < 0.5) hit_confirmed = 1
 						else
-							// --- LÓGICA DE MELEE (CONE) ---
+							// CONE PARA MELEE
 							var/dist_hz = sqrt(dx*dx + dz*dz)
 							if(dist_hz > 0)
 								var/norm_dx = dx / dist_hz
@@ -711,12 +708,11 @@ mob
 						if(hit_confirmed)
 							best_target = N
 							best_dist = dist
-				// ------------------------------------------------------------------
 
 				if(best_target)
 					var/damage = round((strength * 0.5) + prof_bonus + weapon_bonus + rand(0, 2))
 					
-					// REGISTRA O EVENTO VISUAL (Envia para o client mostrar o numero)
+					// Adiciona o evento visual para ser enviado no próximo pacote
 					src.pending_visuals += list(list("type"="dmg", "val"=damage, "tid"="\ref[best_target]"))
 
 					if(best_target.npc_type == "prop")
@@ -784,18 +780,15 @@ mob/npc
 				sleep(1)
 			sleep(rand(20, 50))
 
-// --- NOVO TIPO DE NPC: OBJETOS FIXOS (PROPS) ---
 mob/npc/prop
 	npc_type = "prop"
 	wanders = 0
 
-// O Tronco agora existe no servidor também!
 mob/npc/prop/log
 	name = "Tronco de Treino"
-	skin_color = "8B4513" // Apenas para referência, o cliente usa o modelo 3D
+	skin_color = "8B4513" 
 	New()
 		..()
-		// COORDENADAS FIXAS IGUAIS AO ENGINE.JS
 		real_x = 5
 		real_z = 5
 		real_y = 0
@@ -841,5 +834,4 @@ world/New()
 	..()
 	new /mob/npc/dummy() 
 	new /mob/npc/vendor()
-	// CRUCIAL: Instanciar o tronco no mundo
 	new /mob/npc/prop/log()
