@@ -39,22 +39,6 @@ obj/item/weapon/sword_silver
 	power = 20
 	price = 500
 
-// --- NOVAS ARMAS (LEGO) ---
-obj/item/weapon/warhammer
-	name = "Martelo de Guerra"
-	id_visual = "weapon_warhammer"
-	description = "Pesado e brutal."
-	power = 18
-	price = 450
-
-obj/item/weapon/spear_tribal
-	name = "Lança Tribal"
-	id_visual = "weapon_spear_tribal"
-	description = "Longo alcance."
-	power = 14
-	price = 300
-// --------------------------
-
 obj/item/weapon/gun_wood
 	name = "Pistola de Brinquedo"
 	id_visual = "weapon_gun_wood"
@@ -77,13 +61,8 @@ obj/item/weapon/gun_silver
 	price = 800
 
 // -----------------------------------------------------
-// (MANTENHA O CÓDIGO DO MOB, LOGIN, LOGOUT, ETC. IGUAL AO ANTERIOR AQUI)
-// Para economizar espaço, vou pular a parte do MOB que não mudou. 
-// O IMPORTANTE É O FINAL DO ARQUIVO (World/New):
-
-// ... [CÓDIGO DO MOB IDÊNTICO AO ANTERIOR] ...
-// ... Copie o MOB inteiro do seu arquivo original se precisar, 
-// ... ou mantenha o que já tem, pois só mudamos os itens acima e o world/New abaixo.
+// CÓDIGO DO MOB E LOGIN (MANTIDO)
+// -----------------------------------------------------
 
 mob
 	var/current_slot = 0
@@ -382,9 +361,6 @@ mob
 		src << browse_rsc(file("engine.js"), "engine.js")
 		src << browse_rsc(file("game.js"), "game.js")
 
-		// Se tiver PNGs, envie aqui. Se não, comente para evitar erro de arquivo não encontrado.
-		// if(fexists("weapon_sword_wood_img.png")) src << browse_rsc(file("weapon_sword_wood_img.png"), "weapon_sword_wood_img.png")
-
 		char_loaded = 1
 		in_game = 1
 		is_resting = 0; is_fainted = 0; is_running = 0
@@ -644,31 +620,16 @@ world/New()
 		var/obj/item/weapon/gun_flintlock/G = new(locate(1,1,1))
 		G.real_x = 6; G.real_z = 5; G.loc = locate(1,1,1)
 
-		// Gera aleatoriamente, INCLUINDO AS NOVAS ARMAS
+		// Gera aleatoriamente
 		var/list/types = list(
 			/obj/item/weapon/sword_wood, 
 			/obj/item/weapon/sword_iron, 
 			/obj/item/weapon/sword_silver, 
 			/obj/item/weapon/gun_wood, 
 			/obj/item/weapon/gun_flintlock, 
-			/obj/item/weapon/gun_silver,
-			/obj/item/weapon/warhammer, // Novo
-			/obj/item/weapon/spear_tribal // Novo
+			/obj/item/weapon/gun_silver
 		)
 		
-		// Spawna 2 de cada um dos novos garantido, depois aleatórios
-		var/obj/item/H1 = new /obj/item/weapon/warhammer(locate(1,1,1))
-		H1.real_x = 2; H1.real_z = 2
-		
-		var/obj/item/H2 = new /obj/item/weapon/warhammer(locate(1,1,1))
-		H2.real_x = -2; H2.real_z = 2
-
-		var/obj/item/Sp1 = new /obj/item/weapon/spear_tribal(locate(1,1,1))
-		Sp1.real_x = 2; Sp1.real_z = -2
-
-		var/obj/item/Sp2 = new /obj/item/weapon/spear_tribal(locate(1,1,1))
-		Sp2.real_x = -2; Sp2.real_z = -2
-
 		for(var/i=1 to 10)
 			var/t = pick(types)
 			var/obj/item/I = new t(locate(1,1,1))
