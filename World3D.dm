@@ -11,7 +11,7 @@ obj/item
 	var/price = 0
 	var/description = ""
 	var/amount = 1
-	var/max_stack = 5 
+	var/max_stack = 5
 	var/real_x = 0
 	var/real_y = 0
 	var/real_z = 0
@@ -194,6 +194,7 @@ mob
 			if(I.loc == null || !isturf(I.loc)) continue
 			var/dx = I.real_x - src.real_x
 			var/dz = I.real_z - src.real_z
+			// Nota: Itens no chão assumimos Y similar, mas ideal seria 3D também
 			var/dist = sqrt(dx*dx + dz*dz)
 			if(dist <= min_dist)
 				target = I
@@ -229,7 +230,7 @@ mob
 				"amount" = I.amount,
 				"id" = I.id_visual,
 				"power" = I.power,
-				"price" = I.price, 
+				"price" = I.price,
 				"equipped" = 0
 			))
 		src << output(json_encode(inv_data), "map3d:loadInventory")
@@ -441,10 +442,8 @@ mob
 	proc/UpdateLoop()
 		while(src && in_game)
 			var/list/players_list = list()
-			
-			// JOGADORES (Só jogadores reais)
 			for(var/mob/M in world)
-				if(istype(M, /mob/npc)) continue 
+				if(istype(M, /mob/npc)) continue
 				if(M.in_game && M.char_loaded)
 					if(abs(M.real_x - src.real_x) > 30 || abs(M.real_z - src.real_z) > 30) continue
 					var/pid = "\ref[M]"
@@ -457,10 +456,7 @@ mob
 						"npc" = 0
 					)
 					players_list[pid] = pData
-			
-			// NPCS (Usa lista global OTIMIZADA)
 			for(var/mob/npc/N in global_npcs)
-				// Só envia se estiver perto (Economiza banda)
 				if(abs(N.real_x - src.real_x) > 30 || abs(N.real_z - src.real_z) > 30) continue
 				var/nid = "\ref[N]"
 				players_list[nid] = list(
@@ -469,7 +465,6 @@ mob
 					"name" = N.name, "skin" = N.skin_color, "cloth" = N.cloth_color,
 					"npc" = 1, "type" = N.npc_type
 				)
-
 			var/list/ground_items = list()
 			for(var/obj/item/I in world)
 				if(isturf(I.loc))
@@ -531,7 +526,7 @@ mob
 			src.name = href_list["name"]
 			src.skin_color = href_list["skin"]
 			src.cloth_color = href_list["cloth"]
-			src.level = 1; src.gold = 10000 
+			src.level = 1; src.gold = 10000
 			src.real_x = 0; src.real_y = 0; src.real_z = 0
 			current_slot = slot
 			SaveCharacter()
@@ -574,19 +569,17 @@ mob
 
 		if(action == "pick_up" && in_game) PickUpNearestItem()
 
-		// --- SISTEMA DE LOJA ---
 		if(action == "interact_npc" && in_game)
 			var/ref_id = href_list["ref"]
 			var/mob/npc/N = locate(ref_id)
 			if(N && get_dist_euclid(src.real_x, src.real_z, N.real_x, N.real_z) < 3.0)
-				// Abre a loja
 				if(istype(N, /mob/npc/vendor))
 					var/mob/npc/vendor/V = N
 					var/list/shop_items = list()
 					for(var/path in V.stock)
 						var/obj/item/tmpI = new path()
 						shop_items += list(list("name"=tmpI.name, "id"=tmpI.id_visual, "price"=tmpI.price, "desc"=tmpI.description, "typepath"=path))
-						del(tmpI) // Apenas para ler dados
+						del(tmpI)
 					src << output(json_encode(shop_items), "map3d:openShop")
 					RequestInventoryUpdate()
 
@@ -611,7 +604,7 @@ mob
 			var/ref_id = href_list["ref"]
 			var/obj/item/I = locate(ref_id)
 			if(I && (I in contents))
-				if(I == slot_hand) 
+				if(I == slot_hand)
 					src << output("Desequipe antes de vender!", "map3d:mostrarNotificacao")
 				else
 					var/val = round(I.price / 10)
@@ -620,7 +613,6 @@ mob
 					src << output("Vendeu [I.name] por [val] Berries.", "map3d:mostrarNotificacao")
 					del(I)
 					RequestInventoryUpdate()
-		// -----------------------
 
 		if(action == "attack" && in_game)
 			if(is_resting) return
@@ -629,11 +621,12 @@ mob
 				is_attacking = 1
 				attack_type = href_list["type"]
 				var/weapon_bonus = 0
-				var/prof_bonus = 0
 				var/prof_lvl = 1
+
 				if(attack_type == "sword")
 					if(slot_hand && istype(slot_hand, /obj/item/weapon) && findtext(slot_hand.id_visual, "sword"))
 						weapon_bonus = slot_hand.power
+						prof_lvl = prof_sword_lvl
 					else
 						src << output("Você precisa de uma espada equipada!", "map3d:mostrarNotificacao")
 						is_attacking = 0
@@ -641,23 +634,92 @@ mob
 				else if(attack_type == "gun")
 					if(slot_hand && istype(slot_hand, /obj/item/weapon) && findtext(slot_hand.id_visual, "gun"))
 						weapon_bonus = slot_hand.power
+						prof_lvl = prof_gun_lvl
 					else
 						src << output("Você precisa de uma arma equipada!", "map3d:mostrarNotificacao")
 						is_attacking = 0
 						return
+				else if(attack_type == "fist")
+					prof_lvl = prof_punch_lvl
+				else if(attack_type == "kick")
+					prof_lvl = prof_kick_lvl
 
-				if(attack_type == "fist") { prof_lvl = prof_punch_lvl; prof_bonus = prof_lvl * 2 }
-				if(attack_type == "kick") { prof_kick_lvl = prof_kick_lvl; prof_bonus = prof_lvl * 2 }
-				if(attack_type == "sword") { prof_lvl = prof_sword_lvl; prof_bonus = prof_lvl * 2 }
-				if(attack_type == "gun") { prof_lvl = prof_gun_lvl; prof_bonus = prof_lvl * 2 }
+				var/prof_bonus = prof_lvl * 2
 
-				var/target = href_list["target"]
-				if(target == "dummy")
+				// --- CORREÇÃO DE COLISÃO 3D ---
+				var/mob/npc/best_target = null
+				// Aumentamos a tolerância para compensar lag visual
+				var/best_dist = 4.0
+				if(attack_type == "gun") best_dist = 12.0
+
+				// Vetor direção do player (Para onde estou olhando)
+				// CORRIGIDO: Removido o sinal negativo para alinhar o vetor visual com o vetor do servidor
+				var/look_x = sin(src.real_rot * 180 / 3.14159)
+				var/look_z = cos(src.real_rot * 180 / 3.14159)
+
+				// Debug para ajudar a entender o que está acontecendo
+				// src << output("DEBUG: Atacando de [src.real_x],[src.real_z] rot=[src.real_rot]", "map3d:addLog")
+
+				for(var/mob/npc/N in global_npcs)
+					// --- PROTEÇÃO DE VENDEDOR ---
+					if(N.npc_type == "vendor") continue
+					// ---------------------------
+
+					// 1. Distância 3D (X, Y, Z)
+					var/dx = N.real_x - src.real_x
+					var/dy = N.real_y - src.real_y // Importante para 3D
+					var/dz = N.real_z - src.real_z
+
+					var/dist = sqrt(dx*dx + dy*dy + dz*dz)
+
+					// src << output("Alvo [N.name]: Dist=[dist] (Max: [best_dist])", "map3d:addLog")
+
+					if(dist <= best_dist)
+						// 2. Produto Escalar (Cone) - Ignoramos Y no ângulo (ataque horizontal)
+						// Normalizar vetor distancia (apenas X e Z para mira horizontal)
+						var/dist_hz = sqrt(dx*dx + dz*dz)
+						if(dist_hz > 0)
+							var/norm_dx = dx / dist_hz
+							var/norm_dz = dz / dist_hz
+
+							var/dot = (norm_dx * look_x) + (norm_dz * look_z)
+
+							// Debug para verificar o ângulo (se dot > 0.5, está na frente)
+							// src << output("Alvo [N.name]: Dot=[dot]", "map3d:addLog")
+
+							// Tolerância angular (0.5 = 60 graus para cada lado, bem generoso)
+							if(dot > 0.5)
+								best_target = N
+								best_dist = dist
+				// ------------------------------------------------------------------
+
+				if(best_target)
 					var/damage = round((strength * 0.5) + prof_bonus + weapon_bonus + rand(0, 2))
-					src << output("<span class='log-hit'>HIT! Dano: [damage]</span>", "map3d:addLog")
-					GainExperience(10)
-					GainWeaponExp(attack_type, 5)
-				else src << output("Errou...", "map3d:addLog")
+
+					// --- TRATAMENTO PARA PROPS (Objetos de Treino) ---
+					if(best_target.npc_type == "prop")
+						// CORRIGIDO: CSS Inválido (#orange) removido para cor laranja funcionar
+						src << output("<span class='log-hit' style='color:orange'>TREINO: Dano [damage] no Tronco</span>", "map3d:addLog")
+						// Ganha XP mas o tronco NÃO perde HP
+						GainExperience(5)
+						GainWeaponExp(attack_type, 3)
+					else
+						// --- COMBATE NORMAL (INIMIGOS) ---
+						src << output("<span class='log-hit'>HIT em [best_target.name]! Dano: [damage]</span>", "map3d:addLog")
+
+						best_target.current_hp -= damage
+						if(best_target.current_hp <= 0)
+							src << output("<span class='log-hit' style='color:red'>[best_target.name] derrotado!</span>", "map3d:addLog")
+							// Respawn simples para teste
+							best_target.current_hp = best_target.max_hp
+							best_target.real_x = rand(-10, 10)
+							best_target.real_z = rand(-10, 10)
+
+						GainExperience(10)
+						GainWeaponExp(attack_type, 5)
+				else
+					src << output("Errou... (Ninguém na mira)", "map3d:addLog")
+
 				spawn(3) is_attacking = 0
 			else return
 
@@ -679,21 +741,18 @@ mob
 	proc/get_dist_euclid(x1, z1, x2, z2)
 		return sqrt((x1-x2)**2 + (z1-z2)**2)
 
-// --- NPCS (GESTÃO OTIMIZADA) ---
 mob/npc
 	in_game = 1
 	char_loaded = 1
 	var/npc_type = "base"
-	var/wanders = 1 
+	var/wanders = 1
 	New()
 		..()
 		real_y = 0
-		// ADICIONA À LISTA GLOBAL AUTOMATICAMENTE
 		global_npcs += src
 		if(wanders) spawn(5) AI_Loop()
 
 	Del()
-		// REMOVE DA LISTA GLOBAL AO MORRER
 		global_npcs -= src
 		..()
 
@@ -707,12 +766,31 @@ mob/npc
 				sleep(1)
 			sleep(rand(20, 50))
 
+// --- NOVO TIPO DE NPC: OBJETOS FIXOS (PROPS) ---
+mob/npc/prop
+	npc_type = "prop"
+	wanders = 0
+
+// O Tronco agora existe no servidor também!
+mob/npc/prop/log
+	name = "Tronco de Treino"
+	skin_color = "8B4513" // Apenas para referência, o cliente usa o modelo 3D
+	New()
+		..()
+		// COORDENADAS FIXAS IGUAIS AO ENGINE.JS
+		real_x = 5
+		real_z = 5
+		real_y = 0
+		real_rot = 0
+		max_hp = 9999
+		current_hp = 9999
+
 mob/npc/vendor
 	name = "Armeiro"
 	npc_type = "vendor"
 	skin_color = "FFE0BD"
 	cloth_color = "555555"
-	wanders = 0 // PARADO
+	wanders = 0
 	var/list/stock = list(
 		/obj/item/weapon/sword_wood,
 		/obj/item/weapon/sword_iron,
@@ -743,5 +821,7 @@ world/New()
 	world.maxy = 1
 	world.maxz = 1
 	..()
-	new /mob/npc/dummy() 
+	new /mob/npc/dummy()
 	new /mob/npc/vendor()
+	// CRUCIAL: Instanciar o tronco no mundo
+	new /mob/npc/prop/log()
