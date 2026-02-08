@@ -83,7 +83,7 @@ const GameDefinitions = {
         attachment: { bone: "rightArm", pos: [0, -0.55, 0.1], rot: [Math.PI/2, 0, 0] },
         data: { power: 12 },
         // NOVO: Config do Projétil (Rolha)
-        projectile: { speed: 0.3, range: 8, color: 0xA0522D, scale: [0.1, 0.1, 0.2] } 
+        projectile: { speed: 0.1, range: 8, color: 0xA0522D, scale: [0.3, 0.3, 0.3] } 
     },
 
     "weapon_gun_flintlock": {

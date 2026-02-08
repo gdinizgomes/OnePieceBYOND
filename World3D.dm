@@ -671,12 +671,6 @@ mob
 				var/look_x = sin(src.real_rot * 180 / 3.14159)
 				var/look_z = cos(src.real_rot * 180 / 3.14159)
 
-				// Define exigência de mira (Dot Product)
-				// 0.3 = Cone aberto (Corpo a corpo)
-				// 0.9 = Cone fechado (Tiro preciso)
-				var/required_dot = 0.3
-				if(attack_type == "gun") required_dot = 0.9
-
 				for(var/mob/npc/N in global_npcs)
 					if(N.npc_type == "vendor") continue
 
@@ -688,17 +682,33 @@ mob
 					var/dist = sqrt(dx*dx + dy*dy + dz*dz)
 
 					if(dist <= best_dist)
-						// 2. Direção
-						var/dist_hz = sqrt(dx*dx + dz*dz)
-						if(dist_hz > 0)
-							var/norm_dx = dx / dist_hz
-							var/norm_dz = dz / dist_hz
-							
-							var/dot = (norm_dx * look_x) + (norm_dz * look_z)
-							
-							if(dot > required_dot) 
-								best_target = N
-								best_dist = dist
+						// 2. NOVA LÓGICA DE ACERTO (Raycast para Armas, Cone para Melee)
+						var/hit_confirmed = 0
+						
+						if(attack_type == "gun")
+							// --- LÓGICA DE ARMA (PERPENDICULAR / RAYCAST) ---
+							// Produto escalar para verificar se está na frente (positivo)
+							var/dot = (dx * look_x) + (dz * look_z)
+							if(dot > 0)
+								// Distância perpendicular (largura do tiro)
+								// Fórmula: |(LookX * Dz) - (LookZ * Dx)|
+								var/perp_dist = abs((look_x * dz) - (look_z * dx))
+								
+								// 0.5 = 1 metro de largura total (0.5 para cada lado do laser)
+								if(perp_dist < 0.5) hit_confirmed = 1
+						else
+							// --- LÓGICA DE MELEE (CONE) ---
+							var/dist_hz = sqrt(dx*dx + dz*dz)
+							if(dist_hz > 0)
+								var/norm_dx = dx / dist_hz
+								var/norm_dz = dz / dist_hz
+								var/dot = (norm_dx * look_x) + (norm_dz * look_z)
+								// Cone aberto (0.3)
+								if(dot > 0.3) hit_confirmed = 1
+
+						if(hit_confirmed)
+							best_target = N
+							best_dist = dist
 				// ------------------------------------------------------------------
 
 				if(best_target)
