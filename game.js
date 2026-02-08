@@ -406,8 +406,7 @@ window.addEventListener('game-action', function(e) {
     }
 });
 
-// NOVA FUNÇÃO: Dispara o visual do projétil (CORRIGIDO PARA FRENTE)
-function fireProjectile(projectileDef) {
+function fireProjectile(projectileDef, isMine) {
     const geo = new THREE.BoxGeometry(1, 1, 1);
     const mat = new THREE.MeshBasicMaterial({ color: projectileDef.color });
     const bullet = new THREE.Mesh(geo, mat);
@@ -416,40 +415,43 @@ function fireProjectile(projectileDef) {
     const s = projectileDef.scale || [0.1, 0.1, 0.1];
     bullet.scale.set(s[0], s[1], s[2]);
 
-    // Rotação do corpo do personagem
-    const bodyRot = playerGroup.rotation.y;
-    
-    // CORREÇÃO: Usar POSITIVO para ir para frente (Z+ no sistema visual)
+    const origin = isMine ? playerGroup : (otherPlayers[projectileDef.ownerID] ? otherPlayers[projectileDef.ownerID].mesh : null);
+    if(!origin) return; // Se não achou quem atirou, não cria bala
+
+    const bodyRot = origin.rotation.y;
     const sin = Math.sin(bodyRot); 
     const cos = Math.cos(bodyRot);
     
-    bullet.position.copy(playerGroup.position);
+    bullet.position.copy(origin.position);
     bullet.position.y += 1.3; 
     
-    // Offset para sair da arma (Ajustado)
-    bullet.position.x += cos * 0.4; // Lado
-    bullet.position.z -= sin * 0.4; // Lado
-    
-    // Frente (Invertido para +)
-    bullet.position.x += sin * 0.5;
-    bullet.position.z += cos * 0.5;
+    const forwardOffset = 0.5;
+    bullet.position.x += sin * forwardOffset;
+    bullet.position.z += cos * forwardOffset;
 
-    // Rotação da bala
+    const rightOffset = 0.4;
+    bullet.position.x -= cos * rightOffset; 
+    bullet.position.z += sin * rightOffset; 
+
     bullet.rotation.y = bodyRot;
 
     Engine.scene.add(bullet);
 
     activeProjectiles.push({
         mesh: bullet,
-        dirX: sin,  // Positivo para frente
-        dirZ: cos,  // Positivo para frente
+        dirX: sin,  
+        dirZ: cos, 
         speed: projectileDef.speed,
         distTraveled: 0,
-        maxDist: projectileDef.range || 10
+        maxDist: projectileDef.range || 10,
+        isMine: isMine // IMPORTANTE: Só calculamos colisão das NOSSAS balas
     });
 }
 
-// Atualiza posição das balas
+// ATUALIZADO: Lógica de Colisão precisa (Bounding Box)
+const tempBoxBullet = new THREE.Box3();
+const tempBoxTarget = new THREE.Box3();
+
 function updateProjectiles() {
     for (let i = activeProjectiles.length - 1; i >= 0; i--) {
         const p = activeProjectiles[i];
@@ -458,7 +460,36 @@ function updateProjectiles() {
         p.mesh.position.z += p.dirZ * p.speed;
         p.distTraveled += p.speed;
 
-        // Se passar do alcance, some
+        // VERIFICAÇÃO DE COLISÃO DO CLIENTE
+        if (p.isMine) {
+            tempBoxBullet.setFromObject(p.mesh);
+
+            for (let id in otherPlayers) {
+                const target = otherPlayers[id];
+                // Ignora se estiver morto ou longe demais para poupar CPU
+                if(target.fainted) continue;
+
+                // CRIA A HITZONE baseada na MALHA do alvo (Funciona pra players e Troncos grandes)
+                tempBoxTarget.setFromObject(target.mesh);
+
+                if (tempBoxBullet.intersectsBox(tempBoxTarget)) {
+                    // COLISÃO VISUAL CONFIRMADA!
+                    console.log("Acertou visualmente: " + id);
+                    
+                    // Envia para o servidor validar e dar dano
+                    if(typeof BYOND_REF !== 'undefined') {
+                        window.location.href = `byond://?src=${BYOND_REF}&action=projectile_hit&target_ref=${id}`;
+                    }
+                    
+                    // Remove bala
+                    Engine.scene.remove(p.mesh);
+                    activeProjectiles.splice(i, 1);
+                    p.distTraveled = 9999; // Força saída do loop
+                    break;
+                }
+            }
+        }
+
         if (p.distTraveled >= p.maxDist) {
             Engine.scene.remove(p.mesh);
             activeProjectiles.splice(i, 1);
@@ -504,9 +535,8 @@ function performAttack(type) {
     setTimeout(function() {
         charState = atkStance;
         
-        // DISPARA O EFEITO VISUAL SE FOR ARMA
         if(type === "gun" && projectileData) {
-            fireProjectile(projectileData);
+            fireProjectile(projectileData, true); // TRUE = Eu atirei
         }
 
         if(typeof BYOND_REF !== 'undefined') {
@@ -766,6 +796,15 @@ function receberDadosMultiplayer(json) {
                 if(pData.it === "" || pData.it === null) CharFactory.equipItem(other.mesh, "none");
                 else CharFactory.equipItem(other.mesh, pData.it);
                 other.lastItem = pData.it;
+            }
+
+            // ATUALIZADO: Quando alguém ataca à distância, visualizamos o tiro dele
+            if (other.attacking && other.attackType === "gun" && !other.hasFiredThisCycle) {
+                // Aqui precisaríamos de mais dados (tipo da arma) vindos do servidor
+                // para saber qual projétil desenhar. Por enquanto, hardcoded para teste:
+                fireProjectile({ speed: 0.6, color: 0xFFFF00, ownerID: id }, false);
+                other.hasFiredThisCycle = true;
+                setTimeout(() => { other.hasFiredThisCycle = false; }, 500);
             }
         }
     }

@@ -21,6 +21,7 @@ obj/item/weapon
 	slot = "hand"
 	max_stack = 1
 	var/range = 1.0 
+	var/projectile_speed = 0 // 0 = Instantâneo (Melee), >0 = Client detecta
 
 obj/item/weapon/sword_wood
 	name = "Espada de Treino"
@@ -52,7 +53,8 @@ obj/item/weapon/gun_wood
 	description = "Dispara rolhas."
 	power = 12
 	price = 80
-	range = 8.0 
+	range = 10.0 
+	projectile_speed = 0.6 
 
 obj/item/weapon/gun_flintlock
 	name = "Pistola Velha"
@@ -60,7 +62,8 @@ obj/item/weapon/gun_flintlock
 	description = "Cheira a pólvora queimada."
 	power = 25
 	price = 250
-	range = 12.0
+	range = 14.0
+	projectile_speed = 3.6 
 
 obj/item/weapon/gun_silver
 	name = "Pistola de Combate"
@@ -68,7 +71,8 @@ obj/item/weapon/gun_silver
 	description = "Alta precisão."
 	power = 40
 	price = 800
-	range = 20.0
+	range = 22.0
+	projectile_speed = 7.2 
 
 // -----------------------------------------------------
 // CÓDIGO DO MOB E LOGIN
@@ -112,6 +116,7 @@ mob
 	var/real_y = 0
 	var/real_z = 0
 	var/real_rot = 0
+	var/hit_radius = 0.5 
 	var/in_game = 0
 	var/is_attacking = 0
 	var/attack_type = ""
@@ -382,14 +387,12 @@ mob
 		src << browse_rsc(file("engine.js"), "engine.js")
 		src << browse_rsc(file("game.js"), "game.js")
 
-		// --- ENVIANDO ARQUIVOS DE IMAGEM ---
 		if(fexists("weapon_sword_wood_img.png")) src << browse_rsc(file("weapon_sword_wood_img.png"), "weapon_sword_wood_img.png")
 		if(fexists("weapon_sword_iron_img.png")) src << browse_rsc(file("weapon_sword_iron_img.png"), "weapon_sword_iron_img.png")
 		if(fexists("weapon_sword_silver_img.png")) src << browse_rsc(file("weapon_sword_silver_img.png"), "weapon_sword_silver_img.png")
 		if(fexists("weapon_gun_wood_img.png")) src << browse_rsc(file("weapon_gun_wood_img.png"), "weapon_gun_wood_img.png")
 		if(fexists("weapon_gun_flintlock_img.png")) src << browse_rsc(file("weapon_gun_flintlock_img.png"), "weapon_gun_flintlock_img.png")
 		if(fexists("weapon_gun_silver_img.png")) src << browse_rsc(file("weapon_gun_silver_img.png"), "weapon_gun_silver_img.png")
-		// -----------------------------------
 
 		char_loaded = 1
 		in_game = 1
@@ -463,7 +466,7 @@ mob
 						"rest" = M.is_resting, "ft" = M.is_fainted,
 						"name" = M.name, "skin" = M.skin_color, "cloth" = M.cloth_color,
 						"npc" = 0,
-						"hp" = M.current_hp, "mhp" = M.max_hp // HP Enviado
+						"hp" = M.current_hp, "mhp" = M.max_hp
 					)
 					players_list[pid] = pData
 			for(var/mob/npc/N in global_npcs)
@@ -474,7 +477,7 @@ mob
 					"a" = 0, "at" = "", "it" = "", "rest" = 0, "ft" = 0,
 					"name" = N.name, "skin" = N.skin_color, "cloth" = N.cloth_color,
 					"npc" = 1, "type" = N.npc_type,
-					"hp" = N.current_hp, "mhp" = N.max_hp // HP Enviado
+					"hp" = N.current_hp, "mhp" = N.max_hp
 				)
 			var/list/ground_items = list()
 			for(var/obj/item/I in world)
@@ -487,7 +490,6 @@ mob
 			if(src.is_fainted && src.faint_end_time > world.time)
 				faint_remaining = round((src.faint_end_time - world.time) / 10)
 			
-			// --- ENVIA O PACOTE COM EVENTOS VISUAIS ---
 			var/list/packet = list(
 				"my_id" = "\ref[src]",
 				"me" = list(
@@ -507,7 +509,6 @@ mob
 			)
 			src << output(json_encode(packet), "map3d:receberDadosMultiplayer")
 			
-			// Limpa eventos
 			if(src.pending_visuals.len > 0) src.pending_visuals = list()
 			
 			sleep(2)
@@ -633,109 +634,99 @@ mob
 					RequestInventoryUpdate()
 
 		if(action == "attack" && in_game)
+			// Apenas inicia a animação/estado. O dano de projétil agora vem do 'projectile_hit'
 			if(is_resting) return
 			var/base_cost = max_energy * 0.03
 			if(ConsumeEnergy(base_cost))
 				is_attacking = 1
 				attack_type = href_list["type"]
-				var/weapon_bonus = 0
-				var/prof_lvl = 1
-				var/attack_range = 2.5 
-
-				if(attack_type == "sword")
-					if(slot_hand && istype(slot_hand, /obj/item/weapon) && findtext(slot_hand.id_visual, "sword"))
-						weapon_bonus = slot_hand.power
-						prof_lvl = prof_sword_lvl
-						if(istype(slot_hand, /obj/item/weapon))
-							var/obj/item/weapon/W = slot_hand
-							attack_range = W.range
-					else
-						src << output("Você precisa de uma espada equipada!", "map3d:mostrarNotificacao")
-						is_attacking = 0
-						return
-				else if(attack_type == "gun")
-					if(slot_hand && istype(slot_hand, /obj/item/weapon) && findtext(slot_hand.id_visual, "gun"))
-						weapon_bonus = slot_hand.power
-						prof_lvl = prof_gun_lvl
-						if(istype(slot_hand, /obj/item/weapon))
-							var/obj/item/weapon/W = slot_hand
-							attack_range = W.range
-					else
-						src << output("Você precisa de uma arma equipada!", "map3d:mostrarNotificacao")
-						is_attacking = 0
-						return
-				else if(attack_type == "fist")
-					prof_lvl = prof_punch_lvl
-				else if(attack_type == "kick")
-					prof_lvl = prof_kick_lvl
-
-				var/prof_bonus = prof_lvl * 2
 				
-				var/mob/npc/best_target = null 
-				var/best_dist = attack_range 
-
-				// VETOR DE MIRA (SINAIS POSITIVOS)
-				var/look_x = sin(src.real_rot * 180 / 3.14159)
-				var/look_z = cos(src.real_rot * 180 / 3.14159)
-
-				for(var/mob/npc/N in global_npcs)
-					if(N.npc_type == "vendor") continue
-
-					var/dx = N.real_x - src.real_x
-					var/dy = N.real_y - src.real_y 
-					var/dz = N.real_z - src.real_z
+				// Lógica de ataque corpo a corpo ainda pode ficar aqui ou ser movida pro client
+				// Para manter consistência com o pedido, focamos na correção dos PROJÉTEIS.
+				// Se for Melee (fist/kick/sword), o client ainda não detecta colisão,
+				// então mantemos a lógica antiga simplificada SÓ para Melee.
+				
+				var/is_projectile = 0
+				if(attack_type == "gun") is_projectile = 1
+				
+				if(!is_projectile)
+					// Lógica Melee Simples (Cone)
+					var/damage_delay = 3 // 0.3s para bater
+					var/prof_lvl = 1
+					var/weapon_bonus = 0
+					var/range = 2.5
 					
-					var/dist = sqrt(dx*dx + dy*dy + dz*dz)
+					if(attack_type == "sword")
+						if(slot_hand && istype(slot_hand, /obj/item/weapon/sword_wood)) weapon_bonus=5
+						if(slot_hand && istype(slot_hand, /obj/item/weapon/sword_iron)) weapon_bonus=10
+						if(slot_hand && istype(slot_hand, /obj/item/weapon/sword_silver)) weapon_bonus=20
+						prof_lvl = prof_sword_lvl
+					else if(attack_type == "fist") prof_lvl = prof_punch_lvl
+					else if(attack_type == "kick") prof_lvl = prof_kick_lvl
 
-					if(dist <= best_dist)
-						var/hit_confirmed = 0
-						
-						if(attack_type == "gun")
-							// RAYCAST (PERPENDICULAR) PARA ARMAS
-							var/dot = (dx * look_x) + (dz * look_z)
-							if(dot > 0)
-								var/perp_dist = abs((look_x * dz) - (look_z * dx))
-								if(perp_dist < 0.5) hit_confirmed = 1
-						else
-							// CONE PARA MELEE
-							var/dist_hz = sqrt(dx*dx + dz*dz)
-							if(dist_hz > 0)
-								var/norm_dx = dx / dist_hz
-								var/norm_dz = dz / dist_hz
-								var/dot = (norm_dx * look_x) + (norm_dz * look_z)
-								if(dot > 0.3) hit_confirmed = 1
-
-						if(hit_confirmed)
-							best_target = N
-							best_dist = dist
-
-				if(best_target)
-					var/damage = round((strength * 0.5) + prof_bonus + weapon_bonus + rand(0, 2))
-					
-					// Adiciona o evento visual para ser enviado no próximo pacote
-					src.pending_visuals += list(list("type"="dmg", "val"=damage, "tid"="\ref[best_target]"))
-
-					if(best_target.npc_type == "prop")
-						src << output("<span class='log-hit' style='color:orange'>TREINO: Dano [damage] no Tronco</span>", "map3d:addLog")
-						GainExperience(5)
-						GainWeaponExp(attack_type, 3)
-					else
-						src << output("<span class='log-hit'>HIT em [best_target.name]! Dano: [damage]</span>", "map3d:addLog")
-						
-						best_target.current_hp -= damage
-						if(best_target.current_hp <= 0)
-							src << output("<span class='log-hit' style='color:red'>[best_target.name] derrotado!</span>", "map3d:addLog")
-							best_target.current_hp = best_target.max_hp
-							best_target.real_x = rand(-10, 10)
-							best_target.real_z = rand(-10, 10)
-						
-						GainExperience(10)
-						GainWeaponExp(attack_type, 5)
-				else
-					src << output("Errou... (Ninguém na mira)", "map3d:addLog")
-
+					spawn(damage_delay)
+						if(src && is_attacking)
+							var/look_x = sin(src.real_rot * 180 / 3.14159)
+							var/look_z = cos(src.real_rot * 180 / 3.14159)
+							
+							for(var/mob/npc/N in global_npcs)
+								var/dx = N.real_x - src.real_x
+								var/dz = N.real_z - src.real_z
+								var/dist = sqrt(dx*dx + dz*dz)
+								if(dist <= range)
+									var/norm_dx = dx / dist
+									var/norm_dz = dz / dist
+									var/dot = (norm_dx * look_x) + (norm_dz * look_z)
+									if(dot > 0.5) // Cone frontal
+										var/dmg = round((strength * 0.5) + (prof_lvl*2) + weapon_bonus + rand(0,2))
+										src.pending_visuals += list(list("type"="dmg", "val"=dmg, "tid"="\ref[N]"))
+										if(N.npc_type == "prop")
+											GainExperience(2); GainWeaponExp(attack_type, 2)
+										else
+											N.current_hp -= dmg
+											if(N.current_hp <= 0)
+												N.current_hp = N.max_hp
+												N.real_x = rand(-10,10); N.real_z = rand(-10,10)
+											GainExperience(10); GainWeaponExp(attack_type, 5)
+				
 				spawn(3) is_attacking = 0
-			else return
+
+		// NOVA AÇÃO: O Cliente detectou colisão de projétil
+		if(action == "projectile_hit" && in_game)
+			var/target_ref = href_list["target_ref"]
+			var/obj/target = locate(target_ref)
+			
+			// Validações de Segurança
+			if(!target) return
+			if(!slot_hand || !istype(slot_hand, /obj/item/weapon)) return // Tem arma?
+			var/obj/item/weapon/W = slot_hand
+			if(W.projectile_speed <= 0) return // É arma de tiro?
+
+			// Valida Distância (Anti-Cheat básico: não deixar acertar mapa todo)
+			// Damos uma margem de tolerância (buffer) de +5 unidades por causa do lag
+			var/dist = get_dist_euclid(src.real_x, src.real_z, target:real_x, target:real_z)
+			if(dist > (W.range + 5)) return 
+
+			// Aplica o Dano
+			var/damage = round((strength * 0.4) + (prof_gun_lvl * 2) + W.power + rand(0, 3))
+			src.pending_visuals += list(list("type"="dmg", "val"=damage, "tid"=target_ref))
+
+			if(istype(target, /mob/npc))
+				var/mob/npc/N = target
+				if(N.npc_type == "prop")
+					src << output("<span class='log-hit' style='color:orange'>TREINO: Dano [damage] no Tronco</span>", "map3d:addLog")
+					GainExperience(5)
+					GainWeaponExp("gun", 3)
+				else
+					src << output("<span class='log-hit'>TIRO em [N.name]! Dano: [damage]</span>", "map3d:addLog")
+					N.current_hp -= damage
+					if(N.current_hp <= 0)
+						src << output("<span class='log-hit' style='color:red'>[N.name] eliminado!</span>", "map3d:addLog")
+						N.current_hp = N.max_hp
+						N.real_x = rand(-10, 10)
+						N.real_z = rand(-10, 10)
+					GainExperience(10)
+					GainWeaponExp("gun", 5)
 
 		if(action == "add_stat" && in_game)
 			if(stat_points > 0)
@@ -787,6 +778,7 @@ mob/npc/prop
 mob/npc/prop/log
 	name = "Tronco de Treino"
 	skin_color = "8B4513" 
+	hit_radius = 0.8 // Usado no melee, mas no gun usamos a Box3 do client
 	New()
 		..()
 		real_x = 5
