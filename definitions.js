@@ -15,7 +15,6 @@ const GameDefinitions = {
     },
 
     // --- ARMAS TIPO ESPADA ---
-    // CORREÇÃO: pos Y alterado para -0.55. Isso faz o cabo "subir" para dentro da mão.
     "weapon_sword_wood": {
         id: "weapon_sword_wood",
         name: "Espada de Treino",
@@ -41,11 +40,8 @@ const GameDefinitions = {
         visual: {
             model: "group",
             parts: [
-                //cabo
                 { model: "box", color: 0x111111, scale: [0.1, 0.45, 0.04], pos: [0, 0, 0] },
-                //guarda-mão
                 { model: "box", color: 0x555555, scale: [0.3, 0.1, 0.06], pos: [0, 0.2, 0] },
-                //lâmina
                 { model: "box", color: 0xDDDDDD, scale: [0.08, 1, 0.02], pos: [0, 0.58, 0] }
             ]
         },
@@ -71,7 +67,6 @@ const GameDefinitions = {
     },
 
     // --- ARMAS TIPO PISTOLA ---
-    // CORREÇÃO: Ajuste fino do pos para o cabo inclinado coincidir com a mão
     "weapon_gun_wood": {
         id: "weapon_gun_wood",
         name: "Pistola de Brinquedo",
@@ -80,16 +75,15 @@ const GameDefinitions = {
         visual: {
             model: "group",
             parts: [
-                // Cabo
                 { model: "box", color: 0x8B4513, scale: [0.07, 0.15, 0.07], pos: [0, -0.05, 0.05], rot: [0.2, 0, 0] }, 
-                // Cano
                 { model: "box", color: 0xA0522D, scale: [0.08, 0.1, 0.20], pos: [0, 0.05, 0.15] },
-                // Ponta
                 { model: "box", color: 0xFF6600, scale: [0.04, 0.04, 0.05], pos: [0, 0.07, 0.26] }
             ]
         },
         attachment: { bone: "rightArm", pos: [0, -0.55, 0.1], rot: [Math.PI/2, 0, 0] },
-        data: { power: 12 }
+        data: { power: 12 },
+        // NOVO: Config do Projétil (Rolha)
+        projectile: { speed: 0.3, range: 8, color: 0xA0522D, scale: [0.1, 0.1, 0.2] } 
     },
 
     "weapon_gun_flintlock": {
@@ -106,7 +100,9 @@ const GameDefinitions = {
             ]
         },
         attachment: { bone: "rightArm", pos: [0, -0.55, 0.1], rot: [Math.PI/2, 0, 0] },
-        data: { power: 25 }
+        data: { power: 25 },
+        // NOVO: Config do Projétil (Chumbo Lento)
+        projectile: { speed: 0.6, range: 12, color: 0x333333, scale: [0.05, 0.05, 0.05] }
     },
 
     "weapon_gun_silver": {
@@ -123,7 +119,9 @@ const GameDefinitions = {
             ]
         },
         attachment: { bone: "rightArm", pos: [0, -0.55, 0.1], rot: [Math.PI/2, 0, 0] },
-        data: { power: 40 }
+        data: { power: 40 },
+        // NOVO: Config do Projétil (Bala Rápida e Brilhante)
+        projectile: { speed: 1.2, range: 20, color: 0xFFFF00, scale: [0.03, 0.03, 0.4] }
     },
 
     // Props

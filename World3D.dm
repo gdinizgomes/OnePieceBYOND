@@ -11,7 +11,7 @@ obj/item
 	var/price = 0
 	var/description = ""
 	var/amount = 1
-	var/max_stack = 5
+	var/max_stack = 5 
 	var/real_x = 0
 	var/real_y = 0
 	var/real_z = 0
@@ -20,6 +20,7 @@ obj/item
 obj/item/weapon
 	slot = "hand"
 	max_stack = 1
+	var/range = 1.0 // NOVO: Alcance base
 
 obj/item/weapon/sword_wood
 	name = "Espada de Treino"
@@ -27,6 +28,7 @@ obj/item/weapon/sword_wood
 	description = "Uma espada de madeira para treinar."
 	power = 5
 	price = 50
+	range = 2.5
 
 obj/item/weapon/sword_iron
 	name = "Espada de Ferro"
@@ -34,6 +36,7 @@ obj/item/weapon/sword_iron
 	description = "Lâmina afiada e resistente."
 	power = 10
 	price = 100
+	range = 2.5
 
 obj/item/weapon/sword_silver
 	name = "Espada de Prata"
@@ -41,6 +44,7 @@ obj/item/weapon/sword_silver
 	description = "Brilha com a luz da lua."
 	power = 20
 	price = 500
+	range = 3.0
 
 obj/item/weapon/gun_wood
 	name = "Pistola de Brinquedo"
@@ -48,6 +52,7 @@ obj/item/weapon/gun_wood
 	description = "Dispara rolhas."
 	power = 12
 	price = 80
+	range = 8.0 // Curto alcance
 
 obj/item/weapon/gun_flintlock
 	name = "Pistola Velha"
@@ -55,6 +60,7 @@ obj/item/weapon/gun_flintlock
 	description = "Cheira a pólvora queimada."
 	power = 25
 	price = 250
+	range = 12.0
 
 obj/item/weapon/gun_silver
 	name = "Pistola de Combate"
@@ -62,6 +68,7 @@ obj/item/weapon/gun_silver
 	description = "Alta precisão."
 	power = 40
 	price = 800
+	range = 20.0
 
 // -----------------------------------------------------
 // CÓDIGO DO MOB E LOGIN
@@ -230,7 +237,7 @@ mob
 				"amount" = I.amount,
 				"id" = I.id_visual,
 				"power" = I.power,
-				"price" = I.price,
+				"price" = I.price, 
 				"equipped" = 0
 			))
 		src << output(json_encode(inv_data), "map3d:loadInventory")
@@ -443,7 +450,7 @@ mob
 		while(src && in_game)
 			var/list/players_list = list()
 			for(var/mob/M in world)
-				if(istype(M, /mob/npc)) continue
+				if(istype(M, /mob/npc)) continue 
 				if(M.in_game && M.char_loaded)
 					if(abs(M.real_x - src.real_x) > 30 || abs(M.real_z - src.real_z) > 30) continue
 					var/pid = "\ref[M]"
@@ -526,7 +533,7 @@ mob
 			src.name = href_list["name"]
 			src.skin_color = href_list["skin"]
 			src.cloth_color = href_list["cloth"]
-			src.level = 1; src.gold = 10000
+			src.level = 1; src.gold = 10000 
 			src.real_x = 0; src.real_y = 0; src.real_z = 0
 			current_slot = slot
 			SaveCharacter()
@@ -579,7 +586,7 @@ mob
 					for(var/path in V.stock)
 						var/obj/item/tmpI = new path()
 						shop_items += list(list("name"=tmpI.name, "id"=tmpI.id_visual, "price"=tmpI.price, "desc"=tmpI.description, "typepath"=path))
-						del(tmpI)
+						del(tmpI) 
 					src << output(json_encode(shop_items), "map3d:openShop")
 					RequestInventoryUpdate()
 
@@ -604,7 +611,7 @@ mob
 			var/ref_id = href_list["ref"]
 			var/obj/item/I = locate(ref_id)
 			if(I && (I in contents))
-				if(I == slot_hand)
+				if(I == slot_hand) 
 					src << output("Desequipe antes de vender!", "map3d:mostrarNotificacao")
 				else
 					var/val = round(I.price / 10)
@@ -622,11 +629,16 @@ mob
 				attack_type = href_list["type"]
 				var/weapon_bonus = 0
 				var/prof_lvl = 1
+				var/attack_range = 2.5 // Alcance padrão (soco/chute)
 
 				if(attack_type == "sword")
 					if(slot_hand && istype(slot_hand, /obj/item/weapon) && findtext(slot_hand.id_visual, "sword"))
 						weapon_bonus = slot_hand.power
 						prof_lvl = prof_sword_lvl
+						// NOVO: Usa o alcance da arma
+						if(istype(slot_hand, /obj/item/weapon))
+							var/obj/item/weapon/W = slot_hand
+							attack_range = W.range
 					else
 						src << output("Você precisa de uma espada equipada!", "map3d:mostrarNotificacao")
 						is_attacking = 0
@@ -635,6 +647,10 @@ mob
 					if(slot_hand && istype(slot_hand, /obj/item/weapon) && findtext(slot_hand.id_visual, "gun"))
 						weapon_bonus = slot_hand.power
 						prof_lvl = prof_gun_lvl
+						// NOVO: Usa o alcance da arma
+						if(istype(slot_hand, /obj/item/weapon))
+							var/obj/item/weapon/W = slot_hand
+							attack_range = W.range
 					else
 						src << output("Você precisa de uma arma equipada!", "map3d:mostrarNotificacao")
 						is_attacking = 0
@@ -645,76 +661,62 @@ mob
 					prof_lvl = prof_kick_lvl
 
 				var/prof_bonus = prof_lvl * 2
+				
+				// --- LÓGICA DE ALVO ---
+				var/mob/npc/best_target = null 
+				var/best_dist = attack_range // Usa o alcance definido acima
 
-				// --- CORREÇÃO DE COLISÃO 3D ---
-				var/mob/npc/best_target = null
-				// Aumentamos a tolerância para compensar lag visual
-				var/best_dist = 4.0
-				if(attack_type == "gun") best_dist = 12.0
-
-				// Vetor direção do player (Para onde estou olhando)
-				// CORRIGIDO: Removido o sinal negativo para alinhar o vetor visual com o vetor do servidor
+				// Vetor direção do player
 				var/look_x = sin(src.real_rot * 180 / 3.14159)
 				var/look_z = cos(src.real_rot * 180 / 3.14159)
 
-				// Debug para ajudar a entender o que está acontecendo
-				// src << output("DEBUG: Atacando de [src.real_x],[src.real_z] rot=[src.real_rot]", "map3d:addLog")
+				// Define exigência de mira (Dot Product)
+				// 0.3 = Cone aberto (Corpo a corpo)
+				// 0.9 = Cone fechado (Tiro preciso)
+				var/required_dot = 0.3
+				if(attack_type == "gun") required_dot = 0.9
 
 				for(var/mob/npc/N in global_npcs)
-					// --- PROTEÇÃO DE VENDEDOR ---
 					if(N.npc_type == "vendor") continue
-					// ---------------------------
 
-					// 1. Distância 3D (X, Y, Z)
+					// 1. Distância 3D
 					var/dx = N.real_x - src.real_x
-					var/dy = N.real_y - src.real_y // Importante para 3D
+					var/dy = N.real_y - src.real_y 
 					var/dz = N.real_z - src.real_z
-
+					
 					var/dist = sqrt(dx*dx + dy*dy + dz*dz)
 
-					// src << output("Alvo [N.name]: Dist=[dist] (Max: [best_dist])", "map3d:addLog")
-
 					if(dist <= best_dist)
-						// 2. Produto Escalar (Cone) - Ignoramos Y no ângulo (ataque horizontal)
-						// Normalizar vetor distancia (apenas X e Z para mira horizontal)
+						// 2. Direção
 						var/dist_hz = sqrt(dx*dx + dz*dz)
 						if(dist_hz > 0)
 							var/norm_dx = dx / dist_hz
 							var/norm_dz = dz / dist_hz
-
+							
 							var/dot = (norm_dx * look_x) + (norm_dz * look_z)
-
-							// Debug para verificar o ângulo (se dot > 0.5, está na frente)
-							// src << output("Alvo [N.name]: Dot=[dot]", "map3d:addLog")
-
-							// Tolerância angular (0.5 = 60 graus para cada lado, bem generoso)
-							if(dot > 0.5)
+							
+							if(dot > required_dot) 
 								best_target = N
 								best_dist = dist
 				// ------------------------------------------------------------------
 
 				if(best_target)
 					var/damage = round((strength * 0.5) + prof_bonus + weapon_bonus + rand(0, 2))
-
-					// --- TRATAMENTO PARA PROPS (Objetos de Treino) ---
+					
 					if(best_target.npc_type == "prop")
-						// CORRIGIDO: CSS Inválido (#orange) removido para cor laranja funcionar
 						src << output("<span class='log-hit' style='color:orange'>TREINO: Dano [damage] no Tronco</span>", "map3d:addLog")
-						// Ganha XP mas o tronco NÃO perde HP
 						GainExperience(5)
 						GainWeaponExp(attack_type, 3)
 					else
-						// --- COMBATE NORMAL (INIMIGOS) ---
 						src << output("<span class='log-hit'>HIT em [best_target.name]! Dano: [damage]</span>", "map3d:addLog")
-
+						
 						best_target.current_hp -= damage
 						if(best_target.current_hp <= 0)
 							src << output("<span class='log-hit' style='color:red'>[best_target.name] derrotado!</span>", "map3d:addLog")
-							// Respawn simples para teste
 							best_target.current_hp = best_target.max_hp
 							best_target.real_x = rand(-10, 10)
 							best_target.real_z = rand(-10, 10)
-
+						
 						GainExperience(10)
 						GainWeaponExp(attack_type, 5)
 				else
@@ -745,7 +747,7 @@ mob/npc
 	in_game = 1
 	char_loaded = 1
 	var/npc_type = "base"
-	var/wanders = 1
+	var/wanders = 1 
 	New()
 		..()
 		real_y = 0
@@ -790,7 +792,7 @@ mob/npc/vendor
 	npc_type = "vendor"
 	skin_color = "FFE0BD"
 	cloth_color = "555555"
-	wanders = 0
+	wanders = 0 
 	var/list/stock = list(
 		/obj/item/weapon/sword_wood,
 		/obj/item/weapon/sword_iron,
@@ -821,7 +823,7 @@ world/New()
 	world.maxy = 1
 	world.maxz = 1
 	..()
-	new /mob/npc/dummy()
+	new /mob/npc/dummy() 
 	new /mob/npc/vendor()
 	// CRUCIAL: Instanciar o tronco no mundo
 	new /mob/npc/prop/log()

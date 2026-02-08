@@ -11,6 +11,9 @@ let blockSync = false;
 // Itens no Chão
 const groundItemsMeshes = {}; 
 
+// --- SISTEMA DE PROJÉTEIS (NOVO) ---
+const activeProjectiles = []; // Lista de balas voando no cliente
+
 // Estado do Jogo
 let charState = "DEFAULT"; 
 let isResting = false; 
@@ -29,7 +32,7 @@ const gravity = -0.015;
 // UI State
 let isStatWindowOpen = false;
 let isInvWindowOpen = false; 
-let isShopOpen = false; // NOVA VARIAVEL
+let isShopOpen = false; 
 
 // Cache UI
 let cachedHP = -1; let cachedMaxHP = -1; 
@@ -57,7 +60,7 @@ function round2(num) { return Math.round((num + Number.EPSILON) * 100) / 100; }
 
 // --- CONTROLE DA INTERFACE ---
 function toggleStats() {
-    if(isShopOpen) return; // Não abre stats na loja
+    if(isShopOpen) return; 
     isStatWindowOpen = !isStatWindowOpen;
     document.getElementById('stat-window').style.display = isStatWindowOpen ? 'block' : 'none';
     if(isStatWindowOpen) {
@@ -69,11 +72,7 @@ function toggleStats() {
 
 function toggleInventory() {
     if(blockSync) return;
-    // Se loja aberta, fecha loja também
-    if(isShopOpen) {
-        toggleShop();
-        return;
-    }
+    if(isShopOpen) { toggleShop(); return; }
     isInvWindowOpen = !isInvWindowOpen;
     document.getElementById('inventory-window').style.display = isInvWindowOpen ? 'flex' : 'none';
     
@@ -87,21 +86,13 @@ function toggleInventory() {
 function toggleShop() {
     isShopOpen = !isShopOpen;
     document.getElementById('shop-window').style.display = isShopOpen ? 'flex' : 'none';
-    
-    // Abre/Fecha inventário junto
     isInvWindowOpen = isShopOpen;
     document.getElementById('inventory-window').style.display = isInvWindowOpen ? 'flex' : 'none';
-    
-    if(!isShopOpen) {
-        // Limpa UI
-        document.getElementById('shop-list').innerHTML = "";
-    }
+    if(!isShopOpen) document.getElementById('shop-list').innerHTML = "";
 }
 
-// Renderiza Itens da Loja (Recebido do Servidor)
 function openShop(json) {
     if(!isShopOpen) toggleShop();
-    
     const list = document.getElementById('shop-list');
     list.innerHTML = "";
     let items = [];
@@ -152,10 +143,8 @@ function hideTooltip() {
     if(t) t.style.display = 'none';
 }
 
-// Renderiza o Grid de 12 Slots - COM VENDA E LIXO
 function loadInventory(json) {
     hideTooltip(); 
-
     const grid = document.getElementById('inv-grid');
     grid.innerHTML = "";
     let data = [];
@@ -167,8 +156,6 @@ function loadInventory(json) {
         
         if (i < data.length) {
             const item = data[i];
-            
-            // Cria a imagem
             const img = document.createElement('img');
             img.className = 'inv-icon';
             img.src = item.id + "_img.png"; 
@@ -184,7 +171,6 @@ function loadInventory(json) {
                     this.parentElement.style.alignItems = "center";
                 }
             };
-            
             slotDiv.appendChild(img);
             
             if(item.amount > 1) {
@@ -194,7 +180,6 @@ function loadInventory(json) {
                 slotDiv.appendChild(qtyDiv);
             }
 
-            // Tooltip
             slotDiv.onmousemove = function(e) {
                 const tip = document.getElementById('tooltip');
                 tip.style.display = 'block';
@@ -205,21 +190,15 @@ function loadInventory(json) {
             };
             slotDiv.onmouseout = function() { hideTooltip(); };
 
-            // Ações do Botão
             const actionsDiv = document.createElement('div');
             actionsDiv.className = 'inv-actions';
-            
-            // Botão Vender (Só aparece se loja aberta)
             if(isShopOpen) {
                 actionsDiv.innerHTML += `<button class="action-btn btn-sell" style="display:block" onclick="sellItem('${item.ref}')">Vender</button>`;
             } else {
                 actionsDiv.innerHTML += `<button class="action-btn" onclick="equipItem('${item.ref}')">Equipar</button>`;
                 actionsDiv.innerHTML += `<button class="action-btn" onclick="dropItem('${item.ref}', ${item.amount})">Largar</button>`;
             }
-            
-            // Botão Lixo (Sempre aparece)
             actionsDiv.innerHTML += `<button class="action-btn btn-trash" onclick="trashItem('${item.ref}')">Lixo</button>`;
-
             slotDiv.appendChild(actionsDiv);
         } else {
             slotDiv.style.opacity = "0.3";
@@ -228,7 +207,6 @@ function loadInventory(json) {
     }
 }
 
-// Atualiza o Menu C
 function updateStatusMenu(json) {
     let data;
     try { data = JSON.parse(json); } catch(e) { return; }
@@ -236,19 +214,15 @@ function updateStatusMenu(json) {
     document.getElementById('stat-name').innerText = data.nick;
     document.getElementById('stat-class').innerText = data.class;
     document.getElementById('stat-title').innerText = data.title;
-
     if(data.lvl) document.getElementById('stat-lvl').innerText = data.lvl;
 
     if(data.pp !== undefined) {
         document.getElementById('prof-punch').innerText = data.pp;
         document.getElementById('bar-punch').style.width = Math.min(100, (data.pp_x / data.pp_r) * 100) + "%";
-        
         document.getElementById('prof-kick').innerText = data.pk; 
         document.getElementById('bar-kick').style.width = Math.min(100, (data.pk_x / data.pk_r) * 100) + "%";
-
         document.getElementById('prof-sword').innerText = data.ps;
         document.getElementById('bar-sword').style.width = Math.min(100, (data.ps_x / data.ps_r) * 100) + "%";
-
         document.getElementById('prof-gun').innerText = data.pg;
         document.getElementById('bar-gun').style.width = Math.min(100, (data.pg_x / data.pg_r) * 100) + "%";
     }
@@ -256,13 +230,11 @@ function updateStatusMenu(json) {
     function updateSlot(slotName, itemData) {
         const div = document.getElementById('slot-' + slotName);
         div.innerHTML = "";
-        
         if(itemData) {
             const img = document.createElement('img');
             img.className = 'equip-icon';
             img.src = itemData.id + "_img.png";
             img.onerror = function() { this.style.backgroundColor = '#777'; };
-            
             div.appendChild(img);
             div.onclick = function() { unequipItem(slotName); };
             div.title = "Desequipar " + itemData.name;
@@ -274,7 +246,6 @@ function updateStatusMenu(json) {
             div.title = "Vazio";
         }
     }
-    
     updateSlot('hand', data.equip.hand);
 }
 
@@ -296,7 +267,6 @@ function unequipItem(slotName) {
 function dropItem(ref, maxAmount) {
     if(blockSync) return;
     hideTooltip(); 
-    
     let qty = 1;
     if(maxAmount > 1) {
         let input = prompt(`Quantos itens largar? (Máx: ${maxAmount})`, "1");
@@ -305,7 +275,6 @@ function dropItem(ref, maxAmount) {
         if(isNaN(qty) || qty <= 0) return;
         if(qty > maxAmount) qty = maxAmount;
     }
-
     blockSync = true;
     window.location.href = `byond://?src=${BYOND_REF}&action=drop_item&ref=${ref}&amount=${qty}`;
     setTimeout(() => { blockSync = false; }, 200);
@@ -319,13 +288,11 @@ function addStat(statName) {
     setTimeout(function() { blockSync = false; }, 200);
 }
 
-// Input de Teclas
 window.addEventListener('keydown', function(e) {
     const k = e.key.toLowerCase();
     if(k === 'c') toggleStats();
     if(k === 'i') toggleInventory(); 
-    if(k === 'x') interact(); // Interagir
-    
+    if(k === 'x') interact(); 
     if(k === 'e') {
         if(typeof BYOND_REF !== 'undefined' && !blockSync) {
             blockSync = true;
@@ -348,31 +315,14 @@ window.addEventListener('keyup', function(e) {
 });
 
 function interact() {
-    // Busca NPC próximo (Lógica do cliente rápida)
-    let closestNPC = null;
-    let minD = 3.0;
-    
-    for(let id in otherPlayers) {
-        let p = otherPlayers[id];
-        // Se for NPC (verificamos pelo label ou dados) - melhor checar pelo servidor
-    }
-    
-    // Simplificação: Envia comando de interação e servidor decide quem está perto
-    // Mas precisamos mandar O QUE estamos interagindo.
-    // O jeito mais fácil é iterar os otherPlayers no JS que tenham flag NPC
-    
     let targetRef = "";
     for(let id in otherPlayers) {
-        // Verifica distancia
         let dist = playerGroup.position.distanceTo(otherPlayers[id].mesh.position);
         if(dist < 3.0) {
-            // É um alvo válido. Mandamos o ID pro server validar.
-            // O ID em otherPlayers é a REF do BYOND.
             targetRef = id; 
             break;
         }
     }
-    
     if(targetRef !== "") {
         window.location.href = `byond://?src=${BYOND_REF}&action=interact_npc&ref=${targetRef}`;
     }
@@ -417,10 +367,9 @@ function checkCollision(x, y, z) {
     return false; 
 }
 
-// --- SISTEMA DE COMBATE ---
+// --- SISTEMA DE COMBATE (VISUAL) ---
 window.addEventListener('game-action', function(e) {
     if(isFainted) return; 
-    
     const k = e.detail;
     if(k === 'd') { performAttack("sword"); }
     else if(k === 'f') { performAttack("gun"); }
@@ -436,9 +385,83 @@ window.addEventListener('game-action', function(e) {
     }
 });
 
+// NOVA FUNÇÃO: Dispara o visual do projétil
+function fireProjectile(projectileDef) {
+    const geo = new THREE.BoxGeometry(1, 1, 1);
+    const mat = new THREE.MeshBasicMaterial({ color: projectileDef.color });
+    const bullet = new THREE.Mesh(geo, mat);
+    
+    // Escala (Ex: fina e comprida)
+    const s = projectileDef.scale || [0.1, 0.1, 0.1];
+    bullet.scale.set(s[0], s[1], s[2]);
+
+    // Posição Inicial (Mão direita do player)
+    const sin = Math.sin(Input.camAngle); 
+    const cos = Math.cos(Input.camAngle);
+    
+    bullet.position.copy(playerGroup.position);
+    bullet.position.y += 1.3; // Altura do ombro
+    
+    // Ajuste lateral e frontal para sair "da arma"
+    bullet.position.x += cos * 0.4; 
+    bullet.position.z -= sin * 0.4; 
+    bullet.position.x -= sin * 0.5;
+    bullet.position.z -= cos * 0.5;
+
+    // Rotação da bala
+    bullet.rotation.y = Input.camAngle + Math.PI;
+
+    Engine.scene.add(bullet);
+
+    // Adiciona à lista de update
+    activeProjectiles.push({
+        mesh: bullet,
+        dirX: -sin, 
+        dirZ: -cos,
+        speed: projectileDef.speed,
+        distTraveled: 0,
+        maxDist: projectileDef.range || 10
+    });
+}
+
+// Atualiza posição das balas
+function updateProjectiles() {
+    for (let i = activeProjectiles.length - 1; i >= 0; i--) {
+        const p = activeProjectiles[i];
+        
+        p.mesh.position.x += p.dirX * p.speed;
+        p.mesh.position.z += p.dirZ * p.speed;
+        p.distTraveled += p.speed;
+
+        // Se passar do alcance, some
+        if (p.distTraveled >= p.maxDist) {
+            Engine.scene.remove(p.mesh);
+            activeProjectiles.splice(i, 1);
+        }
+    }
+}
+
 function performAttack(type) {
     if(isAttacking || !isCharacterReady) return; 
     
+    const equippedItem = playerGroup.userData.lastItem;
+    let hasSword = false;
+    let hasGun = false;
+    let projectileData = null;
+
+    if(equippedItem && GameDefinitions[equippedItem]) {
+        const def = GameDefinitions[equippedItem];
+        const tags = def.tags || (def.data ? def.data.tags : []);
+        if(tags && tags.includes("sword")) hasSword = true;
+        if(tags && tags.includes("gun")) {
+            hasGun = true;
+            projectileData = def.projectile; // Pega dados da bala do definitions.js
+        }
+    }
+
+    if(type === "sword" && !hasSword) { addLog("Sem espada equipada!", "log-miss"); return; }
+    if(type === "gun" && !hasGun) { addLog("Sem arma equipada!", "log-miss"); return; }
+
     isAttacking = true;
     lastCombatActionTime = Date.now();
 
@@ -455,26 +478,15 @@ function performAttack(type) {
 
     setTimeout(function() {
         charState = atkStance;
-        let dist = 100;
-        let hit = false; 
-
-        if(Engine.dummyTarget) dist = playerGroup.position.distanceTo(Engine.dummyTarget.position);
-
-        if(dist < (type === "gun" ? 8.0 : 2.5)) { 
-            hit = true;
-            if(Engine.dummyTarget && Engine.dummyTarget.userData.hitZone) {
-                const mat = Engine.dummyTarget.userData.hitZone.material;
-                mat.color.setHex(0x550000); 
-                setTimeout(function(){mat.color.setHex(0xFF0000)}, 150);
-            }
-        } else {
-            // Miss
-        }
         
+        // DISPARA O EFEITO VISUAL SE FOR ARMA
+        if(type === "gun" && projectileData) {
+            fireProjectile(projectileData);
+        }
+
         if(typeof BYOND_REF !== 'undefined') {
             blockSync = true; 
-            let targetStr = hit ? "dummy" : "none";
-            window.location.href = `byond://?src=${BYOND_REF}&action=attack&type=${type}&target=${targetStr}`; 
+            window.location.href = `byond://?src=${BYOND_REF}&action=attack&type=${type}`; 
             setTimeout(function(){blockSync=false}, 200);
         }
 
@@ -538,11 +550,9 @@ function receberDadosMultiplayer(json) {
         }
 
         const hint = document.getElementById('interaction-hint');
-        
-        // Verifica NPC proximo para mudar hint
         let npcNear = false;
         for(let id in otherPlayers) {
-            if(otherPlayers[id].isNPC) { // Flag adicionada abaixo
+            if(otherPlayers[id].isNPC) { 
                  let d = playerGroup.position.distanceTo(otherPlayers[id].mesh.position);
                  if(d < 3.0) npcNear = true;
             }
@@ -677,7 +687,7 @@ function receberDadosMultiplayer(json) {
                     resting: pData.rest,
                     fainted: pData.ft,
                     lastItem: "",
-                    isNPC: (pData.npc === 1) // Flag NPC
+                    isNPC: (pData.npc === 1) 
                 };
             }
         } else {
@@ -743,6 +753,8 @@ function animate() {
     requestAnimationFrame(animate);
     animTime += 0.1;
     const now = performance.now();
+
+    updateProjectiles(); // ATUALIZA AS BALAS NO AR
 
     for(let ref in groundItemsMeshes) {
         const item = groundItemsMeshes[ref];
