@@ -20,7 +20,7 @@ obj/item
 obj/item/weapon
 	slot = "hand"
 	max_stack = 1
-	var/range = 1.0 // NOVO: Alcance base
+	var/range = 1.0 
 
 obj/item/weapon/sword_wood
 	name = "Espada de Treino"
@@ -52,7 +52,7 @@ obj/item/weapon/gun_wood
 	description = "Dispara rolhas."
 	power = 12
 	price = 80
-	range = 8.0 // Curto alcance
+	range = 8.0 
 
 obj/item/weapon/gun_flintlock
 	name = "Pistola Velha"
@@ -201,7 +201,6 @@ mob
 			if(I.loc == null || !isturf(I.loc)) continue
 			var/dx = I.real_x - src.real_x
 			var/dz = I.real_z - src.real_z
-			// Nota: Itens no chão assumimos Y similar, mas ideal seria 3D também
 			var/dist = sqrt(dx*dx + dz*dz)
 			if(dist <= min_dist)
 				target = I
@@ -460,7 +459,8 @@ mob
 						"it" = M.active_item_visual,
 						"rest" = M.is_resting, "ft" = M.is_fainted,
 						"name" = M.name, "skin" = M.skin_color, "cloth" = M.cloth_color,
-						"npc" = 0
+						"npc" = 0,
+						"hp" = M.current_hp, "mhp" = M.max_hp // NOVO: HP dos outros players
 					)
 					players_list[pid] = pData
 			for(var/mob/npc/N in global_npcs)
@@ -470,7 +470,8 @@ mob
 					"x" = N.real_x, "y" = N.real_y, "z" = N.real_z, "rot" = N.real_rot,
 					"a" = 0, "at" = "", "it" = "", "rest" = 0, "ft" = 0,
 					"name" = N.name, "skin" = N.skin_color, "cloth" = N.cloth_color,
-					"npc" = 1, "type" = N.npc_type
+					"npc" = 1, "type" = N.npc_type,
+					"hp" = N.current_hp, "mhp" = N.max_hp // NOVO: HP dos NPCs
 				)
 			var/list/ground_items = list()
 			for(var/obj/item/I in world)

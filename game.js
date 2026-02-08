@@ -671,14 +671,23 @@ function receberDadosMultiplayer(json) {
                 Engine.scene.add(newChar);
                 Engine.collidables.push(newChar);
                 
+                // --- NOVO: Label com Barra de HP ---
                 const label = document.createElement('div');
                 label.className = 'name-label';
-                label.innerText = pData.name || "Unknown"; 
+                // Cria estrutura HTML para nome e barra
+                label.innerHTML = `
+                    <div class="name-text">${pData.name || "Unknown"}</div>
+                    <div class="mini-hp-bg"><div class="mini-hp-fill"></div></div>
+                `;
                 document.getElementById('labels-container').appendChild(label);
+                
+                // Referencia a barra para updates rápidos
+                const hpFill = label.querySelector('.mini-hp-fill');
                 
                 otherPlayers[id] = {
                     mesh: newChar,
                     label: label,
+                    hpFill: hpFill, // Guarda referência
                     startX: pData.x, startY: pData.y, startZ: pData.z, startRot: pData.rot,
                     targetX: pData.x, targetY: pData.y, targetZ: pData.z, targetRot: pData.rot,
                     lastPacketTime: now,
@@ -687,7 +696,8 @@ function receberDadosMultiplayer(json) {
                     resting: pData.rest,
                     fainted: pData.ft,
                     lastItem: "",
-                    isNPC: (pData.npc === 1) 
+                    isNPC: (pData.npc === 1),
+                    npcType: pData.type // Guarda o tipo (prop, vendor, enemy)
                 };
             }
         } else {
@@ -705,7 +715,22 @@ function receberDadosMultiplayer(json) {
             if (pData.at) other.attackType = pData.at;
             if (pData.rest !== undefined) other.resting = pData.rest; 
             if (pData.ft !== undefined) other.fainted = pData.ft;
-            if(pData.name && other.label.innerText !== pData.name) other.label.innerText = pData.name; 
+            
+            // --- ATUALIZAÇÃO DA BARRA DE VIDA ---
+            if(pData.hp !== undefined && pData.mhp !== undefined && other.hpFill) {
+                // Esconde se for prop ou vendor
+                if(pData.type === "prop" || pData.type === "vendor") {
+                    other.label.querySelector('.mini-hp-bg').style.display = 'none';
+                } else {
+                    const pct = Math.max(0, Math.min(100, (pData.hp / pData.mhp) * 100));
+                    other.hpFill.style.width = pct + "%";
+                }
+            }
+            // ------------------------------------
+
+            if(pData.name && other.label.querySelector('.name-text').innerText !== pData.name) {
+                other.label.querySelector('.name-text').innerText = pData.name;
+            }
 
             if(pData.it !== undefined && pData.it !== other.lastItem) {
                 if(pData.it === "" || pData.it === null) CharFactory.equipItem(other.mesh, "none");

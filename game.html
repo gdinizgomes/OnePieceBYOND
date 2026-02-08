@@ -20,6 +20,38 @@
         body { margin: 0; overflow: hidden; user-select: none; font-family: 'Segoe UI', sans-serif; }
         #ui-layer { position: absolute; width: 100%; height: 100%; pointer-events: none; }
         
+        /* CORREÇÃO DO BUG DO TEXTO EMPILHADO */
+        .name-label {
+            position: absolute; /* ISSO FIXA O PROBLEMA */
+            background: rgba(0,0,0,0.5);
+            color: white;
+            padding: 2px 5px;
+            border-radius: 4px;
+            font-size: 12px;
+            text-align: center;
+            pointer-events: none; /* Deixa clicar através do texto */
+            white-space: nowrap;
+            transform: translate(-50%, -100%); /* Centraliza acima do ponto */
+            font-weight: bold;
+            border: 1px solid rgba(255,255,255,0.2);
+        }
+
+        .mini-hp-bg {
+            width: 100%;
+            height: 4px;
+            background: #333;
+            margin-top: 2px;
+            border-radius: 2px;
+            overflow: hidden;
+        }
+        
+        .mini-hp-fill {
+            height: 100%;
+            background: #e74c3c;
+            width: 100%;
+            transition: width 0.2s;
+        }
+
         .char-info { position: absolute; top: 20px; left: 20px; background: rgba(0,0,0,0.6); padding: 15px; border-radius: 8px; color: white; border: 2px solid #d4af37; pointer-events: auto; min-width: 200px; }
         .bar-container { width: 100%; height: 10px; background: #333; margin-top: 2px; overflow: hidden; border: 1px solid #555; }
         .hp-bar { width: 100%; height: 100%; background: #e74c3c; transition: width 0.2s; }
