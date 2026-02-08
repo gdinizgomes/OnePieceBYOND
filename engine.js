@@ -8,8 +8,10 @@ function lerpAngle(start, end, t) {
     const shortestDiff = mod(diff + Math.PI, Math.PI * 2) - Math.PI;
     return start + shortestDiff * t;
 }
+
+// CORREÇÃO AQUI: Verificação de segurança (!targetRot)
 function lerpLimbRotation(limb, targetRot, speed) {
-    if(!limb) return;
+    if(!limb || !targetRot) return; // Se não houver membro ou rotação alvo, ignora
     limb.rotation.x = lerp(limb.rotation.x, targetRot.x, speed);
     limb.rotation.y = lerp(limb.rotation.y, targetRot.y, speed);
     limb.rotation.z = lerp(limb.rotation.z, targetRot.z, speed);
@@ -18,6 +20,7 @@ function lerpLimbRotation(limb, targetRot, speed) {
 const RAD = Math.PI / 180;
 
 // POSES ARTICULADAS
+// Nota: Poses de ataque definem apenas o que muda. O resto usará o DEFAULT no game.js
 const STANCES = {
     DEFAULT: { 
         rightArm: { x: 0, y: 0, z: 0 }, rightForeArm: { x: 0, y: 0, z: 0 },
@@ -26,43 +29,43 @@ const STANCES = {
         leftLeg:  { x: 0, y: 0, z: 0 }, leftShin:     { x: 0, y: 0, z: 0 }
     },
     SWORD_IDLE: { 
-        rightArm: { x: -20 * RAD, y: 0, z: 10 * RAD }, rightForeArm: { x: -90 * RAD, y: 0, z: 0 }, // Segura espada pra cima
+        rightArm: { x: -20 * RAD, y: 0, z: 10 * RAD }, rightForeArm: { x: -90 * RAD, y: 0, z: 0 }, 
         leftArm:  { x: 0, y: 0, z: -10 * RAD }, leftForeArm:  { x: 0, y: 0, z: 0 }
     },
     SWORD_WINDUP: { 
-        rightArm: { x: -160 * RAD, y: 0, z: 20 * RAD }, rightForeArm: { x: -40 * RAD, y: 0, z: 0 }, // Espada lá trás
+        rightArm: { x: -160 * RAD, y: 0, z: 20 * RAD }, rightForeArm: { x: -40 * RAD, y: 0, z: 0 },
         leftArm:  { x: 40 * RAD, y: 0, z: 0 }, leftForeArm:  { x: 0, y: 0, z: 0 }
     },
     SWORD_ATK_1: { 
-        rightArm: { x: 40 * RAD, y: -20 * RAD, z: -20 * RAD }, rightForeArm: { x: 0, y: 0, z: 0 }, // Corte
+        rightArm: { x: 40 * RAD, y: -20 * RAD, z: -20 * RAD }, rightForeArm: { x: 0, y: 0, z: 0 },
         leftArm:  { x: -30 * RAD, y: 0, z: 0 }, leftForeArm:  { x: -30 * RAD, y: 0, z: 0 }
     },
     FIST_IDLE: { 
-        rightArm: { x: -45 * RAD, y: 45 * RAD, z: 0 }, rightForeArm: { x: -90 * RAD, y: 0, z: 0 }, // Guarda Boxe
+        rightArm: { x: -45 * RAD, y: 45 * RAD, z: 0 }, rightForeArm: { x: -90 * RAD, y: 0, z: 0 },
         leftArm:  { x: -45 * RAD, y: -45 * RAD, z: 0 }, leftForeArm:  { x: -90 * RAD, y: 0, z: 0 }
     },
     FIST_WINDUP: {
-        rightArm: { x: 20 * RAD, y: 45 * RAD, z: 0 }, rightForeArm: { x: -110 * RAD, y: 0, z: 0 }, // Puxa braço
+        rightArm: { x: 20 * RAD, y: 45 * RAD, z: 0 }, rightForeArm: { x: -110 * RAD, y: 0, z: 0 },
         leftArm:  { x: -45 * RAD, y: -45 * RAD, z: 0 }, leftForeArm:  { x: -90 * RAD, y: 0, z: 0 }
     },
     FIST_ATK: {
-        rightArm: { x: -90 * RAD, y: -20 * RAD, z: 0 }, rightForeArm: { x: 0, y: 0, z: 0 }, // Soco esticado
+        rightArm: { x: -90 * RAD, y: -20 * RAD, z: 0 }, rightForeArm: { x: 0, y: 0, z: 0 },
         leftArm:  { x: -45 * RAD, y: -45 * RAD, z: 0 }, leftForeArm:  { x: -90 * RAD, y: 0, z: 0 }
     },
     KICK_WINDUP: {
-        rightLeg: { x: 40 * RAD, y: 0, z: 0 }, rightShin: { x: 80 * RAD, y: 0, z: 0 }, // Puxa perna
+        rightLeg: { x: 40 * RAD, y: 0, z: 0 }, rightShin: { x: 80 * RAD, y: 0, z: 0 },
         leftLeg:  { x: 0, y: 0, z: 0 }, leftShin: { x: 0, y: 0, z: 0 }
     },
     KICK_ATK: {
-        rightLeg: { x: -60 * RAD, y: 0, z: 0 }, rightShin: { x: 0, y: 0, z: 0 }, // Chuta reto
+        rightLeg: { x: -60 * RAD, y: 0, z: 0 }, rightShin: { x: 0, y: 0, z: 0 },
         leftLeg:  { x: 10 * RAD, y: 0, z: 0 }, leftShin: { x: 20 * RAD, y: 0, z: 0 }
     },
     GUN_IDLE: {
-        rightArm: { x: -70 * RAD, y: 0, z: 0 }, rightForeArm: { x: -20 * RAD, y: 0, z: 0 }, // Aponta levemente pra baixo
+        rightArm: { x: -70 * RAD, y: 0, z: 0 }, rightForeArm: { x: -20 * RAD, y: 0, z: 0 },
         leftArm:  { x: 0, y: 0, z: 0 }, leftForeArm:  { x: 0, y: 0, z: 0 }
     },
     GUN_ATK: { 
-        rightArm: { x: -90 * RAD, y: 0, z: 0 }, rightForeArm: { x: 0, y: 0, z: 0 }, // Aponta reto
+        rightArm: { x: -90 * RAD, y: 0, z: 0 }, rightForeArm: { x: 0, y: 0, z: 0 },
         leftArm:  { x: 0, y: 0, z: 0 }, leftForeArm:  { x: 0, y: 0, z: 0 }
     }
 };

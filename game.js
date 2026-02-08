@@ -346,18 +346,127 @@ function receberDadosMultiplayer(json) {
         }
     }
     if(isCharacterReady) {
+        // --- 1. ITENS NO CHÃO (RESTAURADO) ---
+        const serverGroundItems = packet.ground || [];
+        const seenItems = new Set();
+        let closestDist = 999;
+
+        serverGroundItems.forEach(itemData => {
+            seenItems.add(itemData.ref);
+            if(!groundItemsMeshes[itemData.ref]) {
+                const mesh = CharFactory.createFromDef(itemData.id);
+                mesh.position.set(itemData.x, 0.5, itemData.z); 
+                Engine.scene.add(mesh);
+                groundItemsMeshes[itemData.ref] = mesh;
+            } else {
+                const mesh = groundItemsMeshes[itemData.ref];
+                mesh.position.x = lerp(mesh.position.x, itemData.x, 0.2);
+                mesh.position.z = lerp(mesh.position.z, itemData.z, 0.2);
+            }
+            const d = playerGroup.position.distanceTo(groundItemsMeshes[itemData.ref].position);
+            if(d < closestDist) closestDist = d;
+        });
+
+        for(let ref in groundItemsMeshes) {
+            if(!seenItems.has(ref)) {
+                Engine.scene.remove(groundItemsMeshes[ref]);
+                delete groundItemsMeshes[ref];
+            }
+        }
+
+        // --- 2. INTERAÇÃO DICA (RESTAURADO) ---
+        const hint = document.getElementById('interaction-hint');
+        let npcNear = false;
+        for(let id in otherPlayers) {
+            if(otherPlayers[id].isNPC) { 
+                 let d = playerGroup.position.distanceTo(otherPlayers[id].mesh.position);
+                 if(d < 3.0) npcNear = true;
+            }
+        }
+
+        if(closestDist < 2.0) { hint.innerText = "[E] Pegar Item"; hint.style.display = 'block'; }
+        else if(npcNear) { hint.innerText = "[X] Interagir"; hint.style.display = 'block'; }
+        else hint.style.display = 'none';
+
+        // --- 3. DADOS DO PERSONAGEM (RESTAURADO) ---
         const myData = packet.others[myID]; isResting = me.rest; isFainted = me.ft; 
         if(myData && myData.it !== undefined) {
             if(playerGroup.userData.lastItem !== myData.it) {
                 CharFactory.equipItem(playerGroup, myData.it); playerGroup.userData.lastItem = myData.it;
             }
         }
-        if(packet.evts) packet.evts.forEach(evt => { if(evt.type === "dmg") spawnDamageNumber(evt.tid, evt.val); });
+        
+        const overlay = document.getElementById('faint-overlay');
+        if(me.rem > 0 && isFainted) {
+            overlay.style.display = 'flex';
+            document.getElementById('faint-timer').innerText = me.rem;
+        } else {
+            overlay.style.display = 'none';
+        }
+        
+        if(me.mspd) currentMoveSpeed = me.mspd;
+        if(me.jmp) currentJumpForce = me.jmp;
+
+        if(myData && myData.name && myData.name !== cachedName) {
+            document.getElementById('name-display').innerText = myData.name;
+            cachedName = myData.name;
+        }
+        if(me.lvl !== cachedLvl) {
+            document.getElementById('lvl-display').innerText = me.lvl;
+            cachedLvl = me.lvl;
+        }
+        if(me.gold !== cachedGold) {
+            document.getElementById('gold-display').innerText = me.gold;
+            cachedGold = me.gold;
+        }
+        
         if(me.hp !== cachedHP || me.max_hp !== cachedMaxHP) {
             const pct = Math.max(0, Math.min(100, (me.hp / me.max_hp) * 100));
-            document.getElementById('hp-bar-fill').style.width = pct + "%"; document.getElementById('hp-text').innerText = me.hp + "/" + me.max_hp; cachedHP = me.hp; cachedMaxHP = me.max_hp;
+            document.getElementById('hp-bar-fill').style.width = pct + "%";
+            document.getElementById('hp-text').innerText = me.hp + "/" + me.max_hp;
+            cachedHP = me.hp; cachedMaxHP = me.max_hp;
         }
-        // ... (Outros updates de UI omitidos por brevidade, mantidos iguais) ...
+
+        if(me.en !== cachedEn || me.max_en !== cachedMaxEn) {
+            const pct = Math.max(0, Math.min(100, (me.en / me.max_en) * 100));
+            document.getElementById('en-bar-fill').style.width = pct + "%";
+            document.getElementById('en-text').innerText = Math.floor(me.en) + "/" + me.max_en;
+            cachedEn = me.en; cachedMaxEn = me.max_en;
+        }
+
+        if(me.exp !== cachedExp || me.req_exp !== cachedReqExp) {
+            const xpPct = Math.max(0, Math.min(100, (me.exp / me.req_exp) * 100));
+            document.getElementById('xp-bar-fill').style.width = xpPct + "%";
+            cachedExp = me.exp; cachedReqExp = me.req_exp;
+        }
+
+        if(me.pts !== undefined) {
+            if(me.pts !== cachedPts || me.str !== cachedStats.str || me.pp !== cachedProfs.pp) {
+                document.getElementById('stat-points').innerText = me.pts;
+                document.getElementById('val-str').innerText = me.str;
+                document.getElementById('val-vit').innerText = me.vit;
+                document.getElementById('val-agi').innerText = me.agi;
+                document.getElementById('val-wis').innerText = me.wis;
+                
+                document.getElementById('prof-punch').innerText = me.pp;
+                document.getElementById('bar-punch').style.width = Math.min(100, (me.pp_x / me.pp_r) * 100) + "%";
+                document.getElementById('prof-kick').innerText = me.pk;
+                document.getElementById('bar-kick').style.width = Math.min(100, (me.pk_x / me.pk_r) * 100) + "%";
+                document.getElementById('prof-sword').innerText = me.ps;
+                document.getElementById('bar-sword').style.width = Math.min(100, (me.ps_x / me.ps_r) * 100) + "%";
+                document.getElementById('prof-gun').innerText = me.pg;
+                document.getElementById('bar-gun').style.width = Math.min(100, (me.pg_x / me.pg_r) * 100) + "%";
+
+                const btns = document.getElementsByClassName('stat-btn');
+                for(let i = 0; i < btns.length; i++) btns[i].disabled = (me.pts <= 0);
+
+                cachedPts = me.pts;
+                cachedStats = { str: me.str, vit: me.vit, agi: me.agi, wis: me.wis };
+                cachedProfs = { pp: me.pp, pk: me.pk, ps: me.ps, pg: me.pg };
+            }
+        }
+        
+        if(packet.evts) packet.evts.forEach(evt => { if(evt.type === "dmg") spawnDamageNumber(evt.tid, evt.val); });
     }
 
     const serverPlayers = packet.others; const receivedIds = new Set();
@@ -375,6 +484,11 @@ function receberDadosMultiplayer(json) {
             other.startX = other.mesh.position.x; other.startY = other.mesh.position.y; other.startZ = other.mesh.position.z; other.startRot = other.mesh.rotation.y;
             other.targetX = pData.x; other.targetY = pData.y; other.targetZ = pData.z; other.targetRot = pData.rot; other.lastPacketTime = now;
             other.attacking = pData.a; other.attackType = pData.at; other.resting = pData.rest; other.fainted = pData.ft;
+            
+            if(pData.name && other.label.querySelector('.name-text').innerText !== pData.name) {
+                other.label.querySelector('.name-text').innerText = pData.name;
+            }
+
             if(pData.hp !== undefined && other.hpFill) other.hpFill.style.width = Math.max(0, Math.min(100, (pData.hp / pData.mhp) * 100)) + "%";
             if(pData.it !== undefined && pData.it !== other.lastItem) { CharFactory.equipItem(other.mesh, pData.it); other.lastItem = pData.it; }
             if (other.attacking && other.attackType === "gun" && !other.hasFiredThisCycle) { fireProjectile({ speed: 0.6, color: 0xFFFF00, ownerID: id }, false); other.hasFiredThisCycle = true; setTimeout(() => { other.hasFiredThisCycle = false; }, 500); }
@@ -422,40 +536,40 @@ function animate() {
             const limbs = playerGroup.userData.limbs;
             if(limbs) {
                 let targetStance = STANCES[charState] || STANCES.DEFAULT;
+                // CORREÇÃO: Alias para DEFAULT para usar em fallbacks
+                const def = STANCES.DEFAULT; 
+
                 if(moving && !isJumping && !isAttacking) {
                     let legSpeed = isRunning ? 0.3 : 0.8; 
-                    // Pernas Oscilam
                     limbs.leftLeg.rotation.x = Math.sin(animTime * (isRunning ? 1.5 : 1)) * legSpeed;
                     limbs.rightLeg.rotation.x = -Math.sin(animTime * (isRunning ? 1.5 : 1)) * legSpeed;
-                    // Joelhos Dobram quando a perna vai pra trás
                     limbs.leftShin.rotation.x = (limbs.leftLeg.rotation.x > 0) ? limbs.leftLeg.rotation.x : 0;
                     limbs.rightShin.rotation.x = (limbs.rightLeg.rotation.x > 0) ? limbs.rightLeg.rotation.x : 0;
 
-                    // Braços Oscilam
                     if(charState === "DEFAULT") {
                         limbs.leftArm.rotation.x = -Math.sin(animTime)*legSpeed;
                         limbs.rightArm.rotation.x = Math.sin(animTime)*legSpeed;
-                        // Cotovelos relaxados
                         limbs.leftForeArm.rotation.x = -0.2;
                         limbs.rightForeArm.rotation.x = -0.2;
                     } else {
-                        // Se estiver segurando arma, mantém a pose da parte superior
-                        lerpLimbRotation(limbs.leftArm, targetStance.leftArm, 0.2);
-                        lerpLimbRotation(limbs.rightArm, targetStance.rightArm, 0.2);
-                        lerpLimbRotation(limbs.leftForeArm, targetStance.leftForeArm, 0.2);
-                        lerpLimbRotation(limbs.rightForeArm, targetStance.rightForeArm, 0.2);
+                        // FALLBACK: Se targetStance não tiver braços (ex: só tem pernas), usa DEFAULT
+                        lerpLimbRotation(limbs.leftArm, targetStance.leftArm || def.leftArm, 0.2);
+                        lerpLimbRotation(limbs.rightArm, targetStance.rightArm || def.rightArm, 0.2);
+                        lerpLimbRotation(limbs.leftForeArm, targetStance.leftForeArm || def.leftForeArm, 0.2);
+                        lerpLimbRotation(limbs.rightForeArm, targetStance.rightForeArm || def.rightForeArm, 0.2);
                     }
                 } else {
                     const spd = isAttacking ? 0.4 : 0.1;
-                    lerpLimbRotation(limbs.leftArm, targetStance.leftArm, spd);
-                    lerpLimbRotation(limbs.rightArm, targetStance.rightArm, spd);
-                    lerpLimbRotation(limbs.leftForeArm, targetStance.leftForeArm, spd);
-                    lerpLimbRotation(limbs.rightForeArm, targetStance.rightForeArm, spd);
+                    // FALLBACK COMPLETO: Garante que NUNCA passe undefined
+                    lerpLimbRotation(limbs.leftArm, targetStance.leftArm || def.leftArm, spd);
+                    lerpLimbRotation(limbs.rightArm, targetStance.rightArm || def.rightArm, spd);
+                    lerpLimbRotation(limbs.leftForeArm, targetStance.leftForeArm || def.leftForeArm, spd);
+                    lerpLimbRotation(limbs.rightForeArm, targetStance.rightForeArm || def.rightForeArm, spd);
                     
-                    lerpLimbRotation(limbs.leftLeg, targetStance.leftLeg, spd);
-                    lerpLimbRotation(limbs.rightLeg, targetStance.rightLeg, spd);
-                    lerpLimbRotation(limbs.leftShin, targetStance.leftShin, spd);
-                    lerpLimbRotation(limbs.rightShin, targetStance.rightShin, spd);
+                    lerpLimbRotation(limbs.leftLeg, targetStance.leftLeg || def.leftLeg, spd);
+                    lerpLimbRotation(limbs.rightLeg, targetStance.rightLeg || def.rightLeg, spd);
+                    lerpLimbRotation(limbs.leftShin, targetStance.leftShin || def.leftShin, spd);
+                    lerpLimbRotation(limbs.rightShin, targetStance.rightShin || def.rightShin, spd);
                 }
             }
         }
@@ -469,21 +583,27 @@ function animate() {
         const other = otherPlayers[id]; const mesh = other.mesh; const elapsed = other.lastPacketTime ? (now - other.lastPacketTime) : 0; const t = other.lerpDuration ? Math.min(1, elapsed / other.lerpDuration) : 1;
         mesh.position.x = lerp(other.startX, other.targetX, t); mesh.position.y = lerp(other.startY, other.targetY, t); mesh.position.z = lerp(other.startZ, other.targetZ, t); mesh.rotation.y = lerpAngle(other.startRot, other.targetRot, t);
         
-        // Copia lógica de animação simplificada para outros players
         const dist = Math.sqrt(Math.pow(other.targetX - mesh.position.x, 2) + Math.pow(other.targetZ - mesh.position.z, 2)); const isMoving = dist > 0.05;
         const limbs = mesh.userData.limbs;
         if(limbs) {
             let remoteStance = STANCES.DEFAULT;
             if(other.attacking) {
                 if(other.attackType === "sword") remoteStance = STANCES.SWORD_ATK_1; else if(other.attackType === "fist") remoteStance = STANCES.FIST_ATK; else if(other.attackType === "kick") remoteStance = STANCES.KICK_ATK; else if(other.attackType === "gun") remoteStance = STANCES.GUN_ATK;
-                lerpLimbRotation(limbs.leftArm, remoteStance.leftArm, 0.4); lerpLimbRotation(limbs.rightArm, remoteStance.rightArm, 0.4);
-                lerpLimbRotation(limbs.leftForeArm, remoteStance.leftForeArm, 0.4); lerpLimbRotation(limbs.rightForeArm, remoteStance.rightForeArm, 0.4);
+                // FALLBACK TAMBÉM PARA OUTROS JOGADORES
+                const def = STANCES.DEFAULT;
+                lerpLimbRotation(limbs.leftArm, remoteStance.leftArm || def.leftArm, 0.4); lerpLimbRotation(limbs.rightArm, remoteStance.rightArm || def.rightArm, 0.4);
+                lerpLimbRotation(limbs.leftForeArm, remoteStance.leftForeArm || def.leftForeArm, 0.4); lerpLimbRotation(limbs.rightForeArm, remoteStance.rightForeArm || def.rightForeArm, 0.4);
+                
+                // Anima pernas se a stance permitir, senão usa default
+                lerpLimbRotation(limbs.leftLeg, remoteStance.leftLeg || def.leftLeg, 0.4); 
+                lerpLimbRotation(limbs.rightLeg, remoteStance.rightLeg || def.rightLeg, 0.4);
             } else if(isMoving) {
                 limbs.leftLeg.rotation.x = Math.sin(animTime)*0.8; limbs.rightLeg.rotation.x = -Math.sin(animTime)*0.8;
                 limbs.leftShin.rotation.x = (limbs.leftLeg.rotation.x > 0) ? limbs.leftLeg.rotation.x : 0;
                 limbs.rightShin.rotation.x = (limbs.rightLeg.rotation.x > 0) ? limbs.rightLeg.rotation.x : 0;
                 limbs.leftArm.rotation.x = -Math.sin(animTime)*0.8; limbs.rightArm.rotation.x = Math.sin(animTime)*0.8;
             } else {
+                // IDLE
                 lerpLimbRotation(limbs.leftLeg, STANCES.DEFAULT.leftLeg, 0.1); lerpLimbRotation(limbs.rightLeg, STANCES.DEFAULT.rightLeg, 0.1);
                 lerpLimbRotation(limbs.leftShin, STANCES.DEFAULT.leftShin, 0.1); lerpLimbRotation(limbs.rightShin, STANCES.DEFAULT.rightShin, 0.1);
                 lerpLimbRotation(limbs.leftArm, STANCES.DEFAULT.leftArm, 0.1); lerpLimbRotation(limbs.rightArm, STANCES.DEFAULT.rightArm, 0.1);
