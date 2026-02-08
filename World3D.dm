@@ -61,7 +61,7 @@ obj/item/weapon/gun_silver
 	price = 800
 
 // -----------------------------------------------------
-// CÓDIGO DO MOB E LOGIN (MANTIDO)
+// CÓDIGO DO MOB E LOGIN
 // -----------------------------------------------------
 
 mob
@@ -361,6 +361,18 @@ mob
 		src << browse_rsc(file("engine.js"), "engine.js")
 		src << browse_rsc(file("game.js"), "game.js")
 
+		// --- ENVIANDO ARQUIVOS DE IMAGEM PARA O NAVEGADOR ---
+		// O navegador não consegue ver os arquivos na pasta a menos que o servidor os envie
+		// Adicione aqui todos os ícones que você criar
+		if(fexists("weapon_sword_wood_img.png")) src << browse_rsc(file("weapon_sword_wood_img.png"), "weapon_sword_wood_img.png")
+		if(fexists("weapon_sword_iron_img.png")) src << browse_rsc(file("weapon_sword_iron_img.png"), "weapon_sword_iron_img.png")
+		if(fexists("weapon_sword_silver_img.png")) src << browse_rsc(file("weapon_sword_silver_img.png"), "weapon_sword_silver_img.png")
+		
+		if(fexists("weapon_gun_wood_img.png")) src << browse_rsc(file("weapon_gun_wood_img.png"), "weapon_gun_wood_img.png")
+		if(fexists("weapon_gun_flintlock_img.png")) src << browse_rsc(file("weapon_gun_flintlock_img.png"), "weapon_gun_flintlock_img.png")
+		if(fexists("weapon_gun_silver_img.png")) src << browse_rsc(file("weapon_gun_silver_img.png"), "weapon_gun_silver_img.png")
+		// ----------------------------------------------------
+
 		char_loaded = 1
 		in_game = 1
 		is_resting = 0; is_fainted = 0; is_running = 0
@@ -620,7 +632,7 @@ world/New()
 		var/obj/item/weapon/gun_flintlock/G = new(locate(1,1,1))
 		G.real_x = 6; G.real_z = 5; G.loc = locate(1,1,1)
 
-		// Gera aleatoriamente
+		// Gera aleatoriamente, INCLUINDO AS NOVAS ARMAS
 		var/list/types = list(
 			/obj/item/weapon/sword_wood, 
 			/obj/item/weapon/sword_iron, 

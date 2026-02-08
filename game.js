@@ -77,16 +77,14 @@ function toggleInventory() {
     }
 }
 
-// --- CORREÇÃO 1: Função para forçar sumiço do Tooltip ---
 function hideTooltip() {
     const t = document.getElementById('tooltip');
     if(t) t.style.display = 'none';
 }
 
-// Renderiza o Grid de 12 Slots - VERSÃO SEGURA
+// Renderiza o Grid de 12 Slots - VERSÃO OTIMIZADA PARA PNG
 function loadInventory(json) {
-    // Sempre que carregar o inventário, esconde tooltips antigos para não bugarem na tela
-    hideTooltip();
+    hideTooltip(); 
 
     const grid = document.getElementById('inv-grid');
     grid.innerHTML = "";
@@ -100,13 +98,24 @@ function loadInventory(json) {
         if (i < data.length) {
             const item = data[i];
             
+            // Cria a imagem
             const img = document.createElement('img');
             img.className = 'inv-icon';
-            img.src = item.id + "_img.png";
+            // O segredo: o nome do arquivo é o ID + _img.png
+            img.src = item.id + "_img.png"; 
             
+            // Se der erro (arquivo não enviado), mostra um quadrado discreto
             img.onerror = function() {
                 this.style.display = 'none';
-                if(this.parentElement) this.parentElement.style.backgroundColor = '#555';
+                if(this.parentElement) {
+                    this.parentElement.style.backgroundColor = '#444';
+                    this.parentElement.innerText = "?"; // Indica erro visual
+                    this.parentElement.style.color = "#666";
+                    this.parentElement.style.fontSize = "20px";
+                    this.parentElement.style.display = "flex";
+                    this.parentElement.style.justifyContent = "center";
+                    this.parentElement.style.alignItems = "center";
+                }
             };
             
             slotDiv.appendChild(img);
@@ -118,6 +127,7 @@ function loadInventory(json) {
                 slotDiv.appendChild(qtyDiv);
             }
 
+            // Tooltip e Eventos
             slotDiv.onmousemove = function(e) {
                 const tip = document.getElementById('tooltip');
                 tip.style.display = 'block';
@@ -125,7 +135,7 @@ function loadInventory(json) {
                 tip.style.top = (e.pageY + 10) + 'px';
                 tip.innerHTML = `<strong>${item.name}</strong>${item.desc}<br><span style='color:#aaa'>Dano: ${item.power}</span>`;
             };
-            slotDiv.onmouseout = function() { hideTooltip(); }; // Usa a função segura
+            slotDiv.onmouseout = function() { hideTooltip(); };
 
             const actionsDiv = document.createElement('div');
             actionsDiv.className = 'inv-actions';
@@ -152,13 +162,11 @@ function updateStatusMenu(json) {
 
     if(data.lvl) document.getElementById('stat-lvl').innerText = data.lvl;
 
-    // --- CORREÇÃO 2: Atualiza as Barras de Proficiência ---
-    // Verifica se os dados existem antes de tentar atualizar
     if(data.pp !== undefined) {
         document.getElementById('prof-punch').innerText = data.pp;
         document.getElementById('bar-punch').style.width = Math.min(100, (data.pp_x / data.pp_r) * 100) + "%";
         
-        document.getElementById('prof-kick').innerText = data.pk; // Chute (Novo)
+        document.getElementById('prof-kick').innerText = data.pk; 
         document.getElementById('bar-kick').style.width = Math.min(100, (data.pk_x / data.pk_r) * 100) + "%";
 
         document.getElementById('prof-sword').innerText = data.ps;
@@ -167,7 +175,6 @@ function updateStatusMenu(json) {
         document.getElementById('prof-gun').innerText = data.pg;
         document.getElementById('bar-gun').style.width = Math.min(100, (data.pg_x / data.pg_r) * 100) + "%";
     }
-    // -----------------------------------------------------
     
     function updateSlot(slotName, itemData) {
         const div = document.getElementById('slot-' + slotName);
@@ -196,7 +203,7 @@ function updateStatusMenu(json) {
 
 function equipItem(ref) {
     if(blockSync) return;
-    hideTooltip(); // Garante que tooltip suma ao clicar
+    hideTooltip(); 
     blockSync = true;
     window.location.href = `byond://?src=${BYOND_REF}&action=equip_item&ref=${ref}`;
     setTimeout(() => { blockSync = false; }, 200);
@@ -211,7 +218,7 @@ function unequipItem(slotName) {
 
 function dropItem(ref, maxAmount) {
     if(blockSync) return;
-    hideTooltip(); // Garante que tooltip suma ao clicar
+    hideTooltip(); 
     
     let qty = 1;
     if(maxAmount > 1) {
