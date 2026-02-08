@@ -120,6 +120,9 @@ mob
 	var/obj/item/slot_head = null
 	var/obj/item/slot_body = null
 	var/obj/item/slot_legs = null
+	
+	// LISTA DE EVENTOS VISUAIS (Dano, Efeitos)
+	var/list/pending_visuals = list()
 
 	Login()
 		..()
@@ -460,7 +463,7 @@ mob
 						"rest" = M.is_resting, "ft" = M.is_fainted,
 						"name" = M.name, "skin" = M.skin_color, "cloth" = M.cloth_color,
 						"npc" = 0,
-						"hp" = M.current_hp, "mhp" = M.max_hp // NOVO: HP dos outros players
+						"hp" = M.current_hp, "mhp" = M.max_hp // HP Enviado
 					)
 					players_list[pid] = pData
 			for(var/mob/npc/N in global_npcs)
@@ -471,7 +474,7 @@ mob
 					"a" = 0, "at" = "", "it" = "", "rest" = 0, "ft" = 0,
 					"name" = N.name, "skin" = N.skin_color, "cloth" = N.cloth_color,
 					"npc" = 1, "type" = N.npc_type,
-					"hp" = N.current_hp, "mhp" = N.max_hp // NOVO: HP dos NPCs
+					"hp" = N.current_hp, "mhp" = N.max_hp // HP Enviado
 				)
 			var/list/ground_items = list()
 			for(var/obj/item/I in world)
@@ -483,6 +486,8 @@ mob
 			var/faint_remaining = 0
 			if(src.is_fainted && src.faint_end_time > world.time)
 				faint_remaining = round((src.faint_end_time - world.time) / 10)
+			
+			// --- MONTAGEM DO PACOTE DE REDE ---
 			var/list/packet = list(
 				"my_id" = "\ref[src]",
 				"me" = list(
@@ -497,9 +502,14 @@ mob
 					"mspd" = calc_move_speed, "jmp" = calc_jump_power,
 					"rest" = src.is_resting, "ft" = src.is_fainted, "rem" = faint_remaining
 				),
-				"others" = players_list, "ground" = ground_items, "t" = world.time
+				"others" = players_list, "ground" = ground_items, "t" = world.time,
+				"evts" = src.pending_visuals // LISTA DE EVENTOS (Dano, Efeitos)
 			)
 			src << output(json_encode(packet), "map3d:receberDadosMultiplayer")
+			
+			// Limpa a lista de eventos após enviar
+			if(src.pending_visuals.len > 0) src.pending_visuals = list()
+			
 			sleep(2)
 
 	proc/AutoSaveLoop()
@@ -630,13 +640,12 @@ mob
 				attack_type = href_list["type"]
 				var/weapon_bonus = 0
 				var/prof_lvl = 1
-				var/attack_range = 2.5 // Alcance padrão (soco/chute)
+				var/attack_range = 2.5 // Alcance padrão
 
 				if(attack_type == "sword")
 					if(slot_hand && istype(slot_hand, /obj/item/weapon) && findtext(slot_hand.id_visual, "sword"))
 						weapon_bonus = slot_hand.power
 						prof_lvl = prof_sword_lvl
-						// NOVO: Usa o alcance da arma
 						if(istype(slot_hand, /obj/item/weapon))
 							var/obj/item/weapon/W = slot_hand
 							attack_range = W.range
@@ -648,7 +657,6 @@ mob
 					if(slot_hand && istype(slot_hand, /obj/item/weapon) && findtext(slot_hand.id_visual, "gun"))
 						weapon_bonus = slot_hand.power
 						prof_lvl = prof_gun_lvl
-						// NOVO: Usa o alcance da arma
 						if(istype(slot_hand, /obj/item/weapon))
 							var/obj/item/weapon/W = slot_hand
 							attack_range = W.range
@@ -665,9 +673,9 @@ mob
 				
 				// --- LÓGICA DE ALVO ---
 				var/mob/npc/best_target = null 
-				var/best_dist = attack_range // Usa o alcance definido acima
+				var/best_dist = attack_range 
 
-				// Vetor direção do player
+				// Vetor direção do player (Corrigido, sem negativos para alinhar com cliente)
 				var/look_x = sin(src.real_rot * 180 / 3.14159)
 				var/look_z = cos(src.real_rot * 180 / 3.14159)
 
@@ -682,19 +690,14 @@ mob
 					var/dist = sqrt(dx*dx + dy*dy + dz*dz)
 
 					if(dist <= best_dist)
-						// 2. NOVA LÓGICA DE ACERTO (Raycast para Armas, Cone para Melee)
+						// 2. VALIDAÇÃO DE ACERTO
 						var/hit_confirmed = 0
 						
 						if(attack_type == "gun")
 							// --- LÓGICA DE ARMA (PERPENDICULAR / RAYCAST) ---
-							// Produto escalar para verificar se está na frente (positivo)
 							var/dot = (dx * look_x) + (dz * look_z)
 							if(dot > 0)
-								// Distância perpendicular (largura do tiro)
-								// Fórmula: |(LookX * Dz) - (LookZ * Dx)|
 								var/perp_dist = abs((look_x * dz) - (look_z * dx))
-								
-								// 0.5 = 1 metro de largura total (0.5 para cada lado do laser)
 								if(perp_dist < 0.5) hit_confirmed = 1
 						else
 							// --- LÓGICA DE MELEE (CONE) ---
@@ -703,7 +706,6 @@ mob
 								var/norm_dx = dx / dist_hz
 								var/norm_dz = dz / dist_hz
 								var/dot = (norm_dx * look_x) + (norm_dz * look_z)
-								// Cone aberto (0.3)
 								if(dot > 0.3) hit_confirmed = 1
 
 						if(hit_confirmed)
@@ -714,6 +716,9 @@ mob
 				if(best_target)
 					var/damage = round((strength * 0.5) + prof_bonus + weapon_bonus + rand(0, 2))
 					
+					// REGISTRA O EVENTO VISUAL (Envia para o client mostrar o numero)
+					src.pending_visuals += list(list("type"="dmg", "val"=damage, "tid"="\ref[best_target]"))
+
 					if(best_target.npc_type == "prop")
 						src << output("<span class='log-hit' style='color:orange'>TREINO: Dano [damage] no Tronco</span>", "map3d:addLog")
 						GainExperience(5)

@@ -11,8 +11,8 @@ let blockSync = false;
 // Itens no Chão
 const groundItemsMeshes = {}; 
 
-// --- SISTEMA DE PROJÉTEIS (NOVO) ---
-const activeProjectiles = []; // Lista de balas voando no cliente
+// --- SISTEMA DE PROJÉTEIS ---
+const activeProjectiles = []; 
 
 // Estado do Jogo
 let charState = "DEFAULT"; 
@@ -54,6 +54,31 @@ function addLog(msg, css) {
         d.innerHTML += `<span class="${css}">${msg}</span><br>`; 
         d.scrollTop=d.scrollHeight; 
     }
+}
+
+// NOVA FUNÇÃO: Dano Flutuante
+function spawnDamageNumber(targetRef, amount) {
+    if(!otherPlayers[targetRef]) return;
+    
+    const mesh = otherPlayers[targetRef].mesh;
+    // Calcula posição na tela (Acima da cabeça)
+    const tempV = new THREE.Vector3(mesh.position.x, mesh.position.y + 2.5, mesh.position.z);
+    tempV.project(Engine.camera);
+    
+    // Converte para coordenadas da tela
+    const x = (tempV.x * .5 + .5) * window.innerWidth;
+    const y = (-(tempV.y * .5) + .5) * window.innerHeight;
+
+    const div = document.createElement('div');
+    div.className = 'dmg-popup';
+    div.innerText = "-" + amount;
+    div.style.left = x + 'px';
+    div.style.top = y + 'px';
+    
+    document.body.appendChild(div);
+    
+    // Remove do DOM após 1 segundo (tempo da animação CSS)
+    setTimeout(() => { div.remove(); }, 1000);
 }
 
 function round2(num) { return Math.round((num + Number.EPSILON) * 100) / 100; }
@@ -385,35 +410,29 @@ window.addEventListener('game-action', function(e) {
     }
 });
 
-// NOVA FUNÇÃO: Dispara o visual do projétil
 function fireProjectile(projectileDef) {
     const geo = new THREE.BoxGeometry(1, 1, 1);
     const mat = new THREE.MeshBasicMaterial({ color: projectileDef.color });
     const bullet = new THREE.Mesh(geo, mat);
     
-    // Escala (Ex: fina e comprida)
     const s = projectileDef.scale || [0.1, 0.1, 0.1];
     bullet.scale.set(s[0], s[1], s[2]);
 
-    // Posição Inicial (Mão direita do player)
     const sin = Math.sin(Input.camAngle); 
     const cos = Math.cos(Input.camAngle);
     
     bullet.position.copy(playerGroup.position);
-    bullet.position.y += 1.3; // Altura do ombro
+    bullet.position.y += 1.3; 
     
-    // Ajuste lateral e frontal para sair "da arma"
     bullet.position.x += cos * 0.4; 
     bullet.position.z -= sin * 0.4; 
     bullet.position.x -= sin * 0.5;
     bullet.position.z -= cos * 0.5;
 
-    // Rotação da bala
     bullet.rotation.y = Input.camAngle + Math.PI;
 
     Engine.scene.add(bullet);
 
-    // Adiciona à lista de update
     activeProjectiles.push({
         mesh: bullet,
         dirX: -sin, 
@@ -424,7 +443,6 @@ function fireProjectile(projectileDef) {
     });
 }
 
-// Atualiza posição das balas
 function updateProjectiles() {
     for (let i = activeProjectiles.length - 1; i >= 0; i--) {
         const p = activeProjectiles[i];
@@ -433,7 +451,6 @@ function updateProjectiles() {
         p.mesh.position.z += p.dirZ * p.speed;
         p.distTraveled += p.speed;
 
-        // Se passar do alcance, some
         if (p.distTraveled >= p.maxDist) {
             Engine.scene.remove(p.mesh);
             activeProjectiles.splice(i, 1);
@@ -455,7 +472,7 @@ function performAttack(type) {
         if(tags && tags.includes("sword")) hasSword = true;
         if(tags && tags.includes("gun")) {
             hasGun = true;
-            projectileData = def.projectile; // Pega dados da bala do definitions.js
+            projectileData = def.projectile; 
         }
     }
 
@@ -479,7 +496,6 @@ function performAttack(type) {
     setTimeout(function() {
         charState = atkStance;
         
-        // DISPARA O EFEITO VISUAL SE FOR ARMA
         if(type === "gun" && projectileData) {
             fireProjectile(projectileData);
         }
@@ -522,6 +538,7 @@ function receberDadosMultiplayer(json) {
     }
 
     if(isCharacterReady) {
+        // ... (Itens no chão) ...
         const serverGroundItems = packet.ground || [];
         const seenItems = new Set();
         let closestDist = 999;
@@ -654,6 +671,15 @@ function receberDadosMultiplayer(json) {
                 cachedProfs = { pp: me.pp, pk: me.pk, ps: me.ps, pg: me.pg };
             }
         }
+        
+        // --- PROCESSAMENTO DE EVENTOS VISUAIS ---
+        if(packet.evts) {
+            packet.evts.forEach(evt => {
+                if(evt.type === "dmg") {
+                    spawnDamageNumber(evt.tid, evt.val);
+                }
+            });
+        }
     }
 
     const serverPlayers = packet.others;
@@ -671,23 +697,21 @@ function receberDadosMultiplayer(json) {
                 Engine.scene.add(newChar);
                 Engine.collidables.push(newChar);
                 
-                // --- NOVO: Label com Barra de HP ---
+                // CRIA LABEL COM BARRA DE HP
                 const label = document.createElement('div');
                 label.className = 'name-label';
-                // Cria estrutura HTML para nome e barra
                 label.innerHTML = `
                     <div class="name-text">${pData.name || "Unknown"}</div>
                     <div class="mini-hp-bg"><div class="mini-hp-fill"></div></div>
                 `;
                 document.getElementById('labels-container').appendChild(label);
                 
-                // Referencia a barra para updates rápidos
                 const hpFill = label.querySelector('.mini-hp-fill');
                 
                 otherPlayers[id] = {
                     mesh: newChar,
                     label: label,
-                    hpFill: hpFill, // Guarda referência
+                    hpFill: hpFill,
                     startX: pData.x, startY: pData.y, startZ: pData.z, startRot: pData.rot,
                     targetX: pData.x, targetY: pData.y, targetZ: pData.z, targetRot: pData.rot,
                     lastPacketTime: now,
@@ -697,7 +721,7 @@ function receberDadosMultiplayer(json) {
                     fainted: pData.ft,
                     lastItem: "",
                     isNPC: (pData.npc === 1),
-                    npcType: pData.type // Guarda o tipo (prop, vendor, enemy)
+                    npcType: pData.type
                 };
             }
         } else {
@@ -716,9 +740,8 @@ function receberDadosMultiplayer(json) {
             if (pData.rest !== undefined) other.resting = pData.rest; 
             if (pData.ft !== undefined) other.fainted = pData.ft;
             
-            // --- ATUALIZAÇÃO DA BARRA DE VIDA ---
+            // ATUALIZA BARRA DE HP
             if(pData.hp !== undefined && pData.mhp !== undefined && other.hpFill) {
-                // Esconde se for prop ou vendor
                 if(pData.type === "prop" || pData.type === "vendor") {
                     other.label.querySelector('.mini-hp-bg').style.display = 'none';
                 } else {
@@ -726,7 +749,6 @@ function receberDadosMultiplayer(json) {
                     other.hpFill.style.width = pct + "%";
                 }
             }
-            // ------------------------------------
 
             if(pData.name && other.label.querySelector('.name-text').innerText !== pData.name) {
                 other.label.querySelector('.name-text').innerText = pData.name;
@@ -779,7 +801,7 @@ function animate() {
     animTime += 0.1;
     const now = performance.now();
 
-    updateProjectiles(); // ATUALIZA AS BALAS NO AR
+    updateProjectiles(); 
 
     for(let ref in groundItemsMeshes) {
         const item = groundItemsMeshes[ref];
@@ -933,6 +955,7 @@ function animate() {
         
         const tempV = new THREE.Vector3(mesh.position.x, mesh.position.y + 2, mesh.position.z);
         tempV.project(Engine.camera);
+        // CORREÇÃO: Aplica as coordenadas na div do label
         other.label.style.display = (Math.abs(tempV.z) > 1) ? 'none' : 'block';
         other.label.style.left = (tempV.x * .5 + .5) * window.innerWidth + 'px';
         other.label.style.top = (-(tempV.y * .5) + .5) * window.innerHeight + 'px';

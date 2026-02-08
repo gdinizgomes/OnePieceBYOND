@@ -20,7 +20,7 @@
         body { margin: 0; overflow: hidden; user-select: none; font-family: 'Segoe UI', sans-serif; }
         #ui-layer { position: absolute; width: 100%; height: 100%; pointer-events: none; }
         
-        /* CORREÇÃO DO BUG DO TEXTO EMPILHADO */
+        /* CORREÇÃO DO BUG DO TEXTO EMPILHADO E BARRAS DE VIDA */
         .name-label {
             position: absolute; /* ISSO FIXA O PROBLEMA */
             background: rgba(0,0,0,0.5);
@@ -50,6 +50,22 @@
             background: #e74c3c;
             width: 100%;
             transition: width 0.2s;
+        }
+
+        /* ANIMAÇÃO DE DANO FLUTUANTE */
+        .dmg-popup {
+            position: absolute;
+            color: #ff3333;
+            font-weight: bold;
+            font-size: 20px;
+            text-shadow: 2px 2px 0px #000;
+            pointer-events: none;
+            animation: floatUp 1s ease-out forwards;
+            z-index: 9000;
+        }
+        @keyframes floatUp {
+            0% { transform: translateY(0) scale(1); opacity: 1; }
+            100% { transform: translateY(-50px) scale(1.5); opacity: 0; }
         }
 
         .char-info { position: absolute; top: 20px; left: 20px; background: rgba(0,0,0,0.6); padding: 15px; border-radius: 8px; color: white; border: 2px solid #d4af37; pointer-events: auto; min-width: 200px; }
