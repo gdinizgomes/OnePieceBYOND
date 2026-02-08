@@ -1,5 +1,8 @@
 #define SAVE_DIR "saves/"
 
+// --- LISTA GLOBAL DE NPCS (OTIMIZAÇÃO) ---
+var/list/global_npcs = list()
+
 // --- ESTRUTURA DE ITENS ---
 obj/item
 	var/id_visual = ""
@@ -177,6 +180,13 @@ mob
 			src << output("Largou [amount_to_drop] x [I.name]", "map3d:mostrarNotificacao")
 		RequestInventoryUpdate()
 
+	proc/TrashItem(obj/item/I)
+		if(!I || I == slot_hand) return
+		if(I in contents)
+			src << output("Você jogou [I.name] no lixo.", "map3d:mostrarNotificacao")
+			del(I)
+			RequestInventoryUpdate()
+
 	proc/PickUpNearestItem()
 		var/obj/item/target = null
 		var/min_dist = 2.0
@@ -219,6 +229,7 @@ mob
 				"amount" = I.amount,
 				"id" = I.id_visual,
 				"power" = I.power,
+				"price" = I.price, 
 				"equipped" = 0
 			))
 		src << output(json_encode(inv_data), "map3d:loadInventory")
@@ -361,17 +372,14 @@ mob
 		src << browse_rsc(file("engine.js"), "engine.js")
 		src << browse_rsc(file("game.js"), "game.js")
 
-		// --- ENVIANDO ARQUIVOS DE IMAGEM PARA O NAVEGADOR ---
-		// O navegador não consegue ver os arquivos na pasta a menos que o servidor os envie
-		// Adicione aqui todos os ícones que você criar
+		// --- ENVIANDO ARQUIVOS DE IMAGEM ---
 		if(fexists("weapon_sword_wood_img.png")) src << browse_rsc(file("weapon_sword_wood_img.png"), "weapon_sword_wood_img.png")
 		if(fexists("weapon_sword_iron_img.png")) src << browse_rsc(file("weapon_sword_iron_img.png"), "weapon_sword_iron_img.png")
 		if(fexists("weapon_sword_silver_img.png")) src << browse_rsc(file("weapon_sword_silver_img.png"), "weapon_sword_silver_img.png")
-		
 		if(fexists("weapon_gun_wood_img.png")) src << browse_rsc(file("weapon_gun_wood_img.png"), "weapon_gun_wood_img.png")
 		if(fexists("weapon_gun_flintlock_img.png")) src << browse_rsc(file("weapon_gun_flintlock_img.png"), "weapon_gun_flintlock_img.png")
 		if(fexists("weapon_gun_silver_img.png")) src << browse_rsc(file("weapon_gun_silver_img.png"), "weapon_gun_silver_img.png")
-		// ----------------------------------------------------
+		// -----------------------------------
 
 		char_loaded = 1
 		in_game = 1
@@ -433,7 +441,10 @@ mob
 	proc/UpdateLoop()
 		while(src && in_game)
 			var/list/players_list = list()
+			
+			// JOGADORES (Só jogadores reais)
 			for(var/mob/M in world)
+				if(istype(M, /mob/npc)) continue 
 				if(M.in_game && M.char_loaded)
 					if(abs(M.real_x - src.real_x) > 30 || abs(M.real_z - src.real_z) > 30) continue
 					var/pid = "\ref[M]"
@@ -442,9 +453,23 @@ mob
 						"a" = M.is_attacking, "at" = M.attack_type,
 						"it" = M.active_item_visual,
 						"rest" = M.is_resting, "ft" = M.is_fainted,
-						"name" = M.name, "skin" = M.skin_color, "cloth" = M.cloth_color
+						"name" = M.name, "skin" = M.skin_color, "cloth" = M.cloth_color,
+						"npc" = 0
 					)
 					players_list[pid] = pData
+			
+			// NPCS (Usa lista global OTIMIZADA)
+			for(var/mob/npc/N in global_npcs)
+				// Só envia se estiver perto (Economiza banda)
+				if(abs(N.real_x - src.real_x) > 30 || abs(N.real_z - src.real_z) > 30) continue
+				var/nid = "\ref[N]"
+				players_list[nid] = list(
+					"x" = N.real_x, "y" = N.real_y, "z" = N.real_z, "rot" = N.real_rot,
+					"a" = 0, "at" = "", "it" = "", "rest" = 0, "ft" = 0,
+					"name" = N.name, "skin" = N.skin_color, "cloth" = N.cloth_color,
+					"npc" = 1, "type" = N.npc_type
+				)
+
 			var/list/ground_items = list()
 			for(var/obj/item/I in world)
 				if(isturf(I.loc))
@@ -506,7 +531,7 @@ mob
 			src.name = href_list["name"]
 			src.skin_color = href_list["skin"]
 			src.cloth_color = href_list["cloth"]
-			src.level = 1; src.gold = 0
+			src.level = 1; src.gold = 10000 
 			src.real_x = 0; src.real_y = 0; src.real_z = 0
 			current_slot = slot
 			SaveCharacter()
@@ -542,7 +567,60 @@ mob
 			var/obj/item/I = locate(ref_id)
 			if(I && (I in contents)) DropItem(I, qty)
 
+		if(action == "trash_item" && in_game)
+			var/ref_id = href_list["ref"]
+			var/obj/item/I = locate(ref_id)
+			if(I && (I in contents)) TrashItem(I)
+
 		if(action == "pick_up" && in_game) PickUpNearestItem()
+
+		// --- SISTEMA DE LOJA ---
+		if(action == "interact_npc" && in_game)
+			var/ref_id = href_list["ref"]
+			var/mob/npc/N = locate(ref_id)
+			if(N && get_dist_euclid(src.real_x, src.real_z, N.real_x, N.real_z) < 3.0)
+				// Abre a loja
+				if(istype(N, /mob/npc/vendor))
+					var/mob/npc/vendor/V = N
+					var/list/shop_items = list()
+					for(var/path in V.stock)
+						var/obj/item/tmpI = new path()
+						shop_items += list(list("name"=tmpI.name, "id"=tmpI.id_visual, "price"=tmpI.price, "desc"=tmpI.description, "typepath"=path))
+						del(tmpI) // Apenas para ler dados
+					src << output(json_encode(shop_items), "map3d:openShop")
+					RequestInventoryUpdate()
+
+		if(action == "buy_item" && in_game)
+			var/typepath = text2path(href_list["type"])
+			if(typepath)
+				var/obj/item/temp = new typepath()
+				if(src.gold >= temp.price)
+					if(contents.len >= 12)
+						src << output("Mochila cheia!", "map3d:mostrarNotificacao")
+						del(temp)
+					else
+						src.gold -= temp.price
+						temp.loc = src
+						src << output("Comprou [temp.name]!", "map3d:mostrarNotificacao")
+						RequestInventoryUpdate()
+				else
+					src << output("Ouro insuficiente!", "map3d:mostrarNotificacao")
+					del(temp)
+
+		if(action == "sell_item" && in_game)
+			var/ref_id = href_list["ref"]
+			var/obj/item/I = locate(ref_id)
+			if(I && (I in contents))
+				if(I == slot_hand) 
+					src << output("Desequipe antes de vender!", "map3d:mostrarNotificacao")
+				else
+					var/val = round(I.price / 10)
+					if(val < 1) val = 1
+					src.gold += val
+					src << output("Vendeu [I.name] por [val] Berries.", "map3d:mostrarNotificacao")
+					del(I)
+					RequestInventoryUpdate()
+		// -----------------------
 
 		if(action == "attack" && in_game)
 			if(is_resting) return
@@ -598,15 +676,27 @@ mob
 		set category = "Debug"
 		GainExperience(req_experience)
 
+	proc/get_dist_euclid(x1, z1, x2, z2)
+		return sqrt((x1-x2)**2 + (z1-z2)**2)
+
+// --- NPCS (GESTÃO OTIMIZADA) ---
 mob/npc
 	in_game = 1
 	char_loaded = 1
-	skin_color = "00FF00"
-	cloth_color = "0000FF"
+	var/npc_type = "base"
+	var/wanders = 1 
 	New()
 		..()
-		real_x = rand(-10, 10); real_z = rand(-10, 10); real_y = 0
-		spawn(5) AI_Loop()
+		real_y = 0
+		// ADICIONA À LISTA GLOBAL AUTOMATICAMENTE
+		global_npcs += src
+		if(wanders) spawn(5) AI_Loop()
+
+	Del()
+		// REMOVE DA LISTA GLOBAL AO MORRER
+		global_npcs -= src
+		..()
+
 	proc/AI_Loop()
 		while(src)
 			var/dir = pick(0, 90, 180, 270)
@@ -617,34 +707,41 @@ mob/npc
 				sleep(1)
 			sleep(rand(20, 50))
 
+mob/npc/vendor
+	name = "Armeiro"
+	npc_type = "vendor"
+	skin_color = "FFE0BD"
+	cloth_color = "555555"
+	wanders = 0 // PARADO
+	var/list/stock = list(
+		/obj/item/weapon/sword_wood,
+		/obj/item/weapon/sword_iron,
+		/obj/item/weapon/sword_silver,
+		/obj/item/weapon/gun_wood,
+		/obj/item/weapon/gun_flintlock,
+		/obj/item/weapon/gun_silver
+	)
+	New()
+		..()
+		real_x = 2
+		real_z = 2
+		real_y = 0.1
+		real_rot = 3.14
+
+mob/npc/dummy
+	name = "Pirata de Teste"
+	npc_type = "enemy"
+	skin_color = "00FF00"
+	cloth_color = "0000FF"
+	wanders = 1
+	New()
+		..()
+		real_x = rand(-10, 10); real_z = rand(-10, 10)
+
 world/New()
 	world.maxx = 1
 	world.maxy = 1
 	world.maxz = 1
 	..()
-	new /mob/npc() { name = "Pirata de Teste" }
-
-	spawn(10)
-		// Itens fixos de exemplo
-		var/obj/item/weapon/sword_wood/S = new(locate(1,1,1))
-		S.real_x = 4; S.real_z = 5; S.loc = locate(1,1,1)
-
-		var/obj/item/weapon/gun_flintlock/G = new(locate(1,1,1))
-		G.real_x = 6; G.real_z = 5; G.loc = locate(1,1,1)
-
-		// Gera aleatoriamente, INCLUINDO AS NOVAS ARMAS
-		var/list/types = list(
-			/obj/item/weapon/sword_wood, 
-			/obj/item/weapon/sword_iron, 
-			/obj/item/weapon/sword_silver, 
-			/obj/item/weapon/gun_wood, 
-			/obj/item/weapon/gun_flintlock, 
-			/obj/item/weapon/gun_silver
-		)
-		
-		for(var/i=1 to 10)
-			var/t = pick(types)
-			var/obj/item/I = new t(locate(1,1,1))
-			I.real_x = rand(-15, 15)
-			I.real_z = rand(-15, 15)
-			I.loc = locate(1,1,1)
+	new /mob/npc/dummy() 
+	new /mob/npc/vendor()

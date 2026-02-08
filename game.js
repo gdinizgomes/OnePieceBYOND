@@ -29,6 +29,7 @@ const gravity = -0.015;
 // UI State
 let isStatWindowOpen = false;
 let isInvWindowOpen = false; 
+let isShopOpen = false; // NOVA VARIAVEL
 
 // Cache UI
 let cachedHP = -1; let cachedMaxHP = -1; 
@@ -56,6 +57,7 @@ function round2(num) { return Math.round((num + Number.EPSILON) * 100) / 100; }
 
 // --- CONTROLE DA INTERFACE ---
 function toggleStats() {
+    if(isShopOpen) return; // Não abre stats na loja
     isStatWindowOpen = !isStatWindowOpen;
     document.getElementById('stat-window').style.display = isStatWindowOpen ? 'block' : 'none';
     if(isStatWindowOpen) {
@@ -67,6 +69,11 @@ function toggleStats() {
 
 function toggleInventory() {
     if(blockSync) return;
+    // Se loja aberta, fecha loja também
+    if(isShopOpen) {
+        toggleShop();
+        return;
+    }
     isInvWindowOpen = !isInvWindowOpen;
     document.getElementById('inventory-window').style.display = isInvWindowOpen ? 'flex' : 'none';
     
@@ -77,12 +84,75 @@ function toggleInventory() {
     }
 }
 
+function toggleShop() {
+    isShopOpen = !isShopOpen;
+    document.getElementById('shop-window').style.display = isShopOpen ? 'flex' : 'none';
+    
+    // Abre/Fecha inventário junto
+    isInvWindowOpen = isShopOpen;
+    document.getElementById('inventory-window').style.display = isInvWindowOpen ? 'flex' : 'none';
+    
+    if(!isShopOpen) {
+        // Limpa UI
+        document.getElementById('shop-list').innerHTML = "";
+    }
+}
+
+// Renderiza Itens da Loja (Recebido do Servidor)
+function openShop(json) {
+    if(!isShopOpen) toggleShop();
+    
+    const list = document.getElementById('shop-list');
+    list.innerHTML = "";
+    let items = [];
+    try { items = JSON.parse(json); } catch(e) { return; }
+
+    items.forEach(item => {
+        const div = document.createElement('div');
+        div.className = 'shop-item';
+        div.innerHTML = `
+            <img src="${item.id}_img.png" onerror="this.style.display='none'">
+            <div class="shop-details">
+                <div class="shop-name">${item.name}</div>
+                <div class="shop-price">💰 ${item.price}</div>
+            </div>
+            <button class="btn-buy" onclick="buyItem('${item.typepath}')">Comprar</button>
+        `;
+        list.appendChild(div);
+    });
+}
+
+function buyItem(typepath) {
+    if(blockSync) return;
+    blockSync = true;
+    window.location.href = `byond://?src=${BYOND_REF}&action=buy_item&type=${typepath}`;
+    setTimeout(() => { blockSync = false; }, 200);
+}
+
+function sellItem(ref) {
+    if(blockSync) return;
+    if(confirm("Vender este item?")) {
+        blockSync = true;
+        window.location.href = `byond://?src=${BYOND_REF}&action=sell_item&ref=${ref}`;
+        setTimeout(() => { blockSync = false; }, 200);
+    }
+}
+
+function trashItem(ref) {
+    if(blockSync) return;
+    if(confirm("Tem certeza? O item será DESTRUÍDO para sempre.")) {
+        blockSync = true;
+        window.location.href = `byond://?src=${BYOND_REF}&action=trash_item&ref=${ref}`;
+        setTimeout(() => { blockSync = false; }, 200);
+    }
+}
+
 function hideTooltip() {
     const t = document.getElementById('tooltip');
     if(t) t.style.display = 'none';
 }
 
-// Renderiza o Grid de 12 Slots - VERSÃO OTIMIZADA PARA PNG
+// Renderiza o Grid de 12 Slots - COM VENDA E LIXO
 function loadInventory(json) {
     hideTooltip(); 
 
@@ -101,15 +171,12 @@ function loadInventory(json) {
             // Cria a imagem
             const img = document.createElement('img');
             img.className = 'inv-icon';
-            // O segredo: o nome do arquivo é o ID + _img.png
             img.src = item.id + "_img.png"; 
-            
-            // Se der erro (arquivo não enviado), mostra um quadrado discreto
             img.onerror = function() {
                 this.style.display = 'none';
                 if(this.parentElement) {
                     this.parentElement.style.backgroundColor = '#444';
-                    this.parentElement.innerText = "?"; // Indica erro visual
+                    this.parentElement.innerText = "?";
                     this.parentElement.style.color = "#666";
                     this.parentElement.style.fontSize = "20px";
                     this.parentElement.style.display = "flex";
@@ -127,22 +194,32 @@ function loadInventory(json) {
                 slotDiv.appendChild(qtyDiv);
             }
 
-            // Tooltip e Eventos
+            // Tooltip
             slotDiv.onmousemove = function(e) {
                 const tip = document.getElementById('tooltip');
                 tip.style.display = 'block';
                 tip.style.left = (e.pageX + 10) + 'px';
                 tip.style.top = (e.pageY + 10) + 'px';
-                tip.innerHTML = `<strong>${item.name}</strong>${item.desc}<br><span style='color:#aaa'>Dano: ${item.power}</span>`;
+                let priceTxt = isShopOpen ? `<br><span style='color:#2ecc71'>Venda: ${Math.round(item.price/10)}</span>` : "";
+                tip.innerHTML = `<strong>${item.name}</strong>${item.desc}<br><span style='color:#aaa'>Dano: ${item.power}</span>${priceTxt}`;
             };
             slotDiv.onmouseout = function() { hideTooltip(); };
 
+            // Ações do Botão
             const actionsDiv = document.createElement('div');
             actionsDiv.className = 'inv-actions';
-            actionsDiv.innerHTML = `
-                <button class="action-btn" onclick="equipItem('${item.ref}')">Equipar</button>
-                <button class="action-btn" onclick="dropItem('${item.ref}', ${item.amount})">Largar</button>
-            `;
+            
+            // Botão Vender (Só aparece se loja aberta)
+            if(isShopOpen) {
+                actionsDiv.innerHTML += `<button class="action-btn btn-sell" style="display:block" onclick="sellItem('${item.ref}')">Vender</button>`;
+            } else {
+                actionsDiv.innerHTML += `<button class="action-btn" onclick="equipItem('${item.ref}')">Equipar</button>`;
+                actionsDiv.innerHTML += `<button class="action-btn" onclick="dropItem('${item.ref}', ${item.amount})">Largar</button>`;
+            }
+            
+            // Botão Lixo (Sempre aparece)
+            actionsDiv.innerHTML += `<button class="action-btn btn-trash" onclick="trashItem('${item.ref}')">Lixo</button>`;
+
             slotDiv.appendChild(actionsDiv);
         } else {
             slotDiv.style.opacity = "0.3";
@@ -247,6 +324,8 @@ window.addEventListener('keydown', function(e) {
     const k = e.key.toLowerCase();
     if(k === 'c') toggleStats();
     if(k === 'i') toggleInventory(); 
+    if(k === 'x') interact(); // Interagir
+    
     if(k === 'e') {
         if(typeof BYOND_REF !== 'undefined' && !blockSync) {
             blockSync = true;
@@ -267,6 +346,37 @@ window.addEventListener('keydown', function(e) {
 window.addEventListener('keyup', function(e) {
     if(e.key === 'Shift') isRunning = false;
 });
+
+function interact() {
+    // Busca NPC próximo (Lógica do cliente rápida)
+    let closestNPC = null;
+    let minD = 3.0;
+    
+    for(let id in otherPlayers) {
+        let p = otherPlayers[id];
+        // Se for NPC (verificamos pelo label ou dados) - melhor checar pelo servidor
+    }
+    
+    // Simplificação: Envia comando de interação e servidor decide quem está perto
+    // Mas precisamos mandar O QUE estamos interagindo.
+    // O jeito mais fácil é iterar os otherPlayers no JS que tenham flag NPC
+    
+    let targetRef = "";
+    for(let id in otherPlayers) {
+        // Verifica distancia
+        let dist = playerGroup.position.distanceTo(otherPlayers[id].mesh.position);
+        if(dist < 3.0) {
+            // É um alvo válido. Mandamos o ID pro server validar.
+            // O ID em otherPlayers é a REF do BYOND.
+            targetRef = id; 
+            break;
+        }
+    }
+    
+    if(targetRef !== "") {
+        window.location.href = `byond://?src=${BYOND_REF}&action=interact_npc&ref=${targetRef}`;
+    }
+}
 
 // --- SISTEMA DE FÍSICA ---
 const tempBoxPlayer = new THREE.Box3();
@@ -428,7 +538,18 @@ function receberDadosMultiplayer(json) {
         }
 
         const hint = document.getElementById('interaction-hint');
-        if(closestDist < 2.0) hint.style.display = 'block';
+        
+        // Verifica NPC proximo para mudar hint
+        let npcNear = false;
+        for(let id in otherPlayers) {
+            if(otherPlayers[id].isNPC) { // Flag adicionada abaixo
+                 let d = playerGroup.position.distanceTo(otherPlayers[id].mesh.position);
+                 if(d < 3.0) npcNear = true;
+            }
+        }
+
+        if(closestDist < 2.0) { hint.innerText = "[E] Pegar Item"; hint.style.display = 'block'; }
+        else if(npcNear) { hint.innerText = "[X] Interagir"; hint.style.display = 'block'; }
         else hint.style.display = 'none';
 
         const myData = packet.others[myID];
@@ -555,7 +676,8 @@ function receberDadosMultiplayer(json) {
                     attacking: pData.a, attackType: pData.at, 
                     resting: pData.rest,
                     fainted: pData.ft,
-                    lastItem: "" 
+                    lastItem: "",
+                    isNPC: (pData.npc === 1) // Flag NPC
                 };
             }
         } else {
