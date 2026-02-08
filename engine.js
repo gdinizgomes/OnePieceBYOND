@@ -9,56 +9,61 @@ function lerpAngle(start, end, t) {
     return start + shortestDiff * t;
 }
 function lerpLimbRotation(limb, targetRot, speed) {
+    if(!limb) return;
     limb.rotation.x = lerp(limb.rotation.x, targetRot.x, speed);
     limb.rotation.y = lerp(limb.rotation.y, targetRot.y, speed);
     limb.rotation.z = lerp(limb.rotation.z, targetRot.z, speed);
 }
 
 const RAD = Math.PI / 180;
+
+// POSES ARTICULADAS
 const STANCES = {
     DEFAULT: { 
-        rightArm: { x: 0, y: 0, z: 0 }, leftArm:  { x: 0, y: 0, z: 0 },
-        rightLeg: { x: 0, y: 0, z: 0 }, leftLeg:  { x: 0, y: 0, z: 0 }
+        rightArm: { x: 0, y: 0, z: 0 }, rightForeArm: { x: 0, y: 0, z: 0 },
+        leftArm:  { x: 0, y: 0, z: 0 }, leftForeArm:  { x: 0, y: 0, z: 0 },
+        rightLeg: { x: 0, y: 0, z: 0 }, rightShin:    { x: 0, y: 0, z: 0 },
+        leftLeg:  { x: 0, y: 0, z: 0 }, leftShin:     { x: 0, y: 0, z: 0 }
     },
     SWORD_IDLE: { 
-        rightArm: { x: -45 * RAD, y: -10 * RAD, z: 30 * RAD }, leftArm:  { x: 20 * RAD, y: 0, z: -10 * RAD },
-        rightLeg: { x: 0, y: 0, z: 0 }, leftLeg:  { x: 0, y: 0, z: 0 }
+        rightArm: { x: -20 * RAD, y: 0, z: 10 * RAD }, rightForeArm: { x: -90 * RAD, y: 0, z: 0 }, // Segura espada pra cima
+        leftArm:  { x: 0, y: 0, z: -10 * RAD }, leftForeArm:  { x: 0, y: 0, z: 0 }
     },
     SWORD_WINDUP: { 
-        rightArm: { x: -110 * RAD, y: -20 * RAD, z: 40 * RAD }, leftArm:  { x: 40 * RAD, y: 20 * RAD, z: -20 * RAD },
-        rightLeg: { x: -20 * RAD, y: 0, z: 0 }, leftLeg:  { x: 10 * RAD, y: 0, z: 0 }
+        rightArm: { x: -160 * RAD, y: 0, z: 20 * RAD }, rightForeArm: { x: -40 * RAD, y: 0, z: 0 }, // Espada lá trás
+        leftArm:  { x: 40 * RAD, y: 0, z: 0 }, leftForeArm:  { x: 0, y: 0, z: 0 }
     },
     SWORD_ATK_1: { 
-        rightArm: { x: 60 * RAD, y: -40 * RAD, z: 10 * RAD }, leftArm:  { x: -30 * RAD, y: 0, z: -30 * RAD }, 
-        rightLeg: { x: 20 * RAD, y: 0, z: 0 }, leftLeg:  { x: -10 * RAD, y: 0, z: 0 }
+        rightArm: { x: 40 * RAD, y: -20 * RAD, z: -20 * RAD }, rightForeArm: { x: 0, y: 0, z: 0 }, // Corte
+        leftArm:  { x: -30 * RAD, y: 0, z: 0 }, leftForeArm:  { x: -30 * RAD, y: 0, z: 0 }
     },
     FIST_IDLE: { 
-        rightArm: { x: -60 * RAD, y: 40 * RAD, z: 0 }, leftArm:  { x: -60 * RAD, y: -40 * RAD, z: 0 },
-        rightLeg: { x: 0, y: 0, z: 0 }, leftLeg:  { x: 0, y: 0, z: 0 }
+        rightArm: { x: -45 * RAD, y: 45 * RAD, z: 0 }, rightForeArm: { x: -90 * RAD, y: 0, z: 0 }, // Guarda Boxe
+        leftArm:  { x: -45 * RAD, y: -45 * RAD, z: 0 }, leftForeArm:  { x: -90 * RAD, y: 0, z: 0 }
     },
     FIST_WINDUP: {
-        rightArm: { x: -40 * RAD, y: 60 * RAD, z: 0 }, leftArm:  { x: -70 * RAD, y: -30 * RAD, z: 0 },
-        rightLeg: { x: 0, y: 0, z: 0 }, leftLeg:  { x: 0, y: 0, z: 0 }
+        rightArm: { x: 20 * RAD, y: 45 * RAD, z: 0 }, rightForeArm: { x: -110 * RAD, y: 0, z: 0 }, // Puxa braço
+        leftArm:  { x: -45 * RAD, y: -45 * RAD, z: 0 }, leftForeArm:  { x: -90 * RAD, y: 0, z: 0 }
     },
     FIST_ATK: {
-        rightArm: { x: -80 * RAD, y: -10 * RAD, z: -10 * RAD }, leftArm:  { x: -60 * RAD, y: -40 * RAD, z: 0 },
-        rightLeg: { x: 20 * RAD, y: 0, z: 0 }, leftLeg:  { x: -10 * RAD, y: 0, z: 0 }
+        rightArm: { x: -90 * RAD, y: -20 * RAD, z: 0 }, rightForeArm: { x: 0, y: 0, z: 0 }, // Soco esticado
+        leftArm:  { x: -45 * RAD, y: -45 * RAD, z: 0 }, leftForeArm:  { x: -90 * RAD, y: 0, z: 0 }
     },
     KICK_WINDUP: {
-        rightArm: { x: -30 * RAD, y: 0, z: 0 }, leftArm:  { x: -30 * RAD, y: 0, z: 0 },
-        rightLeg: { x: 40 * RAD, y: 0, z: 0 }, leftLeg:  { x: 10 * RAD, y: 0, z: 0 }
+        rightLeg: { x: 40 * RAD, y: 0, z: 0 }, rightShin: { x: 80 * RAD, y: 0, z: 0 }, // Puxa perna
+        leftLeg:  { x: 0, y: 0, z: 0 }, leftShin: { x: 0, y: 0, z: 0 }
     },
     KICK_ATK: {
-        rightArm: { x: 20 * RAD, y: 0, z: -30 * RAD }, leftArm:  { x: 20 * RAD, y: 0, z: 30 * RAD },
-        rightLeg: { x: -90 * RAD, y: 0, z: 0 }, leftLeg:  { x: 10 * RAD, y: 0, z: 0 }
+        rightLeg: { x: -60 * RAD, y: 0, z: 0 }, rightShin: { x: 0, y: 0, z: 0 }, // Chuta reto
+        leftLeg:  { x: 10 * RAD, y: 0, z: 0 }, leftShin: { x: 20 * RAD, y: 0, z: 0 }
     },
     GUN_IDLE: {
-        rightArm: { x: -90 * RAD, y: -5 * RAD, z: 0 }, leftArm:  { x: 0, y: 0, z: 0 },
-        rightLeg: { x: -10 * RAD, y: 0, z: 0 }, leftLeg:  { x: 10 * RAD, y: 0, z: 0 }
+        rightArm: { x: -70 * RAD, y: 0, z: 0 }, rightForeArm: { x: -20 * RAD, y: 0, z: 0 }, // Aponta levemente pra baixo
+        leftArm:  { x: 0, y: 0, z: 0 }, leftForeArm:  { x: 0, y: 0, z: 0 }
     },
     GUN_ATK: { 
-        rightArm: { x: -70 * RAD, y: -5 * RAD, z: 0 }, leftArm:  { x: 0, y: 0, z: 0 },
-        rightLeg: { x: -10 * RAD, y: 0, z: 0 }, leftLeg:  { x: 10 * RAD, y: 0, z: 0 }
+        rightArm: { x: -90 * RAD, y: 0, z: 0 }, rightForeArm: { x: 0, y: 0, z: 0 }, // Aponta reto
+        leftArm:  { x: 0, y: 0, z: 0 }, leftForeArm:  { x: 0, y: 0, z: 0 }
     }
 };
 
@@ -104,7 +109,7 @@ const Engine = {
     camera: null,
     renderer: null,
     dummyTarget: null,
-    collidables: [], // Lista GLOBAL de objetos sólidos
+    collidables: [], 
 
     init: function() {
         Input.init();
@@ -155,11 +160,9 @@ const Engine = {
             logMesh.position.y = logDef.visual.scale[1] / 2;
             dummyGroup.add(logMesh);
             
-            // Lógica de Colisão
             const isSolid = !logDef.physics || logDef.physics.solid !== false;
             
             if(isSolid) {
-                // Passa a propriedade 'standable' para a malha, para o game.js saber se pode pisar
                 if(logDef.physics && logDef.physics.standable) {
                     logMesh.userData.standable = true;
                 }

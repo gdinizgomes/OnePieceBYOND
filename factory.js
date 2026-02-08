@@ -2,7 +2,6 @@
 const CharFactory = {
     textureLoader: new THREE.TextureLoader(),
 
-    // Cache de Geometrias Básicas para performance
     geoCache: {
         box: new THREE.BoxGeometry(1, 1, 1),
         cylinder: new THREE.CylinderGeometry(1, 1, 1, 12),
@@ -10,18 +9,14 @@ const CharFactory = {
         plane: new THREE.PlaneGeometry(1, 1)
     },
 
-    // Cria um Bloco Único
     createMesh: function(visualData, overrides = {}) {
-        // Seleciona a geometria (padrão é box)
         const geometry = this.geoCache[visualData.model] || this.geoCache.box;
         let material;
-
-        // Prioridade de cor: Override > VisualData > Branco Padrão
         const colorHex = overrides.color ? parseInt("0x" + overrides.color) : (visualData.color || 0xFFFFFF);
 
         if (visualData.texture) {
             const tex = this.textureLoader.load(visualData.texture);
-            tex.magFilter = THREE.NearestFilter; // Mantém o Pixel Art nítido
+            tex.magFilter = THREE.NearestFilter; 
             material = new THREE.MeshPhongMaterial({ map: tex, transparent: true, alphaTest: 0.5, color: colorHex });
         } else {
             material = new THREE.MeshPhongMaterial({ color: colorHex });
@@ -31,140 +26,147 @@ const CharFactory = {
         mesh.castShadow = true;
         mesh.receiveShadow = true;
 
-        // Aplica escala se definida
-        if (visualData.scale) {
-            mesh.scale.set(visualData.scale[0], visualData.scale[1], visualData.scale[2]);
-        }
-        
-        // Aplica posição relativa (essencial para peças de Lego)
-        if (visualData.pos) {
-            mesh.position.set(visualData.pos[0], visualData.pos[1], visualData.pos[2]);
-        }
-        
-        // Aplica rotação relativa
-        if (visualData.rot) {
-            mesh.rotation.set(visualData.rot[0], visualData.rot[1], visualData.rot[2]);
-        }
+        if (visualData.scale) mesh.scale.set(visualData.scale[0], visualData.scale[1], visualData.scale[2]);
+        if (visualData.pos) mesh.position.set(visualData.pos[0], visualData.pos[1], visualData.pos[2]);
+        if (visualData.rot) mesh.rotation.set(visualData.rot[0], visualData.rot[1], visualData.rot[2]);
 
         return mesh;
     },
 
-    // Função Principal: Cria o objeto baseado no ID
     createFromDef: function(defId, overrides = {}) {
         const def = GameDefinitions[defId];
         if (!def) {
             console.error(`Factory: Definição '${defId}' não encontrada.`);
-            return new THREE.Mesh(this.geoCache.box, new THREE.MeshBasicMaterial({color: 0xFF00FF})); // Erro rosa
+            return new THREE.Mesh(this.geoCache.box, new THREE.MeshBasicMaterial({color: 0xFF00FF})); 
         }
 
-        // --- SISTEMA LEGO (NOVO) ---
-        // Se o modelo for "group" e tiver "parts", montamos peça por peça
         if (def.visual.model === "group" && def.visual.parts) {
             const group = new THREE.Group();
-            
             def.visual.parts.forEach(partDef => {
                 const mesh = this.createMesh(partDef);
                 group.add(mesh);
             });
-
-            // Metadados para o jogo saber o que é isso
             group.userData = { id: def.id, type: def.type, tags: def.data?.tags || [] };
             return group;
         } 
-        // ---------------------------
 
-        // Comportamento Antigo (Bloco Único)
         const mesh = this.createMesh(def.visual, overrides);
         mesh.userData = { id: def.id, type: def.type, tags: def.data?.tags || [] };
         return mesh;
     },
 
+    // --- NOVA FUNÇÃO DE CRIAÇÃO HIERÁRQUICA (RIGGING) ---
     createCharacter: function(skinColor, clothColor) {
         const root = new THREE.Group(); 
 
-        // Âncora do Torso (para não deformar filhos ao escalar)
-        const torsoAnchor = new THREE.Group();
-        torsoAnchor.position.y = 1.1; 
-        root.add(torsoAnchor);
+        // 1. TORSO (Base)
+        const torsoGroup = new THREE.Group();
+        torsoGroup.position.y = 1.0; // Centro de gravidade
+        root.add(torsoGroup);
 
-        const torsoMesh = this.createFromDef("char_human_torso", { color: clothColor });
-        torsoAnchor.add(torsoMesh);
+        const torsoMesh = this.createFromDef("char_torso", { color: clothColor });
+        torsoGroup.add(torsoMesh);
 
-        const head = this.createFromDef("char_human_head", { color: skinColor });
-        head.position.y = 0.55; 
-        torsoAnchor.add(head);
+        // 2. CABEÇA
+        const headGroup = new THREE.Group();
+        headGroup.position.y = 0.45; // Em cima do torso
+        torsoGroup.add(headGroup);
+        const headMesh = this.createFromDef("char_head", { color: skinColor });
+        headGroup.add(headMesh);
 
-        // Olhos simples
-        const eyeGeo = this.geoCache.box;
+        // Olhos
         const eyeMat = new THREE.MeshBasicMaterial({color: 0x000000});
-        
-        const eyeL = new THREE.Mesh(eyeGeo, eyeMat);
-        eyeL.scale.set(0.15, 0.15, 0.15); 
-        eyeL.position.set(0.3, 0.1, 0.51); 
-        head.add(eyeL);
+        const eyeL = new THREE.Mesh(this.geoCache.box, eyeMat); eyeL.scale.set(0.05, 0.05, 0.05); eyeL.position.set(0.08, 0.05, 0.16); headGroup.add(eyeL);
+        const eyeR = new THREE.Mesh(this.geoCache.box, eyeMat); eyeR.scale.set(0.05, 0.05, 0.05); eyeR.position.set(-0.08, 0.05, 0.16); headGroup.add(eyeR);
 
-        const eyeR = new THREE.Mesh(eyeGeo, eyeMat);
-        eyeR.scale.set(0.15, 0.15, 0.15);
-        eyeR.position.set(-0.3, 0.1, 0.51);
-        head.add(eyeR);
+        // --- FUNÇÃO AUXILIAR PARA CRIAR MEMBROS ARTICULADOS ---
+        function createLimbChain(side, colorUpper, colorLower, yOffset, isLeg) {
+            const xDir = (side === "left") ? 1 : -1;
+            const xPos = isLeg ? (0.10 * xDir) : (0.28 * xDir);
+            const yPos = isLeg ? -0.30 : 0.25;
 
-        const createLimb = (defId, color, x, y, z) => {
-            const pivot = new THREE.Group();
-            pivot.position.set(x, y, z);
-            const mesh = this.createFromDef(defId, { color: color });
-            mesh.position.y = -mesh.scale.y / 2; // Centraliza no pivô
-            pivot.add(mesh);
-            return { pivot, mesh };
-        };
+            // PIVÔ SUPERIOR (Ombro ou Quadril)
+            const upperPivot = new THREE.Group();
+            upperPivot.position.set(xPos, yPos, 0);
+            torsoGroup.add(upperPivot);
 
-        const lArm = createLimb("char_human_limb", skinColor, 0.35, 0.3, 0);
-        const rArm = createLimb("char_human_limb", skinColor, -0.35, 0.3, 0);
-        const lLeg = createLimb("char_human_limb", clothColor, 0.12, -0.35, 0);
-        const rLeg = createLimb("char_human_limb", clothColor, -0.12, -0.35, 0);
+            const upperDef = isLeg ? "char_upper_leg" : "char_upper_arm";
+            const upperMesh = CharFactory.createFromDef(upperDef, { color: colorUpper });
+            // Ajusta o mesh para que o pivô fique no topo
+            upperMesh.position.y = -upperMesh.scale.y / 2;
+            upperPivot.add(upperMesh);
 
-        torsoAnchor.add(lArm.pivot); torsoAnchor.add(rArm.pivot);
-        torsoAnchor.add(lLeg.pivot); torsoAnchor.add(rLeg.pivot);
+            // PIVÔ INFERIOR (Cotovelo ou Joelho)
+            const lowerPivot = new THREE.Group();
+            lowerPivot.position.y = -upperMesh.scale.y; // Final do osso superior
+            upperPivot.add(lowerPivot);
 
+            const lowerDef = isLeg ? "char_lower_leg" : "char_lower_arm";
+            const lowerMesh = CharFactory.createFromDef(lowerDef, { color: colorLower });
+            lowerMesh.position.y = -lowerMesh.scale.y / 2;
+            lowerPivot.add(lowerMesh);
+
+            // PIVÔ EXTREMIDADE (Punho ou Pé)
+            const endPivot = new THREE.Group();
+            endPivot.position.y = -lowerMesh.scale.y;
+            lowerPivot.add(endPivot);
+
+            const endDef = isLeg ? "char_foot" : "char_hand";
+            const endMesh = CharFactory.createFromDef(endDef, { color: isLeg ? 0x333333 : skinColor }); // Sapato ou Mão
+            
+            if(isLeg) {
+                endMesh.position.y = -0.05; endMesh.position.z = 0.05; // Pé pra frente
+            } else {
+                endMesh.position.y = -0.05; // Mão pendurada
+            }
+            endPivot.add(endMesh);
+
+            return { upper: upperPivot, lower: lowerPivot, end: endPivot };
+        }
+
+        const lArm = createLimbChain("left", skinColor, skinColor, 0, false);
+        const rArm = createLimbChain("right", skinColor, skinColor, 0, false);
+        const lLeg = createLimbChain("left", clothColor, clothColor, 0, true);
+        const rLeg = createLimbChain("right", clothColor, clothColor, 0, true);
+
+        // Mapa de Ossos para animação e equipamentos
         root.userData.limbs = {
-            leftArm: lArm.pivot, rightArm: rArm.pivot,
-            leftLeg: lLeg.pivot, rightLeg: rLeg.pivot,
-            head: head, torso: torsoAnchor
+            head: headGroup, torso: torsoGroup,
+            
+            leftArm: lArm.upper, leftForeArm: lArm.lower, leftHand: lArm.end,
+            rightArm: rArm.upper, rightForeArm: rArm.lower, rightHand: rArm.end,
+            
+            leftLeg: lLeg.upper, leftShin: lLeg.lower, leftFoot: lLeg.end,
+            rightLeg: rLeg.upper, rightShin: rLeg.lower, rightFoot: rLeg.end
         };
+
         return root;
     },
 
     equipItem: function(characterGroup, itemId) {
-        if(!itemId || itemId === "none") {
-             // Lógica de desequipar
-             const limbs = characterGroup.userData.limbs;
-             // Limpa ambas as mãos por segurança ou apenas a direita
-             // Aqui assumimos destro
-             const targetBone = limbs.rightArm;
-             for(let i = targetBone.children.length - 1; i >= 0; i--) {
-                if(targetBone.children[i].userData.type === 'equipment') {
-                    targetBone.remove(targetBone.children[i]);
-                }
+        if(!characterGroup || !characterGroup.userData.limbs) return;
+        
+        // Remove item da mão direita (Padrão atual)
+        const handBone = characterGroup.userData.limbs.rightHand;
+        
+        // Limpa slot
+        for(let i = handBone.children.length - 1; i >= 0; i--) {
+            if(handBone.children[i].userData.type === 'equipment') {
+                handBone.remove(handBone.children[i]);
             }
-            return;
         }
+
+        if(!itemId || itemId === "none") return;
         
         const def = GameDefinitions[itemId];
         if (!def || def.type !== 'equipment') return;
 
-        const limbs = characterGroup.userData.limbs;
-        const targetBone = limbs[def.attachment.bone];
+        // Procura o osso correto (agora suporta rightHand, head, etc)
+        const targetBone = characterGroup.userData.limbs[def.attachment.bone];
 
         if (targetBone) {
-            // Remove item antigo antes de por o novo
-            for(let i = targetBone.children.length - 1; i >= 0; i--) {
-                if(targetBone.children[i].userData.type === 'equipment') {
-                    targetBone.remove(targetBone.children[i]);
-                }
-            }
-
-            // Cria o novo item
             const itemObj = this.createFromDef(itemId);
-            itemObj.userData.type = 'equipment'; // Marca para remoção futura
+            itemObj.userData.type = 'equipment'; 
             
             if (def.attachment.pos) itemObj.position.set(...def.attachment.pos);
             if (def.attachment.rot) itemObj.rotation.set(...def.attachment.rot);
