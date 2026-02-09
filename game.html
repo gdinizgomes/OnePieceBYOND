@@ -20,18 +20,17 @@
         body { margin: 0; overflow: hidden; user-select: none; font-family: 'Segoe UI', sans-serif; }
         #ui-layer { position: absolute; width: 100%; height: 100%; pointer-events: none; }
         
-        /* CORREÇÃO DO BUG DO TEXTO EMPILHADO E BARRAS DE VIDA */
         .name-label {
-            position: absolute; /* ISSO FIXA O PROBLEMA */
+            position: absolute; 
             background: rgba(0,0,0,0.5);
             color: white;
             padding: 2px 5px;
             border-radius: 4px;
             font-size: 12px;
             text-align: center;
-            pointer-events: none; /* Deixa clicar através do texto */
+            pointer-events: none; 
             white-space: nowrap;
-            transform: translate(-50%, -100%); /* Centraliza acima do ponto */
+            transform: translate(-50%, -100%); 
             font-weight: bold;
             border: 1px solid rgba(255,255,255,0.2);
         }
@@ -52,7 +51,6 @@
             transition: width 0.2s;
         }
 
-        /* ANIMAÇÃO DE DANO FLUTUANTE */
         .dmg-popup {
             position: absolute;
             color: #ff3333;
@@ -148,7 +146,7 @@
         }
         .action-btn:hover { background: #444; }
         .btn-trash { color: #e74c3c; }
-        .btn-sell { color: #f1c40f; display: none; } /* Escondido por padrão */
+        .btn-sell { color: #f1c40f; display: none; } 
 
         /* --- SHOP WINDOW --- */
         #shop-window {
@@ -162,7 +160,15 @@
             display: flex; align-items: center; background: rgba(255,255,255,0.05);
             margin-bottom: 5px; padding: 5px; border-radius: 4px;
         }
-        .shop-item img { width: 40px; height: 40px; image-rendering: pixelated; margin-right: 10px; }
+        /* CORREÇÃO DO ICONE DA LOJA: Centralizado e contido */
+        .shop-item img { 
+            width: 40px; height: 40px; 
+            image-rendering: pixelated; 
+            margin-right: 10px; 
+            object-fit: contain; 
+            background: rgba(0,0,0,0.3); 
+            border-radius: 4px; 
+        }
         .shop-details { flex-grow: 1; }
         .shop-name { font-weight: bold; font-size: 14px; }
         .shop-price { color: #f1c40f; font-size: 12px; }
@@ -251,7 +257,9 @@
                             <div class="equip-slot" id="slot-hand" title="Mão"><label>Mão</label></div>
                             <div class="equip-slot" id="slot-body" title="Corpo"><label>Corpo</label></div>
                         </div>
-                        <div class="equip-slot" id="slot-legs" title="Pernas"><label>Pernas</label></div>
+                        <div style="display: flex; gap: 5px;">
+                            <div class="equip-slot" id="slot-legs" title="Pernas"><label>Pernas</label></div>
+                            <div class="equip-slot" id="slot-feet" title="Pés"><label>Pés</label></div> </div>
                     </div>
                 </div>
             </div>

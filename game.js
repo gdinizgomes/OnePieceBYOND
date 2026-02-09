@@ -1,4 +1,4 @@
-// game.js - Lógica Principal do Jogo e Network
+// game.js - Lógica Principal do Jogo e Network + EQUIPAMENTOS
 
 // --- VARIÁVEIS GLOBAIS ---
 let playerGroup = null; 
@@ -29,7 +29,7 @@ let lastFistAttackTime = 0;
 // Chute
 let kickComboStep = 0;
 let lastKickAttackTime = 0;
-// Espada (NOVO)
+// Espada
 let swordComboStep = 0;
 let lastSwordAttackTime = 0;
 
@@ -186,7 +186,7 @@ function loadInventory(json) {
                 const tip = document.getElementById('tooltip');
                 tip.style.display = 'block'; tip.style.left = (e.pageX + 10) + 'px'; tip.style.top = (e.pageY + 10) + 'px';
                 let priceTxt = isShopOpen ? `<br><span style='color:#2ecc71'>Venda: ${Math.round(item.price/10)}</span>` : "";
-                tip.innerHTML = `<strong>${item.name}</strong>${item.desc}<br><span style='color:#aaa'>Dano: ${item.power}</span>${priceTxt}`;
+                tip.innerHTML = `<strong>${item.name}</strong>${item.desc}<br><span style='color:#aaa'>Dano/Def: ${item.power}</span>${priceTxt}`;
             };
             slotDiv.onmouseout = function() { hideTooltip(); };
             const actionsDiv = document.createElement('div'); actionsDiv.className = 'inv-actions';
@@ -209,18 +209,29 @@ function updateStatusMenu(json) {
         document.getElementById('prof-sword').innerText = data.ps; document.getElementById('bar-sword').style.width = Math.min(100, (data.ps_x / data.ps_r) * 100) + "%";
         document.getElementById('prof-gun').innerText = data.pg; document.getElementById('bar-gun').style.width = Math.min(100, (data.pg_x / data.pg_r) * 100) + "%";
     }
+    
     function updateSlot(slotName, itemData) {
-        const div = document.getElementById('slot-' + slotName); div.innerHTML = "";
+        const div = document.getElementById('slot-' + slotName); 
+        div.innerHTML = "";
         if(itemData) {
             const img = document.createElement('img'); img.className = 'equip-icon'; img.src = itemData.id + "_img.png";
             img.onerror = function() { this.style.backgroundColor = '#777'; };
-            div.appendChild(img); div.onclick = function() { unequipItem(slotName); }; div.title = "Desequipar " + itemData.name;
+            div.appendChild(img); 
+            div.onclick = function() { unequipItem(slotName); }; 
+            div.title = "Desequipar " + itemData.name;
         } else {
-            const label = document.createElement('label'); label.innerText = slotName.charAt(0).toUpperCase() + slotName.slice(1);
-            div.appendChild(label); div.onclick = null; div.title = "Vazio";
+            const label = document.createElement('label'); 
+            label.innerText = slotName.charAt(0).toUpperCase() + slotName.slice(1);
+            div.appendChild(label); 
+            div.onclick = null; 
+            div.title = "Vazio";
         }
     }
     updateSlot('hand', data.equip.hand);
+    updateSlot('head', data.equip.head);
+    updateSlot('body', data.equip.body);
+    updateSlot('legs', data.equip.legs);
+    updateSlot('feet', data.equip.feet);
 }
 
 function equipItem(ref) { if(blockSync) return; hideTooltip(); blockSync = true; window.location.href = `byond://?src=${BYOND_REF}&action=equip_item&ref=${ref}`; setTimeout(() => { blockSync = false; }, 200); }
@@ -349,7 +360,6 @@ function performAttack(type) {
         const nextX = playerGroup.position.x + sin * pushDist; const nextZ = playerGroup.position.z + cos * pushDist;
         if(!checkCollision(nextX, playerGroup.position.y, nextZ)) { playerGroup.position.x = nextX; playerGroup.position.z = nextZ; }
     }
-    // --- COMBO CHUTE ---
     else if(type === "kick") { 
         if(Date.now() - lastKickAttackTime > 600) kickComboStep = 0;
         kickComboStep++; if(kickComboStep > 3) kickComboStep = 1;
@@ -362,7 +372,6 @@ function performAttack(type) {
         const nextX = playerGroup.position.x + sin * pushDist; const nextZ = playerGroup.position.z + cos * pushDist;
         if(!checkCollision(nextX, playerGroup.position.y, nextZ)) { playerGroup.position.x = nextX; playerGroup.position.z = nextZ; }
     }
-    // --- COMBO ESPADA (NOVO) ---
     else if(type === "sword") {
         if(Date.now() - lastSwordAttackTime > 600) swordComboStep = 0;
         swordComboStep++; if(swordComboStep > 3) swordComboStep = 1;
@@ -370,8 +379,7 @@ function performAttack(type) {
 
         windupStance = "SWORD_WINDUP"; atkStance = "SWORD_COMBO_" + swordComboStep; idleStance = "SWORD_IDLE";
 
-        // Dash Espada
-        let pushDist = (swordComboStep === 3) ? 1.8 : 0.5; // Dash muito longo na estocada
+        let pushDist = (swordComboStep === 3) ? 1.8 : 0.5; 
         const sin = Math.sin(playerGroup.rotation.y); const cos = Math.cos(playerGroup.rotation.y);
         const nextX = playerGroup.position.x + sin * pushDist; const nextZ = playerGroup.position.z + cos * pushDist;
         if(!checkCollision(nextX, playerGroup.position.y, nextZ)) { playerGroup.position.x = nextX; playerGroup.position.z = nextZ; }
@@ -391,10 +399,9 @@ function performAttack(type) {
             else if(kickComboStep === 2) spawnHitbox({x:1.2, y:1.0, z:1.2}, 1.2, 300, {step: 2}, 1.0); 
             else spawnHitbox({x:1.5, y:1.2, z:1.5}, 1.4, 300, {step: 3}, 1.7); 
         }
-        // --- HITBOX ESPADA ---
         else if (type === "sword") {
-            if(swordComboStep === 3) spawnHitbox({x:1.0, y:1.0, z:4.0}, 2.5, 300, {step: 3}); // Estocada (Fina e Longa)
-            else spawnHitbox({x:2.5, y:1.0, z:2.0}, 1.5, 300, {step: swordComboStep}); // Cortes (Largos)
+            if(swordComboStep === 3) spawnHitbox({x:1.0, y:1.0, z:4.0}, 2.5, 300, {step: 3}); 
+            else spawnHitbox({x:2.5, y:1.0, z:2.0}, 1.5, 300, {step: swordComboStep}); 
         }
         
         if(typeof BYOND_REF !== 'undefined') { 
@@ -421,9 +428,42 @@ function receberDadosMultiplayer(json) {
             playerGroup = CharFactory.createCharacter(myData.skin, myData.cloth);
             playerGroup.visible = true; playerGroup.position.set(myData.x, myData.y, myData.z);
             Engine.scene.add(playerGroup); isCharacterReady = true; Input.camAngle = myData.rot + Math.PI; 
+            
+            // Inicializa user data para evitar undefined
+            playerGroup.userData.lastHead = ""; playerGroup.userData.lastBody = ""; 
+            playerGroup.userData.lastLegs = ""; playerGroup.userData.lastFeet = ""; 
+            playerGroup.userData.lastItem = "";
         }
     }
     if(isCharacterReady) {
+        // --- ATUALIZAÇÃO DO MEU PERSONAGEM ---
+        // Pegamos os dados visuais do 'others[myID]' porque o servidor manda tudo junto
+        if(packet.others[myID]) {
+            const myData = packet.others[myID];
+            
+            // Atualiza equipamentos usando a nova lógica (passando o item antigo para remover)
+            if(playerGroup.userData.lastItem !== myData.it) {
+                CharFactory.equipItem(playerGroup, myData.it, playerGroup.userData.lastItem); 
+                playerGroup.userData.lastItem = myData.it;
+            }
+            if(playerGroup.userData.lastHead !== myData.eq_h) {
+                CharFactory.equipItem(playerGroup, myData.eq_h, playerGroup.userData.lastHead); 
+                playerGroup.userData.lastHead = myData.eq_h;
+            }
+            if(playerGroup.userData.lastBody !== myData.eq_b) {
+                CharFactory.equipItem(playerGroup, myData.eq_b, playerGroup.userData.lastBody); 
+                playerGroup.userData.lastBody = myData.eq_b;
+            }
+            if(playerGroup.userData.lastLegs !== myData.eq_l) {
+                CharFactory.equipItem(playerGroup, myData.eq_l, playerGroup.userData.lastLegs); 
+                playerGroup.userData.lastLegs = myData.eq_l;
+            }
+            if(playerGroup.userData.lastFeet !== myData.eq_f) {
+                CharFactory.equipItem(playerGroup, myData.eq_f, playerGroup.userData.lastFeet); 
+                playerGroup.userData.lastFeet = myData.eq_f;
+            }
+        }
+
         // --- 1. ITENS NO CHÃO ---
         const serverGroundItems = packet.ground || [];
         const seenItems = new Set();
@@ -466,16 +506,9 @@ function receberDadosMultiplayer(json) {
         else if(npcNear) { hint.innerText = "[X] Interagir"; hint.style.display = 'block'; }
         else hint.style.display = 'none';
 
-        // --- 3. DADOS ---
+        // --- 3. DADOS HUD ---
         const myData = packet.others[myID]; isResting = me.rest; isFainted = me.ft; 
-        
         if(me.gen) playerGroup.userData.gender = me.gen;
-
-        if(myData && myData.it !== undefined) {
-            if(playerGroup.userData.lastItem !== myData.it) {
-                CharFactory.equipItem(playerGroup, myData.it); playerGroup.userData.lastItem = myData.it;
-            }
-        }
         
         const overlay = document.getElementById('faint-overlay');
         if(me.rem > 0 && isFainted) {
@@ -553,26 +586,49 @@ function receberDadosMultiplayer(json) {
     const serverPlayers = packet.others; const receivedIds = new Set();
     for (const id in serverPlayers) {
         if (id === myID) continue; receivedIds.add(id); const pData = serverPlayers[id];
+        
         if (!otherPlayers[id]) {
             if(pData.skin) {
                 const newChar = CharFactory.createCharacter(pData.skin, pData.cloth);
                 newChar.position.set(pData.x, pData.y, pData.z); Engine.scene.add(newChar); Engine.collidables.push(newChar);
                 const label = document.createElement('div'); label.className = 'name-label'; label.innerHTML = `<div class="name-text">${pData.name||"?"}</div><div class="mini-hp-bg"><div class="mini-hp-fill"></div></div>`; document.getElementById('labels-container').appendChild(label);
+                
+                // Inicializa cache
+                newChar.userData.lastHead = ""; newChar.userData.lastBody = "";
+                newChar.userData.lastLegs = ""; newChar.userData.lastFeet = ""; newChar.userData.lastItem = "";
+                
                 otherPlayers[id] = { mesh: newChar, label: label, hpFill: label.querySelector('.mini-hp-fill'), startX: pData.x, startY: pData.y, startZ: pData.z, startRot: pData.rot, targetX: pData.x, targetY: pData.y, targetZ: pData.z, targetRot: pData.rot, lastPacketTime: now, lerpDuration: 180, attacking: pData.a, attackType: pData.at, resting: pData.rest, fainted: pData.ft, lastItem: "", isNPC: (pData.npc === 1), npcType: pData.type, gender: pData.gen };
             }
         } else {
             const other = otherPlayers[id];
-            other.startX = other.mesh.position.x; other.startY = other.mesh.position.y; other.startZ = other.mesh.position.z; other.startRot = other.mesh.rotation.y;
+            const mesh = other.mesh;
+            other.startX = mesh.position.x; other.startY = mesh.position.y; other.startZ = mesh.position.z; other.startRot = mesh.rotation.y;
             other.targetX = pData.x; other.targetY = pData.y; other.targetZ = pData.z; other.targetRot = pData.rot; other.lastPacketTime = now;
             other.attacking = pData.a; other.attackType = pData.at; other.resting = pData.rest; other.fainted = pData.ft;
             if(pData.gen) other.gender = pData.gen;
             
+            // --- ATUALIZAÇÃO EQUIPAMENTOS (OUTROS) ---
+            if(mesh.userData.lastItem !== pData.it) {
+                CharFactory.equipItem(mesh, pData.it, mesh.userData.lastItem); mesh.userData.lastItem = pData.it;
+            }
+            if(mesh.userData.lastHead !== pData.eq_h) {
+                CharFactory.equipItem(mesh, pData.eq_h, mesh.userData.lastHead); mesh.userData.lastHead = pData.eq_h;
+            }
+            if(mesh.userData.lastBody !== pData.eq_b) {
+                CharFactory.equipItem(mesh, pData.eq_b, mesh.userData.lastBody); mesh.userData.lastBody = pData.eq_b;
+            }
+            if(mesh.userData.lastLegs !== pData.eq_l) {
+                CharFactory.equipItem(mesh, pData.eq_l, mesh.userData.lastLegs); mesh.userData.lastLegs = pData.eq_l;
+            }
+            if(mesh.userData.lastFeet !== pData.eq_f) {
+                CharFactory.equipItem(mesh, pData.eq_f, mesh.userData.lastFeet); mesh.userData.lastFeet = pData.eq_f;
+            }
+
             if(pData.name && other.label.querySelector('.name-text').innerText !== pData.name) {
                 other.label.querySelector('.name-text').innerText = pData.name;
             }
 
             if(pData.hp !== undefined && other.hpFill) other.hpFill.style.width = Math.max(0, Math.min(100, (pData.hp / pData.mhp) * 100)) + "%";
-            if(pData.it !== undefined && pData.it !== other.lastItem) { CharFactory.equipItem(other.mesh, pData.it); other.lastItem = pData.it; }
             if (other.attacking && other.attackType === "gun" && !other.hasFiredThisCycle) { fireProjectile({ speed: 0.6, color: 0xFFFF00, ownerID: id }, false); other.hasFiredThisCycle = true; setTimeout(() => { other.hasFiredThisCycle = false; }, 500); }
         }
     }
@@ -593,7 +649,6 @@ function animate() {
         if(isFainted) {
             playerGroup.rotation.x = lerp(playerGroup.rotation.x, -Math.PI/2, 0.1); playerGroup.position.y = lerp(playerGroup.position.y, groundHeight + 0.2, 0.1);
         } else if(isResting) {
-            // POSE UNIFICADA: SIMPLES (Pernas Retas)
             playerGroup.rotation.x = lerp(playerGroup.rotation.x, 0, 0.1); 
             const yOffset = -0.6; 
             playerGroup.position.y = lerp(playerGroup.position.y, groundHeight + yOffset, 0.1);
@@ -602,7 +657,6 @@ function animate() {
             const limbs = playerGroup.userData.limbs;
             if(limbs && restStance) {
                 const spd = 0.1;
-                // INCLUI A COLUNA (TORSO)
                 if(restStance.torso) lerpLimbRotation(limbs.torso, restStance.torso, spd);
                 lerpLimbRotation(limbs.leftLeg, restStance.leftLeg, spd); lerpLimbRotation(limbs.rightLeg, restStance.rightLeg, spd);
                 lerpLimbRotation(limbs.leftShin, restStance.leftShin, spd); lerpLimbRotation(limbs.rightShin, restStance.rightShin, spd);
@@ -661,7 +715,6 @@ function animate() {
                 } else {
                     const spd = isAttacking ? 0.4 : 0.1;
                     
-                    // --- AQUI APLICAMOS O TORSO ---
                     if(targetStance.torso) lerpLimbRotation(limbs.torso, targetStance.torso, spd);
                     else lerpLimbRotation(limbs.torso, def.torso, spd);
 

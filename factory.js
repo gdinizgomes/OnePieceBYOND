@@ -55,13 +55,14 @@ const CharFactory = {
         return mesh;
     },
 
-    // --- NOVA FUNÇÃO DE CRIAÇÃO HIERÁRQUICA (RIGGING) ---
+    // --- CRIAÇÃO HIERÁRQUICA (RIGGING) ---
     createCharacter: function(skinColor, clothColor) {
         const root = new THREE.Group(); 
 
         // 1. TORSO (Base)
         const torsoGroup = new THREE.Group();
-        torsoGroup.position.y = 1.0; // Centro de gravidade
+        // AJUSTE DE ALTURA: 0.90 para pés no chão
+        torsoGroup.position.y = 0.90; 
         root.add(torsoGroup);
 
         const torsoMesh = this.createFromDef("char_torso", { color: clothColor });
@@ -69,7 +70,7 @@ const CharFactory = {
 
         // 2. CABEÇA
         const headGroup = new THREE.Group();
-        headGroup.position.y = 0.45; // Em cima do torso
+        headGroup.position.y = 0.45; 
         torsoGroup.add(headGroup);
         const headMesh = this.createFromDef("char_head", { color: skinColor });
         headGroup.add(headMesh);
@@ -85,20 +86,19 @@ const CharFactory = {
             const xPos = isLeg ? (0.10 * xDir) : (0.28 * xDir);
             const yPos = isLeg ? -0.30 : 0.25;
 
-            // PIVÔ SUPERIOR (Ombro ou Quadril)
+            // PIVÔ SUPERIOR
             const upperPivot = new THREE.Group();
             upperPivot.position.set(xPos, yPos, 0);
             torsoGroup.add(upperPivot);
 
             const upperDef = isLeg ? "char_upper_leg" : "char_upper_arm";
             const upperMesh = CharFactory.createFromDef(upperDef, { color: colorUpper });
-            // Ajusta o mesh para que o pivô fique no topo
             upperMesh.position.y = -upperMesh.scale.y / 2;
             upperPivot.add(upperMesh);
 
-            // PIVÔ INFERIOR (Cotovelo ou Joelho)
+            // PIVÔ INFERIOR
             const lowerPivot = new THREE.Group();
-            lowerPivot.position.y = -upperMesh.scale.y; // Final do osso superior
+            lowerPivot.position.y = -upperMesh.scale.y; 
             upperPivot.add(lowerPivot);
 
             const lowerDef = isLeg ? "char_lower_leg" : "char_lower_arm";
@@ -106,13 +106,13 @@ const CharFactory = {
             lowerMesh.position.y = -lowerMesh.scale.y / 2;
             lowerPivot.add(lowerMesh);
 
-            // PIVÔ EXTREMIDADE (Punho ou Pé)
+            // PIVÔ EXTREMIDADE
             const endPivot = new THREE.Group();
             endPivot.position.y = -lowerMesh.scale.y;
             lowerPivot.add(endPivot);
 
             const endDef = isLeg ? "char_foot" : "char_hand";
-            const endMesh = CharFactory.createFromDef(endDef, { color: isLeg ? 0x333333 : skinColor }); // Sapato ou Mão
+            const endMesh = CharFactory.createFromDef(endDef, { color: isLeg ? 0x333333 : skinColor }); 
             
             if(isLeg) {
                 endMesh.position.y = -0.05; endMesh.position.z = 0.05; // Pé pra frente
@@ -129,13 +129,10 @@ const CharFactory = {
         const lLeg = createLimbChain("left", clothColor, clothColor, 0, true);
         const rLeg = createLimbChain("right", clothColor, clothColor, 0, true);
 
-        // Mapa de Ossos para animação e equipamentos
         root.userData.limbs = {
             head: headGroup, torso: torsoGroup,
-            
             leftArm: lArm.upper, leftForeArm: lArm.lower, leftHand: lArm.end,
             rightArm: rArm.upper, rightForeArm: rArm.lower, rightHand: rArm.end,
-            
             leftLeg: lLeg.upper, leftShin: lLeg.lower, leftFoot: lLeg.end,
             rightLeg: rLeg.upper, rightShin: rLeg.lower, rightFoot: rLeg.end
         };
@@ -143,35 +140,60 @@ const CharFactory = {
         return root;
     },
 
-    equipItem: function(characterGroup, itemId) {
+    // --- EQUIPAMENTO INTELIGENTE v3 (Suporte a Visual Customizado por Anexo) ---
+    equipItem: function(characterGroup, itemId, oldItemId) {
         if(!characterGroup || !characterGroup.userData.limbs) return;
         
-        // Remove item da mão direita (Padrão atual)
-        const handBone = characterGroup.userData.limbs.rightHand;
-        
-        // Limpa slot
-        for(let i = handBone.children.length - 1; i >= 0; i--) {
-            if(handBone.children[i].userData.type === 'equipment') {
-                handBone.remove(handBone.children[i]);
+        // 1. REMOVER ITEM ANTIGO (Se houver)
+        if(oldItemId && oldItemId !== "") {
+            const oldDef = GameDefinitions[oldItemId];
+            if(oldDef && oldDef.type === 'equipment') {
+                const attachments = oldDef.attachments || [oldDef.attachment];
+                attachments.forEach(att => {
+                    if(!att || !att.bone) return;
+                    const targetBone = characterGroup.userData.limbs[att.bone];
+                    if(targetBone) {
+                        for(let i = targetBone.children.length - 1; i >= 0; i--) {
+                            const child = targetBone.children[i];
+                            if(child.userData && child.userData.id === oldItemId) {
+                                targetBone.remove(child);
+                            }
+                        }
+                    }
+                });
             }
         }
 
-        if(!itemId || itemId === "none") return;
+        // 2. ADICIONAR NOVO ITEM
+        if(!itemId || itemId === "none" || itemId === "") return;
         
         const def = GameDefinitions[itemId];
         if (!def || def.type !== 'equipment') return;
 
-        // Procura o osso correto (agora suporta rightHand, head, etc)
-        const targetBone = characterGroup.userData.limbs[def.attachment.bone];
+        const attachments = def.attachments || [def.attachment];
+        attachments.forEach(att => {
+            if(!att || !att.bone) return;
+            const targetBone = characterGroup.userData.limbs[att.bone];
 
-        if (targetBone) {
-            const itemObj = this.createFromDef(itemId);
-            itemObj.userData.type = 'equipment'; 
-            
-            if (def.attachment.pos) itemObj.position.set(...def.attachment.pos);
-            if (def.attachment.rot) itemObj.rotation.set(...def.attachment.rot);
+            if(targetBone) {
+                let itemObj;
 
-            targetBone.add(itemObj);
-        }
+                // MELHORIA CRÍTICA: Se o anexo tiver 'visual', cria o mesh específico
+                // Caso contrário, usa a definição padrão do item.
+                if (att.visual) {
+                    itemObj = this.createMesh(att.visual);
+                    itemObj.userData = { id: itemId, type: 'equipment' };
+                } else {
+                    itemObj = this.createFromDef(itemId);
+                    itemObj.userData.type = 'equipment'; 
+                    itemObj.userData.id = itemId;
+                }
+                
+                if (att.pos) itemObj.position.set(...att.pos);
+                if (att.rot) itemObj.rotation.set(...att.rot);
+
+                targetBone.add(itemObj);
+            }
+        });
     }
 };

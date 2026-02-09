@@ -1,17 +1,18 @@
 #define SAVE_DIR "saves/"
 
-// --- LISTA GLOBAL DE NPCS (OTIMIZAÇÃO) ---
+// --- LISTA GLOBAL DE NPCS ---
 var/list/global_npcs = list()
 
 // --- ESTRUTURA DE ITENS ---
 obj/item
 	var/id_visual = ""
-	var/slot = "none"
+	var/slot = "none" // hand, head, body, legs, feet
 	var/power = 0
 	var/price = 0
 	var/description = ""
 	var/amount = 1
 	var/max_stack = 5 
+	var/shop_tags = "" // TAG para definir em qual loja aparece (ex: "armorer")
 	var/real_x = 0
 	var/real_y = 0
 	var/real_z = 0
@@ -30,7 +31,7 @@ obj/item/weapon/sword_wood
 	power = 5
 	price = 50
 	range = 3.0
-	projectile_speed = 0
+	shop_tags = "armorer"
 
 obj/item/weapon/sword_iron
 	name = "Espada de Ferro"
@@ -39,7 +40,7 @@ obj/item/weapon/sword_iron
 	power = 10
 	price = 100
 	range = 3.0
-	projectile_speed = 0
+	shop_tags = "armorer"
 
 obj/item/weapon/sword_silver
 	name = "Espada de Prata"
@@ -48,7 +49,7 @@ obj/item/weapon/sword_silver
 	power = 20
 	price = 500
 	range = 3.5
-	projectile_speed = 0
+	shop_tags = "armorer"
 
 obj/item/weapon/gun_wood
 	name = "Pistola de Brinquedo"
@@ -58,6 +59,7 @@ obj/item/weapon/gun_wood
 	price = 80
 	range = 10.0 
 	projectile_speed = 0.6 
+	shop_tags = "armorer"
 
 obj/item/weapon/gun_flintlock
 	name = "Pistola Velha"
@@ -67,6 +69,7 @@ obj/item/weapon/gun_flintlock
 	price = 250
 	range = 14.0
 	projectile_speed = 3.6 
+	shop_tags = "armorer"
 
 obj/item/weapon/gun_silver
 	name = "Pistola de Combate"
@@ -76,9 +79,59 @@ obj/item/weapon/gun_silver
 	price = 800
 	range = 22.0
 	projectile_speed = 7.2 
+	shop_tags = "armorer"
+
+// -- Roupas e Armaduras --
+obj/item/armor
+	max_stack = 1
+
+obj/item/armor/head_bandana
+	name = "Bandana Vermelha"
+	id_visual = "armor_head_bandana"
+	slot = "head"
+	description = "Um pano simples para a cabeça."
+	price = 30
+	power = 0 
+	shop_tags = "armorer"
+
+obj/item/armor/head_bandana_black
+	name = "Bandana Preta"
+	id_visual = "armor_head_bandana_black"
+	slot = "head"
+	description = "Estilo pirata clássico."
+	price = 35
+	power = 0
+	shop_tags = "armorer"
+
+obj/item/armor/body_shirt
+	name = "Camisa de Marinheiro"
+	id_visual = "armor_body_shirt"
+	slot = "body"
+	description = "Uniforme padrão."
+	price = 50
+	power = 1
+	shop_tags = "armorer"
+
+obj/item/armor/legs_pants
+	name = "Calça de Linho"
+	id_visual = "armor_legs_pants"
+	slot = "legs"
+	description = "Confortável para correr."
+	price = 40
+	power = 1
+	shop_tags = "armorer"
+
+obj/item/armor/feet_boots
+	name = "Botas de Couro"
+	id_visual = "armor_feet_boots"
+	slot = "feet"
+	description = "Protege os pés."
+	price = 60
+	power = 1
+	shop_tags = "armorer"
 
 // -----------------------------------------------------
-// CÓDIGO DO MOB E LOGIN
+// CÓDIGO DO MOB
 // -----------------------------------------------------
 
 mob
@@ -86,7 +139,7 @@ mob
 	var/char_loaded = 0
 	var/char_class = "Civil"
 	var/char_title = "Nenhum"
-	var/char_gender = "Male" // CORRIGIDO: Renomeado para evitar conflito
+	var/char_gender = "Male"
 	var/level = 1
 	var/experience = 0
 	var/req_experience = 100
@@ -125,10 +178,13 @@ mob
 	var/is_attacking = 0
 	var/attack_type = ""
 	var/active_item_visual = ""
+	
+	// Slots de Equipamento
 	var/obj/item/slot_hand = null
 	var/obj/item/slot_head = null
 	var/obj/item/slot_body = null
 	var/obj/item/slot_legs = null
+	var/obj/item/slot_feet = null 
 	
 	// LISTA DE EVENTOS VISUAIS (Dano, Efeitos)
 	var/list/pending_visuals = list()
@@ -147,31 +203,72 @@ mob
 		..()
 
 	proc/GiveStarterItems()
-		if(contents.len == 0 && !slot_hand)
-			new /obj/item/weapon/sword_wood(src)
-			src << output("Item inicial recebido!", "map3d:mostrarNotificacao")
+		var/has_weapon = 0
+		var/has_bandana = 0
+		for(var/obj/item/I in contents)
+			if(istype(I, /obj/item/weapon/sword_wood)) has_weapon = 1
+			if(istype(I, /obj/item/armor/head_bandana)) has_bandana = 1
+		
+		if(!has_weapon && !slot_hand) new /obj/item/weapon/sword_wood(src)
+		if(!has_bandana && !slot_head) new /obj/item/armor/head_bandana(src)
+		
+		src << output("Itens iniciais verificados!", "map3d:mostrarNotificacao")
 
 	proc/EquipItem(obj/item/I)
 		if(!I || !(I in contents)) return
+		
+		// Lógica Genérica de Equipar por Slot
+		var/success = 0
+		
 		if(I.slot == "hand")
 			if(slot_hand) UnequipItem("hand")
 			slot_hand = I
-			contents -= I
 			active_item_visual = I.id_visual
+			success = 1
+		else if(I.slot == "head")
+			if(slot_head) UnequipItem("head")
+			slot_head = I
+			success = 1
+		else if(I.slot == "body")
+			if(slot_body) UnequipItem("body")
+			slot_body = I
+			success = 1
+		else if(I.slot == "legs")
+			if(slot_legs) UnequipItem("legs")
+			slot_legs = I
+			success = 1
+		else if(I.slot == "feet")
+			if(slot_feet) UnequipItem("feet")
+			slot_feet = I
+			success = 1
+			
+		if(success)
+			contents -= I
 			src << output("Equipou [I.name].", "map3d:mostrarNotificacao")
 			RequestInventoryUpdate()
 			RequestStatusUpdate()
 
 	proc/UnequipItem(slot_name)
 		var/obj/item/I = null
+		
 		if(slot_name == "hand") I = slot_hand
+		else if(slot_name == "head") I = slot_head
+		else if(slot_name == "body") I = slot_body
+		else if(slot_name == "legs") I = slot_legs
+		else if(slot_name == "feet") I = slot_feet
+		
 		if(I)
 			if(contents.len >= 12)
 				src << output("Mochila cheia!", "map3d:mostrarNotificacao")
 				return
-			if(slot_name == "hand")
-				slot_hand = null
-				active_item_visual = ""
+			
+			// Remove do slot
+			if(slot_name == "hand") { slot_hand = null; active_item_visual = ""; }
+			else if(slot_name == "head") slot_head = null
+			else if(slot_name == "body") slot_body = null
+			else if(slot_name == "legs") slot_legs = null
+			else if(slot_name == "feet") slot_feet = null
+			
 			contents += I
 			src << output("Desequipou [I.name].", "map3d:mostrarNotificacao")
 			RequestInventoryUpdate()
@@ -179,7 +276,7 @@ mob
 
 	proc/DropItem(obj/item/I, amount_to_drop)
 		if(!I) return
-		if(I == slot_hand)
+		if(I == slot_hand || I == slot_head || I == slot_body || I == slot_legs || I == slot_feet)
 			src << output("Desequipe primeiro!", "map3d:mostrarNotificacao")
 			return
 		if(!(I in contents)) return
@@ -200,7 +297,8 @@ mob
 		RequestInventoryUpdate()
 
 	proc/TrashItem(obj/item/I)
-		if(!I || I == slot_hand) return
+		if(!I) return
+		if(I == slot_hand || I == slot_head || I == slot_body || I == slot_legs || I == slot_feet) return
 		if(I in contents)
 			src << output("Você jogou [I.name] no lixo.", "map3d:mostrarNotificacao")
 			del(I)
@@ -254,8 +352,14 @@ mob
 		src << output(json_encode(inv_data), "map3d:loadInventory")
 
 	proc/RequestStatusUpdate()
-		var/list/eq_data = list("hand" = null)
+		var/list/eq_data = list("hand" = null, "head" = null, "body" = null, "legs" = null, "feet" = null)
+		
 		if(slot_hand) eq_data["hand"] = list("id"=slot_hand.id_visual, "ref"="\ref[slot_hand]", "name"=slot_hand.name)
+		if(slot_head) eq_data["head"] = list("id"=slot_head.id_visual, "ref"="\ref[slot_head]", "name"=slot_head.name)
+		if(slot_body) eq_data["body"] = list("id"=slot_body.id_visual, "ref"="\ref[slot_body]", "name"=slot_body.name)
+		if(slot_legs) eq_data["legs"] = list("id"=slot_legs.id_visual, "ref"="\ref[slot_legs]", "name"=slot_legs.name)
+		if(slot_feet) eq_data["feet"] = list("id"=slot_feet.id_visual, "ref"="\ref[slot_feet]", "name"=slot_feet.name)
+
 		var/list/stat_data = list(
 			"nick" = src.name,
 			"class" = char_class,
@@ -375,6 +479,7 @@ mob
 		current_slot = slot_index
 		if(LoadCharacter(slot_index))
 			src << output("Carregado!", "map3d:mostrarNotificacao")
+			GiveStarterItems() 
 		else
 			real_x = 0; real_y = 0; real_z = 0
 			level = 1; experience = 0; req_experience = 100; stat_points = 0
@@ -397,6 +502,10 @@ mob
 		if(fexists("weapon_gun_wood_img.png")) src << browse_rsc(file("weapon_gun_wood_img.png"), "weapon_gun_wood_img.png")
 		if(fexists("weapon_gun_flintlock_img.png")) src << browse_rsc(file("weapon_gun_flintlock_img.png"), "weapon_gun_flintlock_img.png")
 		if(fexists("weapon_gun_silver_img.png")) src << browse_rsc(file("weapon_gun_silver_img.png"), "weapon_gun_silver_img.png")
+		if(fexists("armor_head_bandana_img.png")) src << browse_rsc(file("armor_head_bandana_img.png"), "armor_head_bandana_img.png")
+		if(fexists("armor_body_shirt_img.png")) src << browse_rsc(file("armor_body_shirt_img.png"), "armor_body_shirt_img.png")
+		if(fexists("armor_legs_pants_img.png")) src << browse_rsc(file("armor_legs_pants_img.png"), "armor_legs_pants_img.png")
+		if(fexists("armor_feet_boots_img.png")) src << browse_rsc(file("armor_feet_boots_img.png"), "armor_feet_boots_img.png")
 
 		char_loaded = 1
 		in_game = 1
@@ -421,8 +530,13 @@ mob
 		F["p_gun"] << prof_gun_lvl; F["exp_gun"] << prof_gun_exp
 		F["pos_x"] << src.real_x; F["pos_y"] << src.real_y; F["pos_z"] << src.real_z
 		F["skin"] << src.skin_color; F["cloth"] << src.cloth_color
-		F["inventory"] << src.contents; F["slot_hand"] << src.slot_hand
-		F["gender"] << src.char_gender // Salva com o nome 'gender' para compatibilidade
+		F["inventory"] << src.contents; 
+		F["slot_hand"] << src.slot_hand
+		F["slot_head"] << src.slot_head
+		F["slot_body"] << src.slot_body
+		F["slot_legs"] << src.slot_legs
+		F["slot_feet"] << src.slot_feet
+		F["gender"] << src.char_gender
 		src << output("Salvo!", "map3d:mostrarNotificacao")
 
 	proc/LoadCharacter(slot)
@@ -448,11 +562,16 @@ mob
 		F["skin"] >> src.skin_color; F["cloth"] >> src.cloth_color
 		if(F["inventory"]) F["inventory"] >> src.contents
 		if(F["slot_hand"]) F["slot_hand"] >> src.slot_hand
+		if(F["slot_head"]) F["slot_head"] >> src.slot_head
+		if(F["slot_body"]) F["slot_body"] >> src.slot_body
+		if(F["slot_legs"]) F["slot_legs"] >> src.slot_legs
+		if(F["slot_feet"]) F["slot_feet"] >> src.slot_feet
 		if(F["gender"]) F["gender"] >> src.char_gender; else src.char_gender = "Male"
 
 		if(!src.req_experience || src.req_experience <= 0)
 			src.req_experience = 100 * (1.5 ** (src.level - 1))
 			if(src.req_experience < 100) src.req_experience = 100
+		
 		active_item_visual = ""
 		if(slot_hand) active_item_visual = slot_hand.id_visual
 		RecalculateStats()
@@ -466,10 +585,19 @@ mob
 				if(M.in_game && M.char_loaded)
 					if(abs(M.real_x - src.real_x) > 30 || abs(M.real_z - src.real_z) > 30) continue
 					var/pid = "\ref[M]"
+					
+					var/e_hand = ""; var/e_head = ""; var/e_body = ""; var/e_legs = ""; var/e_feet = ""
+					if(M.slot_hand) e_hand = M.slot_hand.id_visual
+					if(M.slot_head) e_head = M.slot_head.id_visual
+					if(M.slot_body) e_body = M.slot_body.id_visual
+					if(M.slot_legs) e_legs = M.slot_legs.id_visual
+					if(M.slot_feet) e_feet = M.slot_feet.id_visual
+
 					var/list/pData = list(
 						"x" = M.real_x, "y" = M.real_y, "z" = M.real_z, "rot" = M.real_rot,
 						"a" = M.is_attacking, "at" = M.attack_type,
-						"it" = M.active_item_visual,
+						"it" = e_hand,
+						"eq_h" = e_head, "eq_b" = e_body, "eq_l" = e_legs, "eq_f" = e_feet, // NOVOS DADOS
 						"rest" = M.is_resting, "ft" = M.is_fainted,
 						"name" = M.name, "skin" = M.skin_color, "cloth" = M.cloth_color,
 						"npc" = 0,
@@ -556,7 +684,7 @@ mob
 			src.name = href_list["name"]
 			src.skin_color = href_list["skin"]
 			src.cloth_color = href_list["cloth"]
-			src.char_gender = href_list["gender"] // CORRIGIDO
+			src.char_gender = href_list["gender"] 
 			src.level = 1; src.gold = 10000 
 			src.real_x = 0; src.real_y = 0; src.real_z = 0
 			current_slot = slot
@@ -641,7 +769,7 @@ mob
 			var/ref_id = href_list["ref"]
 			var/obj/item/I = locate(ref_id)
 			if(I && (I in contents))
-				if(I == slot_hand) 
+				if(I == slot_hand || I == slot_head || I == slot_body || I == slot_legs || I == slot_feet)
 					src << output("Desequipe antes de vender!", "map3d:mostrarNotificacao")
 				else
 					var/val = round(I.price / 10)
@@ -752,8 +880,7 @@ mob/npc
 	char_loaded = 1
 	var/npc_type = "base"
 	var/wanders = 1 
-	// CORRIGIDO: Removido 'var/' pois char_gender já existe em mob
-	char_gender = "Female" 
+	char_gender = "Female"
 	New()
 		..()
 		real_y = 0
@@ -797,30 +924,30 @@ mob/npc/vendor
 	skin_color = "FFE0BD"
 	cloth_color = "555555"
 	wanders = 0 
-	char_gender = "Male" // CORRIGIDO
-	var/list/stock = list(
-		/obj/item/weapon/sword_wood,
-		/obj/item/weapon/sword_iron,
-		/obj/item/weapon/sword_silver,
-		/obj/item/weapon/gun_wood,
-		/obj/item/weapon/gun_flintlock,
-		/obj/item/weapon/gun_silver
-	)
+	char_gender = "Male"
+	var/list/stock = list()
+	
 	New()
 		..()
 		real_x = 2
 		real_z = 2
 		real_y = 0.1
 		real_rot = 3.14
+		
+		// POPULAÇÃO AUTOMÁTICA DA LOJA VIA TAGS
+		for(var/T in typesof(/obj/item))
+			var/obj/item/temp = new T()
+			if(temp.shop_tags == "armorer")
+				stock += T
+			del(temp)
 
-// --- NOVA NPC: ENFERMEIRA ---
 mob/npc/nurse
 	name = "Enfermeira"
 	npc_type = "nurse"
 	skin_color = "FFE0BD"
 	cloth_color = "FF69B4"
 	wanders = 0 
-	char_gender = "Female" // CORRIGIDO
+	char_gender = "Female"
 	New()
 		..()
 		real_x = 8
@@ -845,6 +972,5 @@ world/New()
 	..()
 	new /mob/npc/dummy() 
 	new /mob/npc/vendor()
-	// AGORA ELA VAI APARECER
 	new /mob/npc/nurse()
 	new /mob/npc/prop/log()

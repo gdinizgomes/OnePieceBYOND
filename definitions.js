@@ -1,4 +1,4 @@
-// definitions.js - Versão "LEGO ARTICULADO"
+// definitions.js - Versão "LEGO ARTICULADO" + ARMADURAS
 const GameDefinitions = {
     // --- PARTES DO CORPO (SEGMENTADAS) ---
     "char_head": {
@@ -7,7 +7,7 @@ const GameDefinitions = {
     },
     "char_torso": {
         type: "part",
-        visual: { model: "box", color: 0xFF0000, scale: [0.35, 0.60, 0.20] } // Torso um pouco mais largo
+        visual: { model: "box", color: 0xFF0000, scale: [0.35, 0.60, 0.20] } 
     },
     // Braços
     "char_upper_arm": {
@@ -20,23 +20,23 @@ const GameDefinitions = {
     },
     "char_hand": {
         type: "part",
-        visual: { model: "box", color: 0xFFCCAA, scale: [0.08, 0.10, 0.10] } // Punho
+        visual: { model: "box", color: 0xFFCCAA, scale: [0.08, 0.10, 0.10] } 
     },
     // Pernas
     "char_upper_leg": {
         type: "part",
-        visual: { model: "box", color: 0x0000FF, scale: [0.14, 0.40, 0.14] } // Coxa (cor da calça)
+        visual: { model: "box", color: 0x0000FF, scale: [0.14, 0.40, 0.14] } 
     },
     "char_lower_leg": {
         type: "part",
-        visual: { model: "box", color: 0x0000FF, scale: [0.12, 0.40, 0.12] } // Canela
+        visual: { model: "box", color: 0x0000FF, scale: [0.12, 0.40, 0.12] } 
     },
     "char_foot": {
         type: "part",
-        visual: { model: "box", color: 0x333333, scale: [0.12, 0.10, 0.22] } // Pé/Sapato
+        visual: { model: "box", color: 0x333333, scale: [0.12, 0.10, 0.22] } 
     },
 
-    // --- ARMAS (Ajustadas para a Mão) ---
+    // --- ARMAS ---
     "weapon_sword_wood": {
         id: "weapon_sword_wood",
         name: "Espada de Treino",
@@ -45,12 +45,11 @@ const GameDefinitions = {
         visual: {
             model: "group",
             parts: [
-                { model: "box", color: 0x5c4033, scale: [0.08, 0.45, 0.04], pos: [0, 0.25, 0] }, // Lâmina ajustada pra cima
-                { model: "box", color: 0x8b5a2b, scale: [0.25, 0.05, 0.06], pos: [0, 0.02, 0] }, // Guarda
-                { model: "box", color: 0xcd853f, scale: [0.06, 0.15, 0.06], pos: [0, -0.08, 0] } // Cabo na mão
+                { model: "box", color: 0x5c4033, scale: [0.08, 0.45, 0.04], pos: [0, 0.25, 0] }, 
+                { model: "box", color: 0x8b5a2b, scale: [0.25, 0.05, 0.06], pos: [0, 0.02, 0] }, 
+                { model: "box", color: 0xcd853f, scale: [0.06, 0.15, 0.06], pos: [0, -0.08, 0] } 
             ]
         },
-        // AGORA ANEXA NA MÃO (rightHand) E NÃO NO BRAÇO
         attachment: { bone: "rightHand", pos: [0, -0.05, 0.05], rot: [Math.PI/2, 0, 0] },
         data: { power: 5 }
     },
@@ -89,7 +88,6 @@ const GameDefinitions = {
         data: { power: 20 }
     },
 
-    // --- ARMAS DE FOGO ---
     "weapon_gun_wood": {
         id: "weapon_gun_wood",
         name: "Pistola de Brinquedo",
@@ -98,8 +96,8 @@ const GameDefinitions = {
         visual: {
             model: "group",
             parts: [
-                { model: "box", color: 0x8B4513, scale: [0.1, 0.3, 0.1], pos: [0, 0.05, 0], rot: [1.57, 0, 0] }, // Cano
-                { model: "box", color: 0xA0522D, scale: [0.06, 0.12, 0.06], pos: [0, -0.05, 0] } // Cabo
+                { model: "box", color: 0x8B4513, scale: [0.1, 0.3, 0.1], pos: [0, 0.05, 0], rot: [1.57, 0, 0] }, 
+                { model: "box", color: 0xA0522D, scale: [0.06, 0.12, 0.06], pos: [0, -0.05, 0] } 
             ]
         },
         attachment: { bone: "rightHand", pos: [0, -0.05, 0.05], rot: [Math.PI/2, 0, 0] },
@@ -141,7 +139,82 @@ const GameDefinitions = {
         projectile: { speed: 1.2, range: 20, color: 0xFFFF00, scale: [0.09, 0.09, 1] }
     },
 
-    // Props
+    // --- ARMADURAS ---
+
+    "armor_head_bandana": {
+        id: "armor_head_bandana",
+        name: "Bandana Vermelha",
+        type: "equipment",
+        tags: ["head"],
+        visual: { model: "box", color: 0xFF0000, scale: [0.32, 0.08, 0.32] },
+        attachment: { bone: "head", pos: [0, 0.10, 0], rot: [0, 0, 0] }
+    },
+
+    "armor_head_bandana_black": {
+        id: "armor_head_bandana_black",
+        name: "Bandana Preta",
+        type: "equipment",
+        tags: ["head"],
+        visual: { model: "box", color: 0x000000, scale: [0.32, 0.08, 0.32] },
+        attachment: { bone: "head", pos: [0, 0.10, 0], rot: [0, 0, 0] }
+    },
+
+    "armor_body_shirt": {
+        id: "armor_body_shirt",
+        name: "Camisa de Marinheiro",
+        type: "equipment",
+        tags: ["body"],
+        visual: { model: "box", color: 0xFFFFFF, scale: [0.36, 0.40, 0.22] },
+        attachment: { bone: "torso", pos: [0, 0.10, 0], rot: [0, 0, 0] }
+    },
+
+    // --- CORREÇÃO DA CALÇA (AGORA COBRE AS PERNAS) ---
+    "armor_legs_pants": {
+        id: "armor_legs_pants",
+        name: "Calça de Linho",
+        type: "equipment",
+        tags: ["legs"],
+        // Visual base (não usado nos anexos customizados, mas bom ter referência)
+        visual: { model: "box", color: 0x8B4513, scale: [0.36, 0.20, 0.22] },
+        
+        attachments: [
+            // 1. CINTURA (Torso)
+            { bone: "torso", pos: [0, -0.25, 0], rot: [0, 0, 0],
+              visual: { model: "box", color: 0x8B4513, scale: [0.36, 0.20, 0.22] } 
+            },
+            
+            // 2. COXA ESQUERDA (Upper Leg)
+            { bone: "leftLeg", pos: [0, 0, 0], rot: [0, 0, 0], 
+              visual: { model: "box", color: 0x8B4513, scale: [0.16, 0.35, 0.16] } 
+            },
+            // 3. CANELA ESQUERDA (Lower Leg)
+            { bone: "leftShin", pos: [0, 0, 0], rot: [0, 0, 0], 
+              visual: { model: "box", color: 0x8B4513, scale: [0.14, 0.35, 0.14] } 
+            },
+
+            // 4. COXA DIREITA (Upper Leg)
+            { bone: "rightLeg", pos: [0, 0, 0], rot: [0, 0, 0],
+              visual: { model: "box", color: 0x8B4513, scale: [0.16, 0.35, 0.16] } 
+            },
+            // 5. CANELA DIREITA (Lower Leg)
+            { bone: "rightShin", pos: [0, 0, 0], rot: [0, 0, 0],
+              visual: { model: "box", color: 0x8B4513, scale: [0.14, 0.35, 0.14] } 
+            }
+        ]
+    },
+
+    "armor_feet_boots": {
+        id: "armor_feet_boots",
+        name: "Botas de Couro",
+        type: "equipment",
+        tags: ["feet"],
+        visual: { model: "box", color: 0x3d2b1f, scale: [0.15, 0.10, 0.24] },
+        attachments: [
+            { bone: "leftFoot", pos: [0, 0, 0], rot: [0, 0, 0] },
+            { bone: "rightFoot", pos: [0, 0, 0], rot: [0, 0, 0] }
+        ]
+    },
+
     "prop_tree_log": {
         id: "prop_tree_log",
         name: "Tronco de Treino",
