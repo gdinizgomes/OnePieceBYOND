@@ -346,6 +346,7 @@ function receberDadosMultiplayer(json) {
         }
     }
     if(isCharacterReady) {
+        // --- 1. ITENS NO CHÃO ---
         const serverGroundItems = packet.ground || [];
         const seenItems = new Set();
         let closestDist = 999;
@@ -373,6 +374,7 @@ function receberDadosMultiplayer(json) {
             }
         }
 
+        // --- 2. INTERAÇÃO ---
         const hint = document.getElementById('interaction-hint');
         let npcNear = false;
         for(let id in otherPlayers) {
@@ -386,9 +388,9 @@ function receberDadosMultiplayer(json) {
         else if(npcNear) { hint.innerText = "[X] Interagir"; hint.style.display = 'block'; }
         else hint.style.display = 'none';
 
+        // --- 3. DADOS ---
         const myData = packet.others[myID]; isResting = me.rest; isFainted = me.ft; 
         
-        // ATUALIZA GÊNERO DO JOGADOR LOCAL
         if(me.gen) playerGroup.userData.gender = me.gen;
 
         if(myData && myData.it !== undefined) {
@@ -513,14 +515,13 @@ function animate() {
         if(isFainted) {
             playerGroup.rotation.x = lerp(playerGroup.rotation.x, -Math.PI/2, 0.1); playerGroup.position.y = lerp(playerGroup.position.y, groundHeight + 0.2, 0.1);
         } else if(isResting) {
-            // ANIMAÇÃO DE DESCANSAR BASEADA NO GÊNERO
+            // CORREÇÃO: POSE SIMPLES E SEGURA
             playerGroup.rotation.x = lerp(playerGroup.rotation.x, 0, 0.1); 
-            // Altura corrigida para não entrar no chão (Homem 0.1, Mulher 0.05)
-            const yOffset = (playerGroup.userData.gender === "Female") ? 0.05 : 0.1; 
+            // -0.6 faz o personagem "sentar" no chão (bumbum no chão)
+            const yOffset = -0.6; 
             playerGroup.position.y = lerp(playerGroup.position.y, groundHeight + yOffset, 0.1);
             
-            // Pega a pose correta
-            const restStance = (playerGroup.userData.gender === "Female") ? STANCES.REST_FEMALE : STANCES.REST_MALE;
+            const restStance = STANCES.REST_SIMPLE;
             const limbs = playerGroup.userData.limbs;
             if(limbs && restStance) {
                 const spd = 0.1;
@@ -609,12 +610,13 @@ function animate() {
                 mesh.position.y = lerp(mesh.position.y, 0.2, 0.1);
             }
             else if (other.resting) {
-                // ANIMAÇÃO DE DESCANSO (Outros Players)
                 mesh.rotation.x = lerp(mesh.rotation.x, 0, 0.1);
-                const yOffset = (other.gender === "Female") ? 0.05 : 0.1;
-                mesh.position.y = lerp(mesh.position.y, other.targetY + yOffset, 0.1); // Usa targetY base + offset
+                // Offset Unificado
+                const yOffset = -0.6;
+                mesh.position.y = lerp(mesh.position.y, other.targetY + yOffset, 0.1); 
 
-                const restStance = (other.gender === "Female") ? STANCES.REST_FEMALE : STANCES.REST_MALE;
+                // Pose Unificada
+                const restStance = STANCES.REST_SIMPLE;
                 if(restStance) {
                     const spd = 0.1;
                     lerpLimbRotation(limbs.leftLeg, restStance.leftLeg, spd); lerpLimbRotation(limbs.rightLeg, restStance.rightLeg, spd);
@@ -623,7 +625,6 @@ function animate() {
                     lerpLimbRotation(limbs.leftForeArm, restStance.leftForeArm, spd); lerpLimbRotation(limbs.rightForeArm, restStance.rightForeArm, spd);
                 }
             } else {
-                // ... (Código de animação normal mantido) ...
                 if(other.attacking) {
                     if(other.attackType === "sword") remoteStance = STANCES.SWORD_ATK_1; else if(other.attackType === "fist") remoteStance = STANCES.FIST_ATK; else if(other.attackType === "kick") remoteStance = STANCES.KICK_ATK; else if(other.attackType === "gun") remoteStance = STANCES.GUN_ATK;
                     lerpLimbRotation(limbs.leftArm, remoteStance.leftArm || def.leftArm, 0.4); lerpLimbRotation(limbs.rightArm, remoteStance.rightArm || def.rightArm, 0.4);

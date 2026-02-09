@@ -17,6 +17,7 @@ function lerpLimbRotation(limb, targetRot, speed) {
 
 const RAD = Math.PI / 180;
 
+// POSES ARTICULADAS
 const STANCES = {
     DEFAULT: { 
         rightArm: { x: 0, y: 0, z: 0 }, rightForeArm: { x: 0, y: 0, z: 0 },
@@ -64,24 +65,16 @@ const STANCES = {
         rightArm: { x: -90 * RAD, y: 0, z: 0 }, rightForeArm: { x: 0, y: 0, z: 0 },
         leftArm:  { x: 0, y: 0, z: 0 }, leftForeArm:  { x: 0, y: 0, z: 0 }
     },
-    // --- CORREÇÃO DAS POSES DE DESCANSO ---
-    REST_MALE: {
-        // Perna ESQUERDA (Pé no chão): Coxa para frente (1.4), Canela para trás compensando (-1.4)
-        leftLeg:  { x: 1.4, y: 0, z: 0 }, leftShin:  { x: -1.4, y: 0, z: 0 }, 
-        // Perna DIREITA (Joelho no chão): Coxa reta (0), Canela para trás (1.6 = 90 graus)
-        rightLeg: { x: 0, y: 0, z: 0 }, rightShin: { x: 1.6, y: 0, z: 0 },
+    // --- POSE DE DESCANSO SIMPLES E SEGURA ---
+    // Sentado com as pernas esticadas
+    REST_SIMPLE: {
+        // Coxas para frente (-90 graus = -1.57 rad)
+        rightLeg: { x: -1.5, y: 0, z: 0 }, rightShin: { x: 0, y: 0, z: 0 }, 
+        leftLeg:  { x: -1.5, y: 0, z: 0 }, leftShin:  { x: 0, y: 0, z: 0 }, 
         
-        rightArm: { x: 0, y: 0, z: 0 }, rightForeArm: { x: -0.5, y: 0, z: 0 },
-        leftArm:  { x: 0, y: 0, z: 0 }, leftForeArm:  { x: -0.5, y: 0, z: 0 }
-    },
-    REST_FEMALE: {
-        // Seiza: Ambas as pernas dobradas sob o corpo
-        // Coxas retas (0), Canelas totalmente para trás (2.5)
-        rightLeg: { x: 0, y: 0, z: 0 }, rightShin: { x: 2.5, y: 0, z: 0 },
-        leftLeg:  { x: 0, y: 0, z: 0 }, leftShin:  { x: 2.5, y: 0, z: 0 },
-        
-        rightArm: { x: -0.5, y: 0, z: 0 }, rightForeArm: { x: -0.5, y: 0, z: 0 },
-        leftArm:  { x: -0.5, y: 0, z: 0 }, leftForeArm:  { x: -0.5, y: 0, z: 0 }
+        // Braços relaxados ao lado do corpo (apoiando no chão)
+        rightArm: { x: 0.5, y: 0, z: 0 }, rightForeArm: { x: -0.5, y: 0, z: 0 },
+        leftArm:  { x: 0.5, y: 0, z: 0 }, leftForeArm:  { x: -0.5, y: 0, z: 0 }
     }
 };
 
