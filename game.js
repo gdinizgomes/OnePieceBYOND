@@ -20,8 +20,12 @@ let isRunning = false;
 let currentMoveSpeed = 0.08; 
 let currentJumpForce = 0.20; 
 
+// --- SISTEMA DE COMBOS ---
 let lastCombatActionTime = 0; 
 let isAttacking = false; 
+let fistComboStep = 0; 
+let lastFistAttackTime = 0;
+
 let animTime = 0; 
 let isJumping = false; 
 let verticalVelocity = 0; 
@@ -314,12 +318,47 @@ function performAttack(type) {
     }
     if(type === "sword" && !hasSword) { addLog("Sem espada!", "log-miss"); return; }
     if(type === "gun" && !hasGun) { addLog("Sem arma!", "log-miss"); return; }
-    isAttacking = true; lastCombatActionTime = Date.now();
-    let windupStance = "SWORD_WINDUP"; let atkStance = "SWORD_ATK_1"; let idleStance = "SWORD_IDLE";
-    if(type === "fist") { windupStance = "FIST_WINDUP"; atkStance = "FIST_ATK"; idleStance = "FIST_IDLE"; }
+    
+    isAttacking = true; 
+    lastCombatActionTime = Date.now();
+
+    let windupStance = "SWORD_WINDUP"; 
+    let atkStance = "SWORD_ATK_1"; 
+    let idleStance = "SWORD_IDLE";
+
+    // --- LÓGICA DE COMBO (SOCO) ---
+    if(type === "fist") {
+        // Se demorou mais que 600ms, reseta o combo
+        if(Date.now() - lastFistAttackTime > 600) fistComboStep = 0;
+        
+        fistComboStep++;
+        if(fistComboStep > 3) fistComboStep = 1; // Volta pro 1 após o 3
+        
+        lastFistAttackTime = Date.now();
+        
+        // Define animações baseadas no passo do combo
+        windupStance = "FIST_WINDUP"; // Padrão de preparação
+        atkStance = "FIST_COMBO_" + fistComboStep; // FIST_COMBO_1, 2 ou 3
+        idleStance = "FIST_IDLE";
+
+        // --- MICRO-MOVIMENTO PARA FRENTE (IMPULSO) ---
+        const sin = Math.sin(playerGroup.rotation.y);
+        const cos = Math.cos(playerGroup.rotation.y);
+        const pushDist = 0.4; // Distância do "Passinho"
+        
+        const nextX = playerGroup.position.x + sin * pushDist;
+        const nextZ = playerGroup.position.z + cos * pushDist;
+        
+        // Só move se não tiver parede
+        if(!checkCollision(nextX, playerGroup.position.y, nextZ)) {
+            playerGroup.position.x = nextX;
+            playerGroup.position.z = nextZ;
+        }
+    }
     else if(type === "kick") { windupStance = "KICK_WINDUP"; atkStance = "KICK_ATK"; idleStance = "FIST_IDLE"; }
     else if(type === "sword") { windupStance = "SWORD_WINDUP"; atkStance = "SWORD_ATK_1"; idleStance = "SWORD_IDLE"; }
     else if(type === "gun") { windupStance = "GUN_IDLE"; atkStance = "GUN_ATK"; idleStance = "GUN_IDLE"; }
+    
     charState = windupStance; 
     setTimeout(function() {
         charState = atkStance;
@@ -327,8 +366,17 @@ function performAttack(type) {
         else if (type === "fist") spawnHitbox({x:1, y:1, z:1}, 1.0, 200); 
         else if (type === "kick") spawnHitbox({x:1.2, y:1, z:1.2}, 1.2, 300);
         else if (type === "sword") spawnHitbox({x:2.5, y:1, z:2.5}, 1.5, 300);
-        if(typeof BYOND_REF !== 'undefined') { blockSync = true; window.location.href = `byond://?src=${BYOND_REF}&action=attack&type=${type}`; setTimeout(function(){blockSync=false}, 200); }
-        setTimeout(function() { charState = idleStance; isAttacking = false; }, 300);
+        
+        if(typeof BYOND_REF !== 'undefined') { 
+            blockSync = true; 
+            window.location.href = `byond://?src=${BYOND_REF}&action=attack&type=${type}`; 
+            setTimeout(function(){blockSync=false}, 200); 
+        }
+        
+        setTimeout(function() { 
+            charState = idleStance; 
+            isAttacking = false; 
+        }, 300);
     }, 100); 
 }
 
@@ -515,9 +563,8 @@ function animate() {
         if(isFainted) {
             playerGroup.rotation.x = lerp(playerGroup.rotation.x, -Math.PI/2, 0.1); playerGroup.position.y = lerp(playerGroup.position.y, groundHeight + 0.2, 0.1);
         } else if(isResting) {
-            // CORREÇÃO: POSE SIMPLES E SEGURA
+            // POSE UNIFICADA: SIMPLES (Pernas Retas)
             playerGroup.rotation.x = lerp(playerGroup.rotation.x, 0, 0.1); 
-            // -0.6 faz o personagem "sentar" no chão (bumbum no chão)
             const yOffset = -0.6; 
             playerGroup.position.y = lerp(playerGroup.position.y, groundHeight + yOffset, 0.1);
             
@@ -525,6 +572,8 @@ function animate() {
             const limbs = playerGroup.userData.limbs;
             if(limbs && restStance) {
                 const spd = 0.1;
+                // INCLUI A COLUNA (TORSO)
+                if(restStance.torso) lerpLimbRotation(limbs.torso, restStance.torso, spd);
                 lerpLimbRotation(limbs.leftLeg, restStance.leftLeg, spd); lerpLimbRotation(limbs.rightLeg, restStance.rightLeg, spd);
                 lerpLimbRotation(limbs.leftShin, restStance.leftShin, spd); lerpLimbRotation(limbs.rightShin, restStance.rightShin, spd);
                 lerpLimbRotation(limbs.leftArm, restStance.leftArm, spd); lerpLimbRotation(limbs.rightArm, restStance.rightArm, spd);
@@ -569,14 +618,23 @@ function animate() {
                         limbs.rightArm.rotation.x = Math.sin(animTime)*legSpeed;
                         limbs.leftForeArm.rotation.x = -0.2;
                         limbs.rightForeArm.rotation.x = -0.2;
+                        // Reseta Torso
+                        lerpLimbRotation(limbs.torso, def.torso, 0.1);
                     } else {
                         lerpLimbRotation(limbs.leftArm, targetStance.leftArm || def.leftArm, 0.2);
                         lerpLimbRotation(limbs.rightArm, targetStance.rightArm || def.rightArm, 0.2);
                         lerpLimbRotation(limbs.leftForeArm, targetStance.leftForeArm || def.leftForeArm, 0.2);
                         lerpLimbRotation(limbs.rightForeArm, targetStance.rightForeArm || def.rightForeArm, 0.2);
+                        // Torso segue a arma
+                        lerpLimbRotation(limbs.torso, targetStance.torso || def.torso, 0.2);
                     }
                 } else {
                     const spd = isAttacking ? 0.4 : 0.1;
+                    
+                    // --- AQUI APLICAMOS O TORSO ---
+                    if(targetStance.torso) lerpLimbRotation(limbs.torso, targetStance.torso, spd);
+                    else lerpLimbRotation(limbs.torso, def.torso, spd);
+
                     lerpLimbRotation(limbs.leftArm, targetStance.leftArm || def.leftArm, spd);
                     lerpLimbRotation(limbs.rightArm, targetStance.rightArm || def.rightArm, spd);
                     lerpLimbRotation(limbs.leftForeArm, targetStance.leftForeArm || def.leftForeArm, spd);
@@ -611,14 +669,13 @@ function animate() {
             }
             else if (other.resting) {
                 mesh.rotation.x = lerp(mesh.rotation.x, 0, 0.1);
-                // Offset Unificado
                 const yOffset = -0.6;
                 mesh.position.y = lerp(mesh.position.y, other.targetY + yOffset, 0.1); 
 
-                // Pose Unificada
                 const restStance = STANCES.REST_SIMPLE;
                 if(restStance) {
                     const spd = 0.1;
+                    if(restStance.torso) lerpLimbRotation(limbs.torso, restStance.torso, spd);
                     lerpLimbRotation(limbs.leftLeg, restStance.leftLeg, spd); lerpLimbRotation(limbs.rightLeg, restStance.rightLeg, spd);
                     lerpLimbRotation(limbs.leftShin, restStance.leftShin, spd); lerpLimbRotation(limbs.rightShin, restStance.rightShin, spd);
                     lerpLimbRotation(limbs.leftArm, restStance.leftArm, spd); lerpLimbRotation(limbs.rightArm, restStance.rightArm, spd);
@@ -626,7 +683,16 @@ function animate() {
                 }
             } else {
                 if(other.attacking) {
-                    if(other.attackType === "sword") remoteStance = STANCES.SWORD_ATK_1; else if(other.attackType === "fist") remoteStance = STANCES.FIST_ATK; else if(other.attackType === "kick") remoteStance = STANCES.KICK_ATK; else if(other.attackType === "gun") remoteStance = STANCES.GUN_ATK;
+                    // Aqui precisaríamos saber o passo do combo do outro player.
+                    // Como ainda não transmitimos "comboStep" pela rede,
+                    // ele vai usar uma animação genérica ou a última configurada.
+                    // Para simplificar, vou manter a lógica antiga, mas usando FIST_COMBO_1 como padrão
+                    if(other.attackType === "sword") remoteStance = STANCES.SWORD_ATK_1; 
+                    else if(other.attackType === "fist") remoteStance = STANCES.FIST_COMBO_1; // Usa o soco 1
+                    else if(other.attackType === "kick") remoteStance = STANCES.KICK_ATK; 
+                    else if(other.attackType === "gun") remoteStance = STANCES.GUN_ATK;
+                    
+                    if(remoteStance.torso) lerpLimbRotation(limbs.torso, remoteStance.torso, 0.4);
                     lerpLimbRotation(limbs.leftArm, remoteStance.leftArm || def.leftArm, 0.4); lerpLimbRotation(limbs.rightArm, remoteStance.rightArm || def.rightArm, 0.4);
                     lerpLimbRotation(limbs.leftForeArm, remoteStance.leftForeArm || def.leftForeArm, 0.4); lerpLimbRotation(limbs.rightForeArm, remoteStance.rightForeArm || def.rightForeArm, 0.4);
                     lerpLimbRotation(limbs.leftLeg, remoteStance.leftLeg || def.leftLeg, 0.4); lerpLimbRotation(limbs.rightLeg, remoteStance.rightLeg || def.rightLeg, 0.4);
@@ -635,7 +701,10 @@ function animate() {
                     limbs.leftShin.rotation.x = (limbs.leftLeg.rotation.x > 0) ? limbs.leftLeg.rotation.x : 0;
                     limbs.rightShin.rotation.x = (limbs.rightLeg.rotation.x > 0) ? limbs.rightLeg.rotation.x : 0;
                     limbs.leftArm.rotation.x = -Math.sin(animTime)*0.8; limbs.rightArm.rotation.x = Math.sin(animTime)*0.8;
+                    // Torso neutro ao andar
+                    lerpLimbRotation(limbs.torso, def.torso, 0.1);
                 } else {
+                    lerpLimbRotation(limbs.torso, def.torso, 0.1);
                     lerpLimbRotation(limbs.leftLeg, STANCES.DEFAULT.leftLeg, 0.1); lerpLimbRotation(limbs.rightLeg, STANCES.DEFAULT.rightLeg, 0.1);
                     lerpLimbRotation(limbs.leftShin, STANCES.DEFAULT.leftShin, 0.1); lerpLimbRotation(limbs.rightShin, STANCES.DEFAULT.rightShin, 0.1);
                     lerpLimbRotation(limbs.leftArm, STANCES.DEFAULT.leftArm, 0.1); lerpLimbRotation(limbs.rightArm, STANCES.DEFAULT.rightArm, 0.1);
