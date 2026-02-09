@@ -2,7 +2,6 @@
 <html>
 <head>
     <script>
-    // Detetive de Erros: Mostra erros na tela se o jogo falhar
     window.onerror = function(message, source, lineno, colno, error) {
         let errorBox = document.getElementById('error-debug');
         if (!errorBox) {
@@ -33,7 +32,7 @@
         .slots-container { display: flex; gap: 20px; }
         
         .slot-card {
-            width: 200px; height: 300px; background: #2c3e50; border: 2px solid #34495e; border-radius: 10px;
+            width: 200px; height: 320px; background: #2c3e50; border: 2px solid #34495e; border-radius: 10px;
             display: flex; flex-direction: column; align-items: center; justify-content: center;
             cursor: pointer; transition: 0.3s; position: relative;
         }
@@ -42,9 +41,9 @@
         
         .slot-plus { font-size: 60px; color: #7f8c8d; }
         .char-level { color: #f1c40f; font-size: 14px; }
-        .char-name { font-size: 20px; font-weight: bold; margin: 10px 0; }
+        .char-name { font-size: 20px; font-weight: bold; margin: 5px 0; }
+        .char-gender { font-size: 12px; color: #aaa; margin-bottom: 5px; }
         
-        /* NOVO: Botão de Deletar */
         .btn-delete {
             position: absolute; top: 10px; right: 10px;
             background: #c0392b; color: white; width: 30px; height: 30px;
@@ -53,7 +52,6 @@
         }
         .btn-delete:hover { background: #e74c3c; transform: scale(1.1); }
 
-        /* Modal Criação */
         #create-modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); display: none; align-items: center; justify-content: center; }
         .modal-box { background: #2c3e50; padding: 30px; border-radius: 10px; width: 300px; text-align: center; border: 2px solid #f1c40f; }
         input, select { width: 90%; padding: 10px; margin: 10px 0; border-radius: 5px; border: none; }
@@ -72,6 +70,13 @@
         <div class="modal-box">
             <h2>Novo Pirata</h2>
             <input type="text" id="new-name" placeholder="Nome (Máx 12)" maxlength="12">
+            
+            <label>Gênero</label>
+            <select id="new-gender">
+                <option value="Male">Homem</option>
+                <option value="Female">Mulher</option>
+            </select>
+
             <label>Cor da Pele</label> <input type="color" id="skin-color" value="#FFCCAA" onchange="updatePreview()">
             <label>Cor da Roupa</label> <input type="color" id="clothes-color" value="#FF0000" onchange="updatePreview()">
             <div class="color-preview" id="preview-box" style="background: #FFCCAA"></div>
@@ -85,12 +90,10 @@
         const BYOND_REF = "{{BYOND_REF}}";
         let selectedSlot = 0;
 
-        // --- CORREÇÃO DE RACE CONDITION ---
-        // Assim que o HTML carregar, pedimos os dados ao servidor
         window.onload = function() {
             setTimeout(() => {
                 window.location.href = `byond://?src=${BYOND_REF}&action=request_slots`;
-            }, 100); // Pequeno delay de segurança
+            }, 100); 
         };
 
         function loadSlots(jsonSlots) {
@@ -108,6 +111,7 @@
                         <div class="btn-delete" onclick="deleteChar(${i}, event)">X</div>
                         <div class="char-level">Lvl ${charData.lvl}</div>
                         <div class="char-name">${charData.name}</div>
+                        <div class="char-gender">${charData.gender == "Male" ? "Homem" : "Mulher"}</div>
                         <div style="font-size: 12px">Berries: ${charData.gold}</div>
                     `;
                     div.onclick = () => selectChar(i);
@@ -134,10 +138,11 @@
         
         function confirmCreation() {
             const name = document.getElementById('new-name').value;
+            const gender = document.getElementById('new-gender').value;
             const skin = document.getElementById('skin-color').value;
             const cloth = document.getElementById('clothes-color').value;
             if(!name) return alert("Digite um nome!");
-            window.location.href = `byond://?src=${BYOND_REF}&action=create_char&slot=${selectedSlot}&name=${name}&skin=${skin.replace('#','')}&cloth=${cloth.replace('#','')}`;
+            window.location.href = `byond://?src=${BYOND_REF}&action=create_char&slot=${selectedSlot}&name=${name}&gender=${gender}&skin=${skin.replace('#','')}&cloth=${cloth.replace('#','')}`;
         }
     </script>
 </body>

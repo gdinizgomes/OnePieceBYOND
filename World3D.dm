@@ -29,7 +29,7 @@ obj/item/weapon/sword_wood
 	description = "Uma espada de madeira para treinar."
 	power = 5
 	price = 50
-	range = 3.0 // Alcance da Hitbox
+	range = 3.0
 	projectile_speed = 0
 
 obj/item/weapon/sword_iron
@@ -86,6 +86,7 @@ mob
 	var/char_loaded = 0
 	var/char_class = "Civil"
 	var/char_title = "Nenhum"
+	var/char_gender = "Male" // CORRIGIDO: Renomeado para evitar conflito
 	var/level = 1
 	var/experience = 0
 	var/req_experience = 100
@@ -421,6 +422,7 @@ mob
 		F["pos_x"] << src.real_x; F["pos_y"] << src.real_y; F["pos_z"] << src.real_z
 		F["skin"] << src.skin_color; F["cloth"] << src.cloth_color
 		F["inventory"] << src.contents; F["slot_hand"] << src.slot_hand
+		F["gender"] << src.char_gender // Salva com o nome 'gender' para compatibilidade
 		src << output("Salvo!", "map3d:mostrarNotificacao")
 
 	proc/LoadCharacter(slot)
@@ -446,6 +448,8 @@ mob
 		F["skin"] >> src.skin_color; F["cloth"] >> src.cloth_color
 		if(F["inventory"]) F["inventory"] >> src.contents
 		if(F["slot_hand"]) F["slot_hand"] >> src.slot_hand
+		if(F["gender"]) F["gender"] >> src.char_gender; else src.char_gender = "Male"
+
 		if(!src.req_experience || src.req_experience <= 0)
 			src.req_experience = 100 * (1.5 ** (src.level - 1))
 			if(src.req_experience < 100) src.req_experience = 100
@@ -469,7 +473,8 @@ mob
 						"rest" = M.is_resting, "ft" = M.is_fainted,
 						"name" = M.name, "skin" = M.skin_color, "cloth" = M.cloth_color,
 						"npc" = 0,
-						"hp" = M.current_hp, "mhp" = M.max_hp
+						"hp" = M.current_hp, "mhp" = M.max_hp,
+						"gen" = M.char_gender
 					)
 					players_list[pid] = pData
 			for(var/mob/npc/N in global_npcs)
@@ -480,7 +485,8 @@ mob
 					"a" = 0, "at" = "", "it" = "", "rest" = 0, "ft" = 0,
 					"name" = N.name, "skin" = N.skin_color, "cloth" = N.cloth_color,
 					"npc" = 1, "type" = N.npc_type,
-					"hp" = N.current_hp, "mhp" = N.max_hp
+					"hp" = N.current_hp, "mhp" = N.max_hp,
+					"gen" = N.char_gender
 				)
 			var/list/ground_items = list()
 			for(var/obj/item/I in world)
@@ -505,7 +511,8 @@ mob
 					"ps" = prof_sword_lvl, "ps_x" = prof_sword_exp, "ps_r" = GetProficiencyReq(prof_sword_lvl),
 					"pg" = prof_gun_lvl,   "pg_x" = prof_gun_exp,   "pg_r" = GetProficiencyReq(prof_gun_lvl),
 					"mspd" = calc_move_speed, "jmp" = calc_jump_power,
-					"rest" = src.is_resting, "ft" = src.is_fainted, "rem" = faint_remaining
+					"rest" = src.is_resting, "ft" = src.is_fainted, "rem" = faint_remaining,
+					"gen" = src.char_gender
 				),
 				"others" = players_list, "ground" = ground_items, "t" = world.time,
 				"evts" = src.pending_visuals
@@ -529,9 +536,10 @@ mob
 			for(var/i=1 to 3)
 				if(fexists("[SAVE_DIR][src.ckey]_slot[i].sav"))
 					var/savefile/F = new("[SAVE_DIR][src.ckey]_slot[i].sav")
-					var/n; var/l; var/g
-					F["name"] >> n; F["level"] >> l; F["gold"] >> g
-					slots_data["slot[i]"] = list("name"=n, "lvl"=l, "gold"=g)
+					var/n; var/l; var/g; var/ge
+					F["name"] >> n; F["level"] >> l; F["gold"] >> g; 
+					if(F["gender"]) F["gender"] >> ge; else ge = "Male"
+					slots_data["slot[i]"] = list("name"=n, "lvl"=l, "gold"=g, "gender"=ge)
 				else slots_data["slot[i]"] = null
 			src << output(json_encode(slots_data), "map3d:loadSlots")
 
@@ -548,6 +556,7 @@ mob
 			src.name = href_list["name"]
 			src.skin_color = href_list["skin"]
 			src.cloth_color = href_list["cloth"]
+			src.char_gender = href_list["gender"] // CORRIGIDO
 			src.level = 1; src.gold = 10000 
 			src.real_x = 0; src.real_y = 0; src.real_z = 0
 			current_slot = slot
@@ -604,6 +613,12 @@ mob
 						del(tmpI) 
 					src << output(json_encode(shop_items), "map3d:openShop")
 					RequestInventoryUpdate()
+				else if(istype(N, /mob/npc/nurse))
+					src.current_hp = src.max_hp
+					src.current_energy = src.max_energy
+					src.is_fainted = 0
+					src.faint_end_time = 0
+					src << output("Enfermeira: Você foi curado!", "map3d:mostrarNotificacao")
 
 		if(action == "buy_item" && in_game)
 			var/typepath = text2path(href_list["type"])
@@ -637,7 +652,6 @@ mob
 					RequestInventoryUpdate()
 
 		if(action == "attack" && in_game)
-			// Inicia o ataque no servidor (consome energia, atualiza estado)
 			if(is_resting) return
 			var/base_cost = max_energy * 0.03
 			if(ConsumeEnergy(base_cost))
@@ -645,26 +659,28 @@ mob
 				attack_type = href_list["type"]
 				spawn(3) is_attacking = 0
 
-		// --- SISTEMA DE HITBOX UNIFICADO (MELEE & TIRO) ---
 		if(action == "register_hit" && in_game)
 			var/target_ref = href_list["target_ref"]
-			var/hit_type = href_list["hit_type"] // "melee" ou "projectile"
+			var/hit_type = href_list["hit_type"]
 			var/obj/target = locate(target_ref)
 			
 			if(!target) return
 
-			// 1. Validar Alcance (Segurança do Servidor)
-			var/max_dist = 3.0 // Padrão curto (soco)
+			// IMORTALIDADE
+			if(istype(target, /mob/npc))
+				var/mob/npc/N = target
+				if(N.npc_type == "vendor" || N.npc_type == "nurse") return 
+
+			var/max_dist = 3.0 
 			var/bonus_dmg = 0
 			var/skill_exp_type = ""
 			
-			// Se tiver arma, pega o alcance real dela
 			if(hit_type == "projectile")
 				if(slot_hand && istype(slot_hand, /obj/item/weapon))
-					max_dist = slot_hand:range + 5 // +5 de tolerância lag
+					max_dist = slot_hand:range + 5 
 					bonus_dmg = slot_hand:power
 					skill_exp_type = "gun"
-				else return // Tentou atirar sem arma? Cheat.
+				else return
 			else if(hit_type == "melee")
 				if(attack_type == "sword")
 					if(slot_hand && istype(slot_hand, /obj/item/weapon))
@@ -674,13 +690,11 @@ mob
 				else if(attack_type == "kick")
 					max_dist = 3.5; skill_exp_type = "kick"
 				else 
-					max_dist = 2.5; skill_exp_type = "fist" // Soco
+					max_dist = 2.5; skill_exp_type = "fist"
 			
-			// Validação de Distância Euclidiana
 			var/dist = get_dist_euclid(src.real_x, src.real_z, target:real_x, target:real_z)
-			if(dist > max_dist) return // Hit inválido (muito longe)
+			if(dist > max_dist) return
 
-			// 2. Calcular Dano
 			var/prof_bonus = 0
 			if(skill_exp_type == "sword") prof_bonus = prof_sword_lvl * 2
 			else if(skill_exp_type == "gun") prof_bonus = prof_gun_lvl * 2
@@ -689,7 +703,6 @@ mob
 
 			var/damage = round((strength * 0.4) + prof_bonus + bonus_dmg + rand(0, 3))
 			
-			// 3. Aplicar Dano
 			src.pending_visuals += list(list("type"="dmg", "val"=damage, "tid"=target_ref))
 
 			if(istype(target, /mob/npc))
@@ -732,6 +745,8 @@ mob/npc
 	char_loaded = 1
 	var/npc_type = "base"
 	var/wanders = 1 
+	// CORRIGIDO: Removido 'var/' pois char_gender já existe em mob
+	char_gender = "Female" 
 	New()
 		..()
 		real_y = 0
@@ -775,6 +790,7 @@ mob/npc/vendor
 	skin_color = "FFE0BD"
 	cloth_color = "555555"
 	wanders = 0 
+	char_gender = "Male" // CORRIGIDO
 	var/list/stock = list(
 		/obj/item/weapon/sword_wood,
 		/obj/item/weapon/sword_iron,
@@ -787,6 +803,21 @@ mob/npc/vendor
 		..()
 		real_x = 2
 		real_z = 2
+		real_y = 0.1
+		real_rot = 3.14
+
+// --- NOVA NPC: ENFERMEIRA ---
+mob/npc/nurse
+	name = "Enfermeira"
+	npc_type = "nurse"
+	skin_color = "FFE0BD"
+	cloth_color = "FF69B4"
+	wanders = 0 
+	char_gender = "Female" // CORRIGIDO
+	New()
+		..()
+		real_x = 8
+		real_z = 8
 		real_y = 0.1
 		real_rot = 3.14
 
@@ -807,4 +838,6 @@ world/New()
 	..()
 	new /mob/npc/dummy() 
 	new /mob/npc/vendor()
+	// AGORA ELA VAI APARECER
+	new /mob/npc/nurse()
 	new /mob/npc/prop/log()

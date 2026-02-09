@@ -1,6 +1,5 @@
 // engine.js - Core do Cliente (Input, Math, Graphics)
 
-// --- 1. MÓDULO DE MATEMÁTICA E ANIMAÇÃO ---
 function lerp(start, end, t) { return start * (1 - t) + end * t; }
 function mod(n, m) { return ((n % m) + m) % m; }
 function lerpAngle(start, end, t) {
@@ -9,9 +8,8 @@ function lerpAngle(start, end, t) {
     return start + shortestDiff * t;
 }
 
-// CORREÇÃO AQUI: Verificação de segurança (!targetRot)
 function lerpLimbRotation(limb, targetRot, speed) {
-    if(!limb || !targetRot) return; // Se não houver membro ou rotação alvo, ignora
+    if(!limb || !targetRot) return;
     limb.rotation.x = lerp(limb.rotation.x, targetRot.x, speed);
     limb.rotation.y = lerp(limb.rotation.y, targetRot.y, speed);
     limb.rotation.z = lerp(limb.rotation.z, targetRot.z, speed);
@@ -19,8 +17,6 @@ function lerpLimbRotation(limb, targetRot, speed) {
 
 const RAD = Math.PI / 180;
 
-// POSES ARTICULADAS
-// Nota: Poses de ataque definem apenas o que muda. O resto usará o DEFAULT no game.js
 const STANCES = {
     DEFAULT: { 
         rightArm: { x: 0, y: 0, z: 0 }, rightForeArm: { x: 0, y: 0, z: 0 },
@@ -67,10 +63,28 @@ const STANCES = {
     GUN_ATK: { 
         rightArm: { x: -90 * RAD, y: 0, z: 0 }, rightForeArm: { x: 0, y: 0, z: 0 },
         leftArm:  { x: 0, y: 0, z: 0 }, leftForeArm:  { x: 0, y: 0, z: 0 }
+    },
+    // --- CORREÇÃO DAS POSES DE DESCANSO ---
+    REST_MALE: {
+        // Perna ESQUERDA (Pé no chão): Coxa para frente (1.4), Canela para trás compensando (-1.4)
+        leftLeg:  { x: 1.4, y: 0, z: 0 }, leftShin:  { x: -1.4, y: 0, z: 0 }, 
+        // Perna DIREITA (Joelho no chão): Coxa reta (0), Canela para trás (1.6 = 90 graus)
+        rightLeg: { x: 0, y: 0, z: 0 }, rightShin: { x: 1.6, y: 0, z: 0 },
+        
+        rightArm: { x: 0, y: 0, z: 0 }, rightForeArm: { x: -0.5, y: 0, z: 0 },
+        leftArm:  { x: 0, y: 0, z: 0 }, leftForeArm:  { x: -0.5, y: 0, z: 0 }
+    },
+    REST_FEMALE: {
+        // Seiza: Ambas as pernas dobradas sob o corpo
+        // Coxas retas (0), Canelas totalmente para trás (2.5)
+        rightLeg: { x: 0, y: 0, z: 0 }, rightShin: { x: 2.5, y: 0, z: 0 },
+        leftLeg:  { x: 0, y: 0, z: 0 }, leftShin:  { x: 2.5, y: 0, z: 0 },
+        
+        rightArm: { x: -0.5, y: 0, z: 0 }, rightForeArm: { x: -0.5, y: 0, z: 0 },
+        leftArm:  { x: -0.5, y: 0, z: 0 }, leftForeArm:  { x: -0.5, y: 0, z: 0 }
     }
 };
 
-// --- 2. MÓDULO DE INPUT ---
 const Input = {
     keys: { arrowup: false, arrowdown: false, arrowleft: false, arrowright: false, " ": false },
     mouseRight: false,
@@ -106,7 +120,6 @@ const Input = {
     }
 };
 
-// --- 3. MÓDULO ENGINE GRÁFICA ---
 const Engine = {
     scene: null,
     camera: null,

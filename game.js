@@ -346,7 +346,6 @@ function receberDadosMultiplayer(json) {
         }
     }
     if(isCharacterReady) {
-        // --- 1. ITENS NO CHÃO (RESTAURADO) ---
         const serverGroundItems = packet.ground || [];
         const seenItems = new Set();
         let closestDist = 999;
@@ -374,7 +373,6 @@ function receberDadosMultiplayer(json) {
             }
         }
 
-        // --- 2. INTERAÇÃO DICA (RESTAURADO) ---
         const hint = document.getElementById('interaction-hint');
         let npcNear = false;
         for(let id in otherPlayers) {
@@ -388,8 +386,11 @@ function receberDadosMultiplayer(json) {
         else if(npcNear) { hint.innerText = "[X] Interagir"; hint.style.display = 'block'; }
         else hint.style.display = 'none';
 
-        // --- 3. DADOS DO PERSONAGEM (RESTAURADO) ---
         const myData = packet.others[myID]; isResting = me.rest; isFainted = me.ft; 
+        
+        // ATUALIZA GÊNERO DO JOGADOR LOCAL
+        if(me.gen) playerGroup.userData.gender = me.gen;
+
         if(myData && myData.it !== undefined) {
             if(playerGroup.userData.lastItem !== myData.it) {
                 CharFactory.equipItem(playerGroup, myData.it); playerGroup.userData.lastItem = myData.it;
@@ -477,13 +478,14 @@ function receberDadosMultiplayer(json) {
                 const newChar = CharFactory.createCharacter(pData.skin, pData.cloth);
                 newChar.position.set(pData.x, pData.y, pData.z); Engine.scene.add(newChar); Engine.collidables.push(newChar);
                 const label = document.createElement('div'); label.className = 'name-label'; label.innerHTML = `<div class="name-text">${pData.name||"?"}</div><div class="mini-hp-bg"><div class="mini-hp-fill"></div></div>`; document.getElementById('labels-container').appendChild(label);
-                otherPlayers[id] = { mesh: newChar, label: label, hpFill: label.querySelector('.mini-hp-fill'), startX: pData.x, startY: pData.y, startZ: pData.z, startRot: pData.rot, targetX: pData.x, targetY: pData.y, targetZ: pData.z, targetRot: pData.rot, lastPacketTime: now, lerpDuration: 180, attacking: pData.a, attackType: pData.at, resting: pData.rest, fainted: pData.ft, lastItem: "", isNPC: (pData.npc === 1), npcType: pData.type };
+                otherPlayers[id] = { mesh: newChar, label: label, hpFill: label.querySelector('.mini-hp-fill'), startX: pData.x, startY: pData.y, startZ: pData.z, startRot: pData.rot, targetX: pData.x, targetY: pData.y, targetZ: pData.z, targetRot: pData.rot, lastPacketTime: now, lerpDuration: 180, attacking: pData.a, attackType: pData.at, resting: pData.rest, fainted: pData.ft, lastItem: "", isNPC: (pData.npc === 1), npcType: pData.type, gender: pData.gen };
             }
         } else {
             const other = otherPlayers[id];
             other.startX = other.mesh.position.x; other.startY = other.mesh.position.y; other.startZ = other.mesh.position.z; other.startRot = other.mesh.rotation.y;
             other.targetX = pData.x; other.targetY = pData.y; other.targetZ = pData.z; other.targetRot = pData.rot; other.lastPacketTime = now;
             other.attacking = pData.a; other.attackType = pData.at; other.resting = pData.rest; other.fainted = pData.ft;
+            if(pData.gen) other.gender = pData.gen;
             
             if(pData.name && other.label.querySelector('.name-text').innerText !== pData.name) {
                 other.label.querySelector('.name-text').innerText = pData.name;
@@ -511,7 +513,23 @@ function animate() {
         if(isFainted) {
             playerGroup.rotation.x = lerp(playerGroup.rotation.x, -Math.PI/2, 0.1); playerGroup.position.y = lerp(playerGroup.position.y, groundHeight + 0.2, 0.1);
         } else if(isResting) {
-            playerGroup.rotation.x = lerp(playerGroup.rotation.x, 0, 0.1); playerGroup.position.y = lerp(playerGroup.position.y, groundHeight - 0.75, 0.1);
+            // ANIMAÇÃO DE DESCANSAR BASEADA NO GÊNERO
+            playerGroup.rotation.x = lerp(playerGroup.rotation.x, 0, 0.1); 
+            // Altura corrigida para não entrar no chão (Homem 0.1, Mulher 0.05)
+            const yOffset = (playerGroup.userData.gender === "Female") ? 0.05 : 0.1; 
+            playerGroup.position.y = lerp(playerGroup.position.y, groundHeight + yOffset, 0.1);
+            
+            // Pega a pose correta
+            const restStance = (playerGroup.userData.gender === "Female") ? STANCES.REST_FEMALE : STANCES.REST_MALE;
+            const limbs = playerGroup.userData.limbs;
+            if(limbs && restStance) {
+                const spd = 0.1;
+                lerpLimbRotation(limbs.leftLeg, restStance.leftLeg, spd); lerpLimbRotation(limbs.rightLeg, restStance.rightLeg, spd);
+                lerpLimbRotation(limbs.leftShin, restStance.leftShin, spd); lerpLimbRotation(limbs.rightShin, restStance.rightShin, spd);
+                lerpLimbRotation(limbs.leftArm, restStance.leftArm, spd); lerpLimbRotation(limbs.rightArm, restStance.rightArm, spd);
+                lerpLimbRotation(limbs.leftForeArm, restStance.leftForeArm, spd); lerpLimbRotation(limbs.rightForeArm, restStance.rightForeArm, spd);
+            }
+
         } else {
             let moveX = 0, moveZ = 0, moving = false; let speed = currentMoveSpeed * (isRunning ? 1.5 : 1); 
             const sin = Math.sin(Input.camAngle); const cos = Math.cos(Input.camAngle);
@@ -536,7 +554,6 @@ function animate() {
             const limbs = playerGroup.userData.limbs;
             if(limbs) {
                 let targetStance = STANCES[charState] || STANCES.DEFAULT;
-                // CORREÇÃO: Alias para DEFAULT para usar em fallbacks
                 const def = STANCES.DEFAULT; 
 
                 if(moving && !isJumping && !isAttacking) {
@@ -552,7 +569,6 @@ function animate() {
                         limbs.leftForeArm.rotation.x = -0.2;
                         limbs.rightForeArm.rotation.x = -0.2;
                     } else {
-                        // FALLBACK: Se targetStance não tiver braços (ex: só tem pernas), usa DEFAULT
                         lerpLimbRotation(limbs.leftArm, targetStance.leftArm || def.leftArm, 0.2);
                         lerpLimbRotation(limbs.rightArm, targetStance.rightArm || def.rightArm, 0.2);
                         lerpLimbRotation(limbs.leftForeArm, targetStance.leftForeArm || def.leftForeArm, 0.2);
@@ -560,7 +576,6 @@ function animate() {
                     }
                 } else {
                     const spd = isAttacking ? 0.4 : 0.1;
-                    // FALLBACK COMPLETO: Garante que NUNCA passe undefined
                     lerpLimbRotation(limbs.leftArm, targetStance.leftArm || def.leftArm, spd);
                     lerpLimbRotation(limbs.rightArm, targetStance.rightArm || def.rightArm, spd);
                     lerpLimbRotation(limbs.leftForeArm, targetStance.leftForeArm || def.leftForeArm, spd);
@@ -587,26 +602,43 @@ function animate() {
         const limbs = mesh.userData.limbs;
         if(limbs) {
             let remoteStance = STANCES.DEFAULT;
-            if(other.attacking) {
-                if(other.attackType === "sword") remoteStance = STANCES.SWORD_ATK_1; else if(other.attackType === "fist") remoteStance = STANCES.FIST_ATK; else if(other.attackType === "kick") remoteStance = STANCES.KICK_ATK; else if(other.attackType === "gun") remoteStance = STANCES.GUN_ATK;
-                // FALLBACK TAMBÉM PARA OUTROS JOGADORES
-                const def = STANCES.DEFAULT;
-                lerpLimbRotation(limbs.leftArm, remoteStance.leftArm || def.leftArm, 0.4); lerpLimbRotation(limbs.rightArm, remoteStance.rightArm || def.rightArm, 0.4);
-                lerpLimbRotation(limbs.leftForeArm, remoteStance.leftForeArm || def.leftForeArm, 0.4); lerpLimbRotation(limbs.rightForeArm, remoteStance.rightForeArm || def.rightForeArm, 0.4);
-                
-                // Anima pernas se a stance permitir, senão usa default
-                lerpLimbRotation(limbs.leftLeg, remoteStance.leftLeg || def.leftLeg, 0.4); 
-                lerpLimbRotation(limbs.rightLeg, remoteStance.rightLeg || def.rightLeg, 0.4);
-            } else if(isMoving) {
-                limbs.leftLeg.rotation.x = Math.sin(animTime)*0.8; limbs.rightLeg.rotation.x = -Math.sin(animTime)*0.8;
-                limbs.leftShin.rotation.x = (limbs.leftLeg.rotation.x > 0) ? limbs.leftLeg.rotation.x : 0;
-                limbs.rightShin.rotation.x = (limbs.rightLeg.rotation.x > 0) ? limbs.rightLeg.rotation.x : 0;
-                limbs.leftArm.rotation.x = -Math.sin(animTime)*0.8; limbs.rightArm.rotation.x = Math.sin(animTime)*0.8;
+            const def = STANCES.DEFAULT;
+
+            if (other.fainted) {
+                mesh.rotation.x = lerp(mesh.rotation.x, -Math.PI/2, 0.1); 
+                mesh.position.y = lerp(mesh.position.y, 0.2, 0.1);
+            }
+            else if (other.resting) {
+                // ANIMAÇÃO DE DESCANSO (Outros Players)
+                mesh.rotation.x = lerp(mesh.rotation.x, 0, 0.1);
+                const yOffset = (other.gender === "Female") ? 0.05 : 0.1;
+                mesh.position.y = lerp(mesh.position.y, other.targetY + yOffset, 0.1); // Usa targetY base + offset
+
+                const restStance = (other.gender === "Female") ? STANCES.REST_FEMALE : STANCES.REST_MALE;
+                if(restStance) {
+                    const spd = 0.1;
+                    lerpLimbRotation(limbs.leftLeg, restStance.leftLeg, spd); lerpLimbRotation(limbs.rightLeg, restStance.rightLeg, spd);
+                    lerpLimbRotation(limbs.leftShin, restStance.leftShin, spd); lerpLimbRotation(limbs.rightShin, restStance.rightShin, spd);
+                    lerpLimbRotation(limbs.leftArm, restStance.leftArm, spd); lerpLimbRotation(limbs.rightArm, restStance.rightArm, spd);
+                    lerpLimbRotation(limbs.leftForeArm, restStance.leftForeArm, spd); lerpLimbRotation(limbs.rightForeArm, restStance.rightForeArm, spd);
+                }
             } else {
-                // IDLE
-                lerpLimbRotation(limbs.leftLeg, STANCES.DEFAULT.leftLeg, 0.1); lerpLimbRotation(limbs.rightLeg, STANCES.DEFAULT.rightLeg, 0.1);
-                lerpLimbRotation(limbs.leftShin, STANCES.DEFAULT.leftShin, 0.1); lerpLimbRotation(limbs.rightShin, STANCES.DEFAULT.rightShin, 0.1);
-                lerpLimbRotation(limbs.leftArm, STANCES.DEFAULT.leftArm, 0.1); lerpLimbRotation(limbs.rightArm, STANCES.DEFAULT.rightArm, 0.1);
+                // ... (Código de animação normal mantido) ...
+                if(other.attacking) {
+                    if(other.attackType === "sword") remoteStance = STANCES.SWORD_ATK_1; else if(other.attackType === "fist") remoteStance = STANCES.FIST_ATK; else if(other.attackType === "kick") remoteStance = STANCES.KICK_ATK; else if(other.attackType === "gun") remoteStance = STANCES.GUN_ATK;
+                    lerpLimbRotation(limbs.leftArm, remoteStance.leftArm || def.leftArm, 0.4); lerpLimbRotation(limbs.rightArm, remoteStance.rightArm || def.rightArm, 0.4);
+                    lerpLimbRotation(limbs.leftForeArm, remoteStance.leftForeArm || def.leftForeArm, 0.4); lerpLimbRotation(limbs.rightForeArm, remoteStance.rightForeArm || def.rightForeArm, 0.4);
+                    lerpLimbRotation(limbs.leftLeg, remoteStance.leftLeg || def.leftLeg, 0.4); lerpLimbRotation(limbs.rightLeg, remoteStance.rightLeg || def.rightLeg, 0.4);
+                } else if(isMoving) {
+                    limbs.leftLeg.rotation.x = Math.sin(animTime)*0.8; limbs.rightLeg.rotation.x = -Math.sin(animTime)*0.8;
+                    limbs.leftShin.rotation.x = (limbs.leftLeg.rotation.x > 0) ? limbs.leftLeg.rotation.x : 0;
+                    limbs.rightShin.rotation.x = (limbs.rightLeg.rotation.x > 0) ? limbs.rightLeg.rotation.x : 0;
+                    limbs.leftArm.rotation.x = -Math.sin(animTime)*0.8; limbs.rightArm.rotation.x = Math.sin(animTime)*0.8;
+                } else {
+                    lerpLimbRotation(limbs.leftLeg, STANCES.DEFAULT.leftLeg, 0.1); lerpLimbRotation(limbs.rightLeg, STANCES.DEFAULT.rightLeg, 0.1);
+                    lerpLimbRotation(limbs.leftShin, STANCES.DEFAULT.leftShin, 0.1); lerpLimbRotation(limbs.rightShin, STANCES.DEFAULT.rightShin, 0.1);
+                    lerpLimbRotation(limbs.leftArm, STANCES.DEFAULT.leftArm, 0.1); lerpLimbRotation(limbs.rightArm, STANCES.DEFAULT.rightArm, 0.1);
+                }
             }
         }
         const tempV = new THREE.Vector3(mesh.position.x, mesh.position.y + 2, mesh.position.z); tempV.project(Engine.camera);
