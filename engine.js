@@ -27,7 +27,7 @@ const STANCES = {
         torso:    { x: 0, y: 0, z: 0 }
     },
     
-    // --- BOXE (SOCAS) ---
+    // --- BOXE ---
     FIST_IDLE: { 
         torso:    { x: 0.1, y: 0, z: 0 }, 
         rightArm: { x: -0.8, y: 0.5, z: 0 }, rightForeArm: { x: -2.0, y: 0, z: 0 }, 
@@ -55,54 +55,120 @@ const STANCES = {
         rightLeg: { x: -0.5, y: 0, z: 0 }, rightShin: { x: 1.0, y: 0, z: 0 }
     },
 
-    // --- KICKBOXING (CHUTES) ---
+    // --- KICKBOXING ---
     KICK_WINDUP: {
-        torso: { x: -0.2, y: 0, z: 0 }, // Inclina pra trás
-        rightLeg: { x: 0.5, y: 0, z: 0 }, rightShin: { x: 1.0, y: 0, z: 0 }, // Prepara perna
+        torso: { x: -0.2, y: 0, z: 0 },
+        rightLeg: { x: 0.5, y: 0, z: 0 }, rightShin: { x: 1.0, y: 0, z: 0 }, 
         leftLeg:  { x: 0, y: 0, z: 0 }, leftShin: { x: 0, y: 0, z: 0 },
-        // Guarda alta para equilíbrio
         rightArm: { x: -0.8, y: 0.5, z: 0 }, rightForeArm: { x: -2.0, y: 0, z: 0 }, 
         leftArm:  { x: -0.8, y: -0.5, z: 0 }, leftForeArm:  { x: -2.0, y: 0, z: 0 }
     },
-    // HIT 1: LOW KICK (DIREITA)
     KICK_COMBO_1: {
-        torso:    { x: 0, y: 0.5, z: -0.2 }, // Gira tronco pra ajudar
-        rightLeg: { x: -0.8, y: 0, z: 0 }, rightShin: { x: 0, y: 0, z: 0 }, // Chute baixo curto
+        torso:    { x: 0, y: 0.5, z: -0.2 }, 
+        rightLeg: { x: -0.8, y: 0, z: 0 }, rightShin: { x: 0, y: 0, z: 0 }, 
         leftLeg:  { x: 0, y: 0, z: 0 }, leftShin: { x: 0, y: 0, z: 0 },
-        // Braços compensam balanço
         rightArm: { x: 0.5, y: 0, z: 0 }, rightForeArm: { x: 0, y: 0, z: 0 }, 
         leftArm:  { x: -0.8, y: -0.5, z: 0 }, leftForeArm:  { x: -2.0, y: 0, z: 0 }
     },
-    // HIT 2: MID KICK (ESQUERDA)
     KICK_COMBO_2: {
         torso:    { x: 0, y: -0.5, z: 0.2 },
-        leftLeg:  { x: -1.6, y: 0, z: 0 }, leftShin: { x: 0, y: 0, z: 0 }, // Chute médio
+        leftLeg:  { x: -1.6, y: 0, z: 0 }, leftShin: { x: 0, y: 0, z: 0 }, 
         rightLeg: { x: 0, y: 0, z: 0 }, rightShin: { x: 0, y: 0, z: 0 },
         rightArm: { x: -0.8, y: 0.5, z: 0 }, rightForeArm: { x: -2.0, y: 0, z: 0 },
         leftArm:  { x: 0.5, y: 0, z: 0 }, leftForeArm:  { x: 0, y: 0, z: 0 }
     },
-    // HIT 3: HIGH KICK (DIREITA)
     KICK_COMBO_3: {
-        torso:    { x: -0.3, y: 0.8, z: -0.4 }, // Inclina muito pra trás e gira
-        rightLeg: { x: -2.2, y: 0, z: 0 }, rightShin: { x: 0, y: 0, z: 0 }, // Chute alto
-        leftLeg:  { x: 0.2, y: 0, z: 0 }, leftShin: { x: 0.5, y: 0, z: 0 }, // Perna de apoio flexiona
-        rightArm: { x: 1.0, y: 0, z: 0 }, rightForeArm: { x: 0, y: 0, z: 0 }, // Braço de alavanca
+        torso:    { x: -0.3, y: 0.8, z: -0.4 }, 
+        rightLeg: { x: -2.2, y: 0, z: 0 }, rightShin: { x: 0, y: 0, z: 0 }, 
+        leftLeg:  { x: 0.2, y: 0, z: 0 }, leftShin: { x: 0.5, y: 0, z: 0 }, 
+        rightArm: { x: 1.0, y: 0, z: 0 }, rightForeArm: { x: 0, y: 0, z: 0 }, 
         leftArm:  { x: -0.8, y: -0.5, z: 0 }, leftForeArm:  { x: -2.0, y: 0, z: 0 }
     },
 
-    // --- OUTROS ---
+    // --- ESPADA (HACK 'N SLASH) ---
     SWORD_IDLE: { 
-        rightArm: { x: -20 * RAD, y: 0, z: 10 * RAD }, rightForeArm: { x: -90 * RAD, y: 0, z: 0 }, 
-        leftArm:  { x: 0, y: 0, z: -10 * RAD }, leftForeArm:  { x: 0, y: 0, z: 0 }
+        rightArm: { x: -20 * RAD, y: 0, z: 10 * RAD }, 
+        rightForeArm: { x: -90 * RAD, y: 0, z: 0 },
+
+        leftArm:  { x: 0, y: 0, z: -10 * RAD }, 
+        leftForeArm: { x: 0, y: 0, z: 0 },
+
+        // Pernas em base relaxada
+        rightLeg: { x: 5 * RAD, y: 0, z: 0 }, 
+        rightShin:{ x: -5 * RAD, y: 0, z: 0 },
+
+        leftLeg:  { x: -5 * RAD, y: 0, z: 0 }, 
+        leftShin: { x: 5 * RAD, y: 0, z: 0 }
     },
     SWORD_WINDUP: { 
-        rightArm: { x: -160 * RAD, y: 0, z: 20 * RAD }, rightForeArm: { x: -40 * RAD, y: 0, z: 0 },
-        leftArm:  { x: 40 * RAD, y: 0, z: 0 }, leftForeArm:  { x: 0, y: 0, z: 0 }
+        torso: { x: 0, y: 45 * RAD, z: 5 * RAD },
+
+        rightArm: { x: -45 * RAD, y: 65 * RAD, z: -15 * RAD },
+        rightForeArm: { x: -25 * RAD, y: 10 * RAD, z: 0 },
+
+        leftArm:  { x: 35 * RAD, y: -10 * RAD, z: 10 * RAD },
+        leftForeArm: { x: 0, y: 0, z: 0 },
+
+        // Peso vai para perna direita
+        rightLeg: { x: -15 * RAD, y: 0, z: 0 },
+        rightShin:{ x: 20 * RAD, y: 0, z: 0 },
+
+        leftLeg:  { x: 10 * RAD, y: 0, z: 0 },
+        leftShin: { x: -10 * RAD, y: 0, z: 0 }
     },
-    SWORD_ATK_1: { 
-        rightArm: { x: 40 * RAD, y: -20 * RAD, z: -20 * RAD }, rightForeArm: { x: 0, y: 0, z: 0 },
-        leftArm:  { x: -30 * RAD, y: 0, z: 0 }, leftForeArm:  { x: -30 * RAD, y: 0, z: 0 }
+    // HIT 1: CORTE DIAGONAL (Direita -> Esquerda)
+    SWORD_COMBO_1: {
+        torso: { x: 0, y: -25 * RAD, z: 12 * RAD },
+
+        rightArm: { x: -15 * RAD, y: -80 * RAD, z: -55 * RAD },
+        rightForeArm: { x: 5 * RAD, y: -55 * RAD, z: -20 * RAD },
+
+        leftArm:  { x: 25 * RAD, y: 20 * RAD, z: 25 * RAD },
+        leftForeArm: { x: 0, y: 0, z: 0 },
+
+        // Base abre, impacto sólido
+        rightLeg: { x: 10 * RAD, y: 0, z: 0 },
+        rightShin:{ x: -15 * RAD, y: 0, z: 0 },
+
+        leftLeg:  { x: -20 * RAD, y: 0, z: 0 },
+        leftShin: { x: 25 * RAD, y: 0, z: 0 }
     },
+    // HIT 2: CORTE HORIZONTAL ABERTO (Esquerda -> Direita)
+    SWORD_COMBO_2: {
+        torso: { x: 0, y: 40 * RAD, z: -10 * RAD },
+
+        rightArm: { x: -10 * RAD, y: 130 * RAD, z: -45 * RAD },
+        rightForeArm: { x: 10 * RAD, y: 60 * RAD, z: -10 * RAD },
+
+        leftArm:  { x: -30 * RAD, y: -30 * RAD, z: 15 * RAD },
+        leftForeArm: { x: -20 * RAD, y: 0, z: 0 },
+
+        // Rotação passa pelas pernas
+        rightLeg: { x: -5 * RAD, y: 0, z: 0 },
+        rightShin:{ x: 10 * RAD, y: 0, z: 0 },
+
+        leftLeg:  { x: -25 * RAD, y: 0, z: 0 },
+        leftShin: { x: 30 * RAD, y: 0, z: 0 }
+    },
+    // HIT 3: CORTE FINALIZADOR (CIMA -> BAIXO)
+    SWORD_COMBO_3: {
+        torso: { x: 0, y: -25 * RAD, z: 12 * RAD },
+
+        rightArm: { x: -15 * RAD, y: -80 * RAD, z: -55 * RAD },
+        rightForeArm: { x: 5 * RAD, y: -55 * RAD, z: -20 * RAD },
+
+        leftArm:  { x: 25 * RAD, y: 20 * RAD, z: 25 * RAD },
+        leftForeArm: { x: 0, y: 0, z: 0 },
+
+        // Base abre, impacto sólido
+        rightLeg: { x: 10 * RAD, y: 0, z: 0 },
+        rightShin:{ x: -15 * RAD, y: 0, z: 0 },
+
+        leftLeg:  { x: -20 * RAD, y: 0, z: 0 },
+        leftShin: { x: 25 * RAD, y: 0, z: 0 }
+    },
+
+
     GUN_IDLE: {
         rightArm: { x: -70 * RAD, y: 0, z: 0 }, rightForeArm: { x: -20 * RAD, y: 0, z: 0 },
         leftArm:  { x: 0, y: 0, z: 0 }, leftForeArm:  { x: 0, y: 0, z: 0 }
