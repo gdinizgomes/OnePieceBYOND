@@ -23,8 +23,12 @@ let currentJumpForce = 0.20;
 // --- SISTEMA DE COMBOS ---
 let lastCombatActionTime = 0; 
 let isAttacking = false; 
+// Soco
 let fistComboStep = 0; 
 let lastFistAttackTime = 0;
+// Chute (NOVO)
+let kickComboStep = 0;
+let lastKickAttackTime = 0;
 
 let animTime = 0; 
 let isJumping = false; 
@@ -271,11 +275,16 @@ function fireProjectile(projectileDef, isMine) {
     activeProjectiles.push({ mesh: bullet, dirX: sin, dirZ: cos, speed: projectileDef.speed, distTraveled: 0, maxDist: projectileDef.range || 10, isMine: isMine });
 }
 
-function spawnHitbox(size, forwardOffset, lifetime, customData) {
+// NOVA FUNÇÃO COM SUPORTE A DADOS CUSTOMIZADOS (E OFFSET Y)
+function spawnHitbox(size, forwardOffset, lifetime, customData, yOffset) {
     const geo = new THREE.BoxGeometry(size.x, size.y, size.z);
     const mat = new THREE.MeshBasicMaterial({ color: 0xFF0000, wireframe: true, transparent: true, opacity: 0.3 });
     const hitbox = new THREE.Mesh(geo, mat);
-    hitbox.position.copy(playerGroup.position); hitbox.position.y += 1.0; 
+    hitbox.position.copy(playerGroup.position); 
+    
+    // Altura customizável (Padrão 1.0)
+    hitbox.position.y += (yOffset !== undefined ? yOffset : 1.0); 
+
     const bodyRot = playerGroup.rotation.y; const sin = Math.sin(bodyRot); const cos = Math.cos(bodyRot);
     hitbox.position.x += sin * forwardOffset; hitbox.position.z += cos * forwardOffset; hitbox.rotation.y = bodyRot;
     Engine.scene.add(hitbox);
@@ -304,9 +313,7 @@ function checkCollisions(attackerBox, type, objRef) {
         if (attackerBox.intersectsBox(tempBoxTarget)) {
             let extra = "";
             if(type === "melee" && objRef.data && objRef.data.step) extra = `&combo=${objRef.data.step}`;
-            
             if(typeof BYOND_REF !== 'undefined') window.location.href = `byond://?src=${BYOND_REF}&action=register_hit&target_ref=${id}&hit_type=${type}${extra}`;
-            
             if(type === "projectile") { Engine.scene.remove(objRef.mesh); objRef.distTraveled = 99999; } else if(type === "melee") { objRef.hasHit.push(id); objRef.mesh.material.color.setHex(0xFFFFFF); }
         }
     }
@@ -330,35 +337,33 @@ function performAttack(type) {
     let atkStance = "SWORD_ATK_1"; 
     let idleStance = "SWORD_IDLE";
 
-    // --- LÓGICA DE COMBO (SOCO) ---
+    // --- COMBO SOCO ---
     if(type === "fist") {
         if(Date.now() - lastFistAttackTime > 600) fistComboStep = 0;
-        
-        fistComboStep++;
-        if(fistComboStep > 3) fistComboStep = 1; 
-        
+        fistComboStep++; if(fistComboStep > 3) fistComboStep = 1; 
         lastFistAttackTime = Date.now();
+        windupStance = "FIST_WINDUP"; atkStance = "FIST_COMBO_" + fistComboStep; idleStance = "FIST_IDLE";
         
-        windupStance = "FIST_WINDUP";
-        atkStance = "FIST_COMBO_" + fistComboStep; 
-        idleStance = "FIST_IDLE";
-
-        // --- MOVIMENTO PARA FRENTE ---
-        const sin = Math.sin(playerGroup.rotation.y);
-        const cos = Math.cos(playerGroup.rotation.y);
-        
-        // CORREÇÃO: Dash aumentado
+        // Dash Soco
         let pushDist = (fistComboStep === 3) ? 1.5 : 0.5; 
-        
-        const nextX = playerGroup.position.x + sin * pushDist;
-        const nextZ = playerGroup.position.z + cos * pushDist;
-        
-        if(!checkCollision(nextX, playerGroup.position.y, nextZ)) {
-            playerGroup.position.x = nextX;
-            playerGroup.position.z = nextZ;
-        }
+        const sin = Math.sin(playerGroup.rotation.y); const cos = Math.cos(playerGroup.rotation.y);
+        const nextX = playerGroup.position.x + sin * pushDist; const nextZ = playerGroup.position.z + cos * pushDist;
+        if(!checkCollision(nextX, playerGroup.position.y, nextZ)) { playerGroup.position.x = nextX; playerGroup.position.z = nextZ; }
     }
-    else if(type === "kick") { windupStance = "KICK_WINDUP"; atkStance = "KICK_ATK"; idleStance = "FIST_IDLE"; }
+    // --- COMBO CHUTE (NOVO) ---
+    else if(type === "kick") { 
+        if(Date.now() - lastKickAttackTime > 600) kickComboStep = 0;
+        kickComboStep++; if(kickComboStep > 3) kickComboStep = 1;
+        lastKickAttackTime = Date.now();
+        
+        windupStance = "KICK_WINDUP"; atkStance = "KICK_COMBO_" + kickComboStep; idleStance = "FIST_IDLE";
+
+        // Dash Chute (Menor no 1 e 2, Maior no 3)
+        let pushDist = (kickComboStep === 3) ? 1.2 : 0.4;
+        const sin = Math.sin(playerGroup.rotation.y); const cos = Math.cos(playerGroup.rotation.y);
+        const nextX = playerGroup.position.x + sin * pushDist; const nextZ = playerGroup.position.z + cos * pushDist;
+        if(!checkCollision(nextX, playerGroup.position.y, nextZ)) { playerGroup.position.x = nextX; playerGroup.position.z = nextZ; }
+    }
     else if(type === "sword") { windupStance = "SWORD_WINDUP"; atkStance = "SWORD_ATK_1"; idleStance = "SWORD_IDLE"; }
     else if(type === "gun") { windupStance = "GUN_IDLE"; atkStance = "GUN_ATK"; idleStance = "GUN_IDLE"; }
     
@@ -370,7 +375,12 @@ function performAttack(type) {
             if(fistComboStep === 3) spawnHitbox({x:1.5, y:1.5, z:1.5}, 1.5, 200, {step: 3}); 
             else spawnHitbox({x:1, y:1, z:1}, 1.0, 200, {step: fistComboStep}); 
         }
-        else if (type === "kick") spawnHitbox({x:1.2, y:1, z:1.2}, 1.2, 300);
+        // --- HITBOX CHUTE (ALTURA VARIÁVEL) ---
+        else if (type === "kick") {
+            if(kickComboStep === 1) spawnHitbox({x:1.2, y:0.8, z:1.2}, 1.0, 300, {step: 1}, 0.5); // Baixo
+            else if(kickComboStep === 2) spawnHitbox({x:1.2, y:1.0, z:1.2}, 1.2, 300, {step: 2}, 1.0); // Médio
+            else spawnHitbox({x:1.5, y:1.2, z:1.5}, 1.4, 300, {step: 3}, 1.7); // Alto
+        }
         else if (type === "sword") spawnHitbox({x:2.5, y:1, z:2.5}, 1.5, 300);
         
         if(typeof BYOND_REF !== 'undefined') { 
@@ -689,13 +699,9 @@ function animate() {
                 }
             } else {
                 if(other.attacking) {
-                    // Aqui precisaríamos saber o passo do combo do outro player.
-                    // Como ainda não transmitimos "comboStep" pela rede,
-                    // ele vai usar uma animação genérica ou a última configurada.
-                    // Para simplificar, vou manter a lógica antiga, mas usando FIST_COMBO_1 como padrão
                     if(other.attackType === "sword") remoteStance = STANCES.SWORD_ATK_1; 
-                    else if(other.attackType === "fist") remoteStance = STANCES.FIST_COMBO_1; // Usa o soco 1
-                    else if(other.attackType === "kick") remoteStance = STANCES.KICK_ATK; 
+                    else if(other.attackType === "fist") remoteStance = STANCES.FIST_COMBO_1;
+                    else if(other.attackType === "kick") remoteStance = STANCES.KICK_COMBO_1; // Usa chute 1 como padrão pra outros
                     else if(other.attackType === "gun") remoteStance = STANCES.GUN_ATK;
                     
                     if(remoteStance.torso) lerpLimbRotation(limbs.torso, remoteStance.torso, 0.4);

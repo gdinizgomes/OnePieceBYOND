@@ -17,7 +17,7 @@ function lerpLimbRotation(limb, targetRot, speed) {
 
 const RAD = Math.PI / 180;
 
-// POSES ARTICULADAS (Correção de mira "Pra Dentro")
+// POSES ARTICULADAS
 const STANCES = {
     DEFAULT: { 
         rightArm: { x: 0, y: 0, z: 0 }, rightForeArm: { x: 0, y: 0, z: 0 },
@@ -27,7 +27,7 @@ const STANCES = {
         torso:    { x: 0, y: 0, z: 0 }
     },
     
-    // --- BOXE CORRIGIDO (SOCA NO CENTRO) ---
+    // --- BOXE (SOCAS) ---
     FIST_IDLE: { 
         torso:    { x: 0.1, y: 0, z: 0 }, 
         rightArm: { x: -0.8, y: 0.5, z: 0 }, rightForeArm: { x: -2.0, y: 0, z: 0 }, 
@@ -38,27 +38,56 @@ const STANCES = {
         rightArm: { x: -0.5, y: 0.5, z: 0 }, rightForeArm: { x: -2.2, y: 0, z: 0 },
         leftArm:  { x: -0.5, y: -0.5, z: 0 }, leftForeArm:  { x: -2.2, y: 0, z: 0 }
     },
-    // HIT 1: JAB ESQUERDA (Cruzando pro centro)
     FIST_COMBO_1: {
-        torso:    { x: 0, y: -0.4, z: 0 }, // Gira tronco pra Direita
-        // Braço Esq: X=-1.5 (frente), Y=-0.5 (foca no centro/direita)
+        torso:    { x: 0, y: -0.4, z: 0 }, 
         leftArm:  { x: -1.5, y: -0.5, z: 0 },   leftForeArm:  { x: 0, y: 0, z: 0 },
         rightArm: { x: -0.8, y: 0.5, z: 0 }, rightForeArm: { x: -2.0, y: 0, z: 0 } 
     },
-    // HIT 2: DIRETO DIREITA (Cruzando pro centro)
     FIST_COMBO_2: {
-        torso:    { x: 0, y: 0.4, z: 0 }, // Gira tronco pra Esquerda
-        // Braço Dir: X=-1.5 (frente), Y=0.5 (foca no centro/esquerda)
+        torso:    { x: 0, y: 0.4, z: 0 }, 
         rightArm: { x: -1.5, y: 0.5, z: 0 },   rightForeArm: { x: 0, y: 0, z: 0 },
         leftArm:  { x: -0.8, y: -0.5, z: 0 }, leftForeArm:  { x: -2.0, y: 0, z: 0 } 
     },
-    // HIT 3: FINALIZADOR (No meio)
     FIST_COMBO_3: {
         torso:    { x: 0.2, y: 0.8, z: 0 }, 
-        // Braço Dir: Bem esticado no centro
         rightArm: { x: -1.4, y: 0.2, z: 0 }, rightForeArm: { x: 0, y: 0, z: 0 },
         leftArm:  { x: -0.5, y: -0.5, z: 0 }, leftForeArm:  { x: -2.2, y: 0, z: 0 },
         rightLeg: { x: -0.5, y: 0, z: 0 }, rightShin: { x: 1.0, y: 0, z: 0 }
+    },
+
+    // --- KICKBOXING (CHUTES) ---
+    KICK_WINDUP: {
+        torso: { x: -0.2, y: 0, z: 0 }, // Inclina pra trás
+        rightLeg: { x: 0.5, y: 0, z: 0 }, rightShin: { x: 1.0, y: 0, z: 0 }, // Prepara perna
+        leftLeg:  { x: 0, y: 0, z: 0 }, leftShin: { x: 0, y: 0, z: 0 },
+        // Guarda alta para equilíbrio
+        rightArm: { x: -0.8, y: 0.5, z: 0 }, rightForeArm: { x: -2.0, y: 0, z: 0 }, 
+        leftArm:  { x: -0.8, y: -0.5, z: 0 }, leftForeArm:  { x: -2.0, y: 0, z: 0 }
+    },
+    // HIT 1: LOW KICK (DIREITA)
+    KICK_COMBO_1: {
+        torso:    { x: 0, y: 0.5, z: -0.2 }, // Gira tronco pra ajudar
+        rightLeg: { x: -0.8, y: 0, z: 0 }, rightShin: { x: 0, y: 0, z: 0 }, // Chute baixo curto
+        leftLeg:  { x: 0, y: 0, z: 0 }, leftShin: { x: 0, y: 0, z: 0 },
+        // Braços compensam balanço
+        rightArm: { x: 0.5, y: 0, z: 0 }, rightForeArm: { x: 0, y: 0, z: 0 }, 
+        leftArm:  { x: -0.8, y: -0.5, z: 0 }, leftForeArm:  { x: -2.0, y: 0, z: 0 }
+    },
+    // HIT 2: MID KICK (ESQUERDA)
+    KICK_COMBO_2: {
+        torso:    { x: 0, y: -0.5, z: 0.2 },
+        leftLeg:  { x: -1.6, y: 0, z: 0 }, leftShin: { x: 0, y: 0, z: 0 }, // Chute médio
+        rightLeg: { x: 0, y: 0, z: 0 }, rightShin: { x: 0, y: 0, z: 0 },
+        rightArm: { x: -0.8, y: 0.5, z: 0 }, rightForeArm: { x: -2.0, y: 0, z: 0 },
+        leftArm:  { x: 0.5, y: 0, z: 0 }, leftForeArm:  { x: 0, y: 0, z: 0 }
+    },
+    // HIT 3: HIGH KICK (DIREITA)
+    KICK_COMBO_3: {
+        torso:    { x: -0.3, y: 0.8, z: -0.4 }, // Inclina muito pra trás e gira
+        rightLeg: { x: -2.2, y: 0, z: 0 }, rightShin: { x: 0, y: 0, z: 0 }, // Chute alto
+        leftLeg:  { x: 0.2, y: 0, z: 0 }, leftShin: { x: 0.5, y: 0, z: 0 }, // Perna de apoio flexiona
+        rightArm: { x: 1.0, y: 0, z: 0 }, rightForeArm: { x: 0, y: 0, z: 0 }, // Braço de alavanca
+        leftArm:  { x: -0.8, y: -0.5, z: 0 }, leftForeArm:  { x: -2.0, y: 0, z: 0 }
     },
 
     // --- OUTROS ---
@@ -73,14 +102,6 @@ const STANCES = {
     SWORD_ATK_1: { 
         rightArm: { x: 40 * RAD, y: -20 * RAD, z: -20 * RAD }, rightForeArm: { x: 0, y: 0, z: 0 },
         leftArm:  { x: -30 * RAD, y: 0, z: 0 }, leftForeArm:  { x: -30 * RAD, y: 0, z: 0 }
-    },
-    KICK_WINDUP: {
-        rightLeg: { x: 40 * RAD, y: 0, z: 0 }, rightShin: { x: 80 * RAD, y: 0, z: 0 },
-        leftLeg:  { x: 0, y: 0, z: 0 }, leftShin: { x: 0, y: 0, z: 0 }
-    },
-    KICK_ATK: {
-        rightLeg: { x: -60 * RAD, y: 0, z: 0 }, rightShin: { x: 0, y: 0, z: 0 },
-        leftLeg:  { x: 10 * RAD, y: 0, z: 0 }, leftShin: { x: 20 * RAD, y: 0, z: 0 }
     },
     GUN_IDLE: {
         rightArm: { x: -70 * RAD, y: 0, z: 0 }, rightForeArm: { x: -20 * RAD, y: 0, z: 0 },
