@@ -104,7 +104,7 @@ const GameDefinitions = {
         },
         attachment: { bone: "rightHand", pos: [0, -0.05, 0.05], rot: [Math.PI/2, 0, 0] },
         data: { power: 12 },
-        projectile: { speed: 0.2, range: 8, color: 0xA0522D, scale: [0.2, 0.2, 0.2] } 
+        projectile: { speed: 0.4, range: 8, color: 0xFFFF00, scale: [0.09, 0.09, 1] } 
     },
 
     "weapon_gun_flintlock": {
@@ -121,7 +121,7 @@ const GameDefinitions = {
         },
         attachment: { bone: "rightHand", pos: [0, -0.05, 0.05], rot: [Math.PI/2, 0, 0] },
         data: { power: 25 },
-        projectile: { speed: 0.6, range: 12, color: 0x333333, scale: [0.05, 0.05, 0.05] }
+        projectile: { speed: 0.8, range: 12, color: 0xFFFF00, scale: [0.09, 0.09, 1] }
     },
 
     "weapon_gun_silver": {
@@ -138,7 +138,7 @@ const GameDefinitions = {
         },
         attachment: { bone: "rightHand", pos: [0, -0.05, 0.05], rot: [Math.PI/2, 0, 0] },
         data: { power: 40 },
-        projectile: { speed: 1.2, range: 20, color: 0xFFFF00, scale: [0.03, 0.03, 0.4] }
+        projectile: { speed: 1.2, range: 20, color: 0xFFFF00, scale: [0.09, 0.09, 1] }
     },
 
     // Props
