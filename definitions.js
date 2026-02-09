@@ -149,4 +149,4 @@ const GameDefinitions = {
         visual: { model: "cylinder", color: 0x8B4513, scale: [0.4, 1.8, 0.4] },
         physics: { solid: true, standable: true, mass: 50 } 
     }
-};s
+};
