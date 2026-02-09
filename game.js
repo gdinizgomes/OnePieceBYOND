@@ -271,7 +271,7 @@ function fireProjectile(projectileDef, isMine) {
     activeProjectiles.push({ mesh: bullet, dirX: sin, dirZ: cos, speed: projectileDef.speed, distTraveled: 0, maxDist: projectileDef.range || 10, isMine: isMine });
 }
 
-function spawnHitbox(size, forwardOffset, lifetime) {
+function spawnHitbox(size, forwardOffset, lifetime, customData) {
     const geo = new THREE.BoxGeometry(size.x, size.y, size.z);
     const mat = new THREE.MeshBasicMaterial({ color: 0xFF0000, wireframe: true, transparent: true, opacity: 0.3 });
     const hitbox = new THREE.Mesh(geo, mat);
@@ -279,7 +279,7 @@ function spawnHitbox(size, forwardOffset, lifetime) {
     const bodyRot = playerGroup.rotation.y; const sin = Math.sin(bodyRot); const cos = Math.cos(bodyRot);
     hitbox.position.x += sin * forwardOffset; hitbox.position.z += cos * forwardOffset; hitbox.rotation.y = bodyRot;
     Engine.scene.add(hitbox);
-    activeHitboxes.push({ mesh: hitbox, startTime: Date.now(), duration: lifetime, hasHit: [] });
+    activeHitboxes.push({ mesh: hitbox, startTime: Date.now(), duration: lifetime, hasHit: [], data: customData || {} });
 }
 
 const tempBoxAttacker = new THREE.Box3(); const tempBoxTarget = new THREE.Box3();
@@ -302,7 +302,11 @@ function checkCollisions(attackerBox, type, objRef) {
         if(type === "melee" && objRef.hasHit.includes(id)) continue;
         tempBoxTarget.setFromObject(target.mesh);
         if (attackerBox.intersectsBox(tempBoxTarget)) {
-            if(typeof BYOND_REF !== 'undefined') window.location.href = `byond://?src=${BYOND_REF}&action=register_hit&target_ref=${id}&hit_type=${type}`;
+            let extra = "";
+            if(type === "melee" && objRef.data && objRef.data.step) extra = `&combo=${objRef.data.step}`;
+            
+            if(typeof BYOND_REF !== 'undefined') window.location.href = `byond://?src=${BYOND_REF}&action=register_hit&target_ref=${id}&hit_type=${type}${extra}`;
+            
             if(type === "projectile") { Engine.scene.remove(objRef.mesh); objRef.distTraveled = 99999; } else if(type === "melee") { objRef.hasHit.push(id); objRef.mesh.material.color.setHex(0xFFFFFF); }
         }
     }
@@ -328,28 +332,27 @@ function performAttack(type) {
 
     // --- LÓGICA DE COMBO (SOCO) ---
     if(type === "fist") {
-        // Se demorou mais que 600ms, reseta o combo
         if(Date.now() - lastFistAttackTime > 600) fistComboStep = 0;
         
         fistComboStep++;
-        if(fistComboStep > 3) fistComboStep = 1; // Volta pro 1 após o 3
+        if(fistComboStep > 3) fistComboStep = 1; 
         
         lastFistAttackTime = Date.now();
         
-        // Define animações baseadas no passo do combo
-        windupStance = "FIST_WINDUP"; // Padrão de preparação
-        atkStance = "FIST_COMBO_" + fistComboStep; // FIST_COMBO_1, 2 ou 3
+        windupStance = "FIST_WINDUP";
+        atkStance = "FIST_COMBO_" + fistComboStep; 
         idleStance = "FIST_IDLE";
 
-        // --- MICRO-MOVIMENTO PARA FRENTE (IMPULSO) ---
+        // --- MOVIMENTO PARA FRENTE ---
         const sin = Math.sin(playerGroup.rotation.y);
         const cos = Math.cos(playerGroup.rotation.y);
-        const pushDist = 0.4; // Distância do "Passinho"
+        
+        // CORREÇÃO: Dash aumentado
+        let pushDist = (fistComboStep === 3) ? 1.5 : 0.5; 
         
         const nextX = playerGroup.position.x + sin * pushDist;
         const nextZ = playerGroup.position.z + cos * pushDist;
         
-        // Só move se não tiver parede
         if(!checkCollision(nextX, playerGroup.position.y, nextZ)) {
             playerGroup.position.x = nextX;
             playerGroup.position.z = nextZ;
@@ -363,7 +366,10 @@ function performAttack(type) {
     setTimeout(function() {
         charState = atkStance;
         if(type === "gun" && projectileData) fireProjectile(projectileData, true);
-        else if (type === "fist") spawnHitbox({x:1, y:1, z:1}, 1.0, 200); 
+        else if (type === "fist") {
+            if(fistComboStep === 3) spawnHitbox({x:1.5, y:1.5, z:1.5}, 1.5, 200, {step: 3}); 
+            else spawnHitbox({x:1, y:1, z:1}, 1.0, 200, {step: fistComboStep}); 
+        }
         else if (type === "kick") spawnHitbox({x:1.2, y:1, z:1.2}, 1.2, 300);
         else if (type === "sword") spawnHitbox({x:2.5, y:1, z:2.5}, 1.5, 300);
         

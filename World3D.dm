@@ -701,14 +701,21 @@ mob
 			else if(skill_exp_type == "kick") prof_bonus = prof_kick_lvl * 2
 			else prof_bonus = prof_punch_lvl * 2
 
-			var/damage = round((strength * 0.4) + prof_bonus + bonus_dmg + rand(0, 3))
+			// --- LÓGICA DE DANO COMBO ---
+			var/damage_mult = 1.0
+			var/combo_step = text2num(href_list["combo"])
+			if(combo_step == 3) damage_mult = 1.2 // 20% Bônus no 3º hit
+
+			var/damage = round(((strength * 0.4) + prof_bonus + bonus_dmg + rand(0, 3)) * damage_mult)
 			
 			src.pending_visuals += list(list("type"="dmg", "val"=damage, "tid"=target_ref))
 
 			if(istype(target, /mob/npc))
 				var/mob/npc/N = target
 				if(N.npc_type == "prop")
-					src << output("<span class='log-hit' style='color:orange'>TREINO: [damage] dmg</span>", "map3d:addLog")
+					var/msg = "TREINO: [damage] dmg"
+					if(combo_step == 3) msg = "COMBO: [damage] dmg!"
+					src << output("<span class='log-hit' style='color:orange'>[msg]</span>", "map3d:addLog")
 					GainExperience(5)
 					if(skill_exp_type) GainWeaponExp(skill_exp_type, 3)
 				else

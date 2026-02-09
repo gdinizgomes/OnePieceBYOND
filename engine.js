@@ -17,80 +17,80 @@ function lerpLimbRotation(limb, targetRot, speed) {
 
 const RAD = Math.PI / 180;
 
-// POSES ARTICULADAS (Agora com TORSO para girar a coluna)
+// POSES ARTICULADAS (Correção de mira "Pra Dentro")
 const STANCES = {
     DEFAULT: { 
-        torso:    { x: 0, y: 0, z: 0 },
         rightArm: { x: 0, y: 0, z: 0 }, rightForeArm: { x: 0, y: 0, z: 0 },
         leftArm:  { x: 0, y: 0, z: 0 }, leftForeArm:  { x: 0, y: 0, z: 0 },
         rightLeg: { x: 0, y: 0, z: 0 }, rightShin:    { x: 0, y: 0, z: 0 },
-        leftLeg:  { x: 0, y: 0, z: 0 }, leftShin:     { x: 0, y: 0, z: 0 }
+        leftLeg:  { x: 0, y: 0, z: 0 }, leftShin:     { x: 0, y: 0, z: 0 },
+        torso:    { x: 0, y: 0, z: 0 }
     },
     
-    // --- COMBOS DE SOCO ---
-    // 1. Direto de Direita (Gira tronco pra esquerda)
+    // --- BOXE CORRIGIDO (SOCA NO CENTRO) ---
+    FIST_IDLE: { 
+        torso:    { x: 0.1, y: 0, z: 0 }, 
+        rightArm: { x: -0.8, y: 0.5, z: 0 }, rightForeArm: { x: -2.0, y: 0, z: 0 }, 
+        leftArm:  { x: -0.8, y: -0.5, z: 0 }, leftForeArm:  { x: -2.0, y: 0, z: 0 }
+    },
+    FIST_WINDUP: {
+        torso:    { x: 0, y: 0.2, z: 0 },
+        rightArm: { x: -0.5, y: 0.5, z: 0 }, rightForeArm: { x: -2.2, y: 0, z: 0 },
+        leftArm:  { x: -0.5, y: -0.5, z: 0 }, leftForeArm:  { x: -2.2, y: 0, z: 0 }
+    },
+    // HIT 1: JAB ESQUERDA (Cruzando pro centro)
     FIST_COMBO_1: {
-        torso:    { x: 0, y: -20 * RAD, z: 0 }, 
-        rightArm: { x: -90 * RAD, y: -10 * RAD, z: 0 }, rightForeArm: { x: 0, y: 0, z: 0 }, // Esticado
-        leftArm:  { x: -45 * RAD, y: -45 * RAD, z: 0 }, leftForeArm:  { x: -90 * RAD, y: 0, z: 0 }, // Guarda
-        rightLeg: { x: 0, y: 0, z: 0 }, rightShin: { x: 0, y: 0, z: 0 },
-        leftLeg:  { x: 10 * RAD, y: 0, z: 0 }, leftShin: { x: 20 * RAD, y: 0, z: 0 } // Passo leve
+        torso:    { x: 0, y: -0.4, z: 0 }, // Gira tronco pra Direita
+        // Braço Esq: X=-1.5 (frente), Y=-0.5 (foca no centro/direita)
+        leftArm:  { x: -1.5, y: -0.5, z: 0 },   leftForeArm:  { x: 0, y: 0, z: 0 },
+        rightArm: { x: -0.8, y: 0.5, z: 0 }, rightForeArm: { x: -2.0, y: 0, z: 0 } 
     },
-    // 2. Cruzado de Esquerda (Gira tronco pra direita)
+    // HIT 2: DIRETO DIREITA (Cruzando pro centro)
     FIST_COMBO_2: {
-        torso:    { x: 0, y: 20 * RAD, z: 0 },
-        rightArm: { x: -45 * RAD, y: 45 * RAD, z: 0 }, rightForeArm: { x: -90 * RAD, y: 0, z: 0 }, // Guarda
-        leftArm:  { x: -90 * RAD, y: 10 * RAD, z: 0 }, leftForeArm:  { x: 0, y: 0, z: 0 }, // Esticado
-        rightLeg: { x: 10 * RAD, y: 0, z: 0 }, rightShin: { x: 20 * RAD, y: 0, z: 0 },
-        leftLeg:  { x: 0, y: 0, z: 0 }, leftShin: { x: 0, y: 0, z: 0 }
+        torso:    { x: 0, y: 0.4, z: 0 }, // Gira tronco pra Esquerda
+        // Braço Dir: X=-1.5 (frente), Y=0.5 (foca no centro/esquerda)
+        rightArm: { x: -1.5, y: 0.5, z: 0 },   rightForeArm: { x: 0, y: 0, z: 0 },
+        leftArm:  { x: -0.8, y: -0.5, z: 0 }, leftForeArm:  { x: -2.0, y: 0, z: 0 } 
     },
-    // 3. Uppercut / Gancho (Corpo inclina e braço sobe)
+    // HIT 3: FINALIZADOR (No meio)
     FIST_COMBO_3: {
-        torso:    { x: -10 * RAD, y: -30 * RAD, z: 0 }, // Inclina pra trás e gira
-        rightArm: { x: -130 * RAD, y: -20 * RAD, z: 0 }, rightForeArm: { x: -90 * RAD, y: 0, z: 0 }, // Gancho pra cima
-        leftArm:  { x: -45 * RAD, y: -45 * RAD, z: 0 }, leftForeArm:  { x: -90 * RAD, y: 0, z: 0 },
-        rightLeg: { x: -20 * RAD, y: 0, z: 0 }, rightShin: { x: 40 * RAD, y: 0, z: 0 }, // Impulso
-        leftLeg:  { x: 20 * RAD, y: 0, z: 0 }, leftShin: { x: 10 * RAD, y: 0, z: 0 }
+        torso:    { x: 0.2, y: 0.8, z: 0 }, 
+        // Braço Dir: Bem esticado no centro
+        rightArm: { x: -1.4, y: 0.2, z: 0 }, rightForeArm: { x: 0, y: 0, z: 0 },
+        leftArm:  { x: -0.5, y: -0.5, z: 0 }, leftForeArm:  { x: -2.2, y: 0, z: 0 },
+        rightLeg: { x: -0.5, y: 0, z: 0 }, rightShin: { x: 1.0, y: 0, z: 0 }
     },
 
-    // --- OUTRAS ARMAS ---
+    // --- OUTROS ---
     SWORD_IDLE: { 
-        torso: { x: 0, y: 0, z: 0 },
         rightArm: { x: -20 * RAD, y: 0, z: 10 * RAD }, rightForeArm: { x: -90 * RAD, y: 0, z: 0 }, 
         leftArm:  { x: 0, y: 0, z: -10 * RAD }, leftForeArm:  { x: 0, y: 0, z: 0 }
     },
     SWORD_WINDUP: { 
-        torso: { x: 0, y: 20 * RAD, z: 0 },
         rightArm: { x: -160 * RAD, y: 0, z: 20 * RAD }, rightForeArm: { x: -40 * RAD, y: 0, z: 0 },
         leftArm:  { x: 40 * RAD, y: 0, z: 0 }, leftForeArm:  { x: 0, y: 0, z: 0 }
     },
     SWORD_ATK_1: { 
-        torso: { x: 0, y: -20 * RAD, z: 0 },
         rightArm: { x: 40 * RAD, y: -20 * RAD, z: -20 * RAD }, rightForeArm: { x: 0, y: 0, z: 0 },
         leftArm:  { x: -30 * RAD, y: 0, z: 0 }, leftForeArm:  { x: -30 * RAD, y: 0, z: 0 }
     },
     KICK_WINDUP: {
-        torso: { x: 0, y: 0, z: 0 },
         rightLeg: { x: 40 * RAD, y: 0, z: 0 }, rightShin: { x: 80 * RAD, y: 0, z: 0 },
         leftLeg:  { x: 0, y: 0, z: 0 }, leftShin: { x: 0, y: 0, z: 0 }
     },
     KICK_ATK: {
-        torso: { x: 10 * RAD, y: 0, z: 0 },
         rightLeg: { x: -60 * RAD, y: 0, z: 0 }, rightShin: { x: 0, y: 0, z: 0 },
         leftLeg:  { x: 10 * RAD, y: 0, z: 0 }, leftShin: { x: 20 * RAD, y: 0, z: 0 }
     },
     GUN_IDLE: {
-        torso: { x: 0, y: 0, z: 0 },
         rightArm: { x: -70 * RAD, y: 0, z: 0 }, rightForeArm: { x: -20 * RAD, y: 0, z: 0 },
         leftArm:  { x: 0, y: 0, z: 0 }, leftForeArm:  { x: 0, y: 0, z: 0 }
     },
     GUN_ATK: { 
-        torso: { x: 0, y: -10 * RAD, z: 0 },
         rightArm: { x: -90 * RAD, y: 0, z: 0 }, rightForeArm: { x: 0, y: 0, z: 0 },
         leftArm:  { x: 0, y: 0, z: 0 }, leftForeArm:  { x: 0, y: 0, z: 0 }
     },
     REST_SQUAT: {
-        torso: { x: 0.2, y: 0, z: 0 },
         rightLeg: { x: 1.3, y: 0, z: 0.2 }, rightShin: { x: 2.6, y: 0, z: 0 },
         leftLeg:  { x: 1.3, y: 0, z: -0.2 }, leftShin:  { x: 2.6, y: 0, z: 0 },
         rightArm: { x: -0.7, y: 0, z: 0 }, rightForeArm: { x: -0.5, y: 0, z: 0 },
@@ -114,6 +114,7 @@ const Input = {
     init: function() {
         document.addEventListener('keydown', (e) => this.onKeyDown(e));
         document.addEventListener('keyup', (e) => this.onKeyUp(e));
+        
         document.addEventListener('contextmenu', e => e.preventDefault());
         document.addEventListener('mousedown', e => { if(e.button===2){this.mouseRight=true; this.lastMouseX=e.clientX;} });
         document.addEventListener('mouseup', e => { if(e.button===2) this.mouseRight=false; });
