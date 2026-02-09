@@ -115,11 +115,11 @@ const GameDefinitions = {
         visual: {
             model: "group",
             parts: [
-                { model: "box", color: 0x3d2b1f, scale: [0.06, 0.25, 0.06], pos: [0, 0.10, 0], rot: [1.57, 0, 0] },
-                { model: "box", color: 0x555555, scale: [0.07, 0.12, 0.07], pos: [0, -0.05, 0] }
+                { model: "box", color: 0x3d2b1f, scale: [0.1, 0.3, 0.1], pos: [0, 0.05, 0], rot: [1.57, 0, 0] },
+                { model: "box", color: 0x555555, scale: [0.06, 0.12, 0.06], pos: [0, -0.05, 0] }
             ]
         },
-        attachment: { bone: "rightHand", pos: [0, 0, 0], rot: [0, 0, 0] },
+        attachment: { bone: "rightHand", pos: [0, -0.05, 0.05], rot: [Math.PI/2, 0, 0] },
         data: { power: 25 },
         projectile: { speed: 0.6, range: 12, color: 0x333333, scale: [0.05, 0.05, 0.05] }
     },
@@ -132,11 +132,11 @@ const GameDefinitions = {
         visual: {
             model: "group",
             parts: [
-                { model: "box", color: 0x111111, scale: [0.06, 0.30, 0.06], pos: [0, 0.12, 0], rot: [1.57, 0, 0] },
-                { model: "box", color: 0xAAAAAA, scale: [0.07, 0.12, 0.07], pos: [0, -0.05, 0] }
+                { model: "box", color: 0x111111, scale: [0.1, 0.3, 0.1], pos: [0, 0.05, 0], rot: [1.57, 0, 0] },
+                { model: "box", color: 0xAAAAAA, scale: [0.06, 0.12, 0.06], pos: [0, -0.05, 0] }
             ]
         },
-        attachment: { bone: "rightHand", pos: [0, 0, 0], rot: [0, 0, 0] },
+        attachment: { bone: "rightHand", pos: [0, -0.05, 0.05], rot: [Math.PI/2, 0, 0] },
         data: { power: 40 },
         projectile: { speed: 1.2, range: 20, color: 0xFFFF00, scale: [0.03, 0.03, 0.4] }
     },
@@ -149,4 +149,4 @@ const GameDefinitions = {
         visual: { model: "cylinder", color: 0x8B4513, scale: [0.4, 1.8, 0.4] },
         physics: { solid: true, standable: true, mass: 50 } 
     }
-};
+};s
