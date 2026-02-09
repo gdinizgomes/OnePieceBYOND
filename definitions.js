@@ -98,11 +98,11 @@ const GameDefinitions = {
         visual: {
             model: "group",
             parts: [
-                { model: "box", color: 0x8B4513, scale: [0.05, 0.15, 0.05], pos: [0, 0.05, 0], rot: [1.57, 0, 0] }, // Cano
+                { model: "box", color: 0x8B4513, scale: [0.1, 0.3, 0.1], pos: [0, 0.05, 0], rot: [1.57, 0, 0] }, // Cano
                 { model: "box", color: 0xA0522D, scale: [0.06, 0.12, 0.06], pos: [0, -0.05, 0] } // Cabo
             ]
         },
-        attachment: { bone: "rightHand", pos: [0, 0, 0], rot: [0, 0, 0] },
+        attachment: { bone: "rightHand", pos: [0, -0.05, 0.05], rot: [Math.PI/2, 0, 0] },
         data: { power: 12 },
         projectile: { speed: 0.2, range: 8, color: 0xA0522D, scale: [0.2, 0.2, 0.2] } 
     },
