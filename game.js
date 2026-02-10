@@ -558,10 +558,22 @@ function receberDadosMultiplayer(json) {
                 const newChar = CharFactory.createCharacter(pData.skin, pData.cloth);
                 newChar.position.set(pData.x, pData.y, pData.z); Engine.scene.add(newChar); Engine.collidables.push(newChar);
                 const label = document.createElement('div'); label.className = 'name-label'; label.innerHTML = `<div class="name-text">${pData.name||"?"}</div><div class="mini-hp-bg"><div class="mini-hp-fill"></div></div>`; document.getElementById('labels-container').appendChild(label);
-                otherPlayers[id] = { mesh: newChar, label: label, hpFill: label.querySelector('.mini-hp-fill'), startX: pData.x, startY: pData.y, startZ: pData.z, startRot: pData.rot, targetX: pData.x, targetY: pData.y, targetZ: pData.z, targetRot: pData.rot, lastPacketTime: now, lerpDuration: 180, attacking: pData.a, attackType: pData.at, resting: pData.rest, fainted: pData.ft, lastItem: "", isNPC: (pData.npc === 1), npcType: pData.type, gender: pData.gen };
+                const initialInterval = 180;
+                const initialBuffer = 120;
+                otherPlayers[id] = { mesh: newChar, label: label, hpFill: label.querySelector('.mini-hp-fill'), startX: pData.x, startY: pData.y, startZ: pData.z, startRot: pData.rot, targetX: pData.x, targetY: pData.y, targetZ: pData.z, targetRot: pData.rot, lastPacketTime: now, lastClientTs: (pData.ts || 0), avgPacketInterval: initialInterval, lerpDuration: initialInterval, interpBuffer: initialBuffer, attacking: pData.a, attackType: pData.at, resting: pData.rest, fainted: pData.ft, lastItem: "", isNPC: (pData.npc === 1), npcType: pData.type, gender: pData.gen };
             }
         } else {
             const other = otherPlayers[id];
+            const prevPacketTime = other.lastPacketTime || now;
+            const prevClientTs = other.lastClientTs || 0;
+            let packetInterval = now - prevPacketTime;
+            if (pData.ts && prevClientTs && pData.ts > prevClientTs) packetInterval = pData.ts - prevClientTs;
+            packetInterval = Math.max(60, Math.min(350, packetInterval));
+            other.avgPacketInterval = other.avgPacketInterval ? ((other.avgPacketInterval * 0.75) + (packetInterval * 0.25)) : packetInterval;
+            other.lerpDuration = Math.max(150, Math.min(250, other.avgPacketInterval));
+            other.interpBuffer = Math.max(100, Math.min(150, other.avgPacketInterval * 0.6));
+            other.lastClientTs = (pData.ts || prevClientTs);
+
             other.startX = other.mesh.position.x; other.startY = other.mesh.position.y; other.startZ = other.mesh.position.z; other.startRot = other.mesh.rotation.y;
             other.targetX = pData.x; other.targetY = pData.y; other.targetZ = pData.z; other.targetRot = pData.rot; other.lastPacketTime = now;
             other.attacking = pData.a; other.attackType = pData.at; other.resting = pData.rest; other.fainted = pData.ft;
@@ -580,7 +592,7 @@ function receberDadosMultiplayer(json) {
 }
 
 function shouldSendPosition(x, y, z, rot, now) { if (now - lastSentTime < POSITION_SYNC_INTERVAL) return false; if (Math.abs(x - lastSentX) < POSITION_EPSILON && Math.abs(y - lastSentY) < POSITION_EPSILON && Math.abs(z - lastSentZ) < POSITION_EPSILON && Math.abs(rot - lastSentRot) < POSITION_EPSILON) return false; return true; }
-function sendPositionUpdate(now) { if (!isCharacterReady || blockSync || typeof BYOND_REF === 'undefined') return; const x = round2(playerGroup.position.x); const y = round2(playerGroup.position.y); const z = round2(playerGroup.position.z); const rot = round2(playerGroup.rotation.y); if (!shouldSendPosition(x, y, z, rot, now)) return; lastSentTime = now; lastSentX = x; lastSentY = y; lastSentZ = z; lastSentRot = rot; let runFlag = (isRunning && !isResting) ? 1 : 0; window.location.href = `byond://?src=${BYOND_REF}&action=update_pos&x=${x}&y=${y}&z=${z}&rot=${rot}&run=${runFlag}`; }
+function sendPositionUpdate(now) { if (!isCharacterReady || blockSync || typeof BYOND_REF === 'undefined') return; const x = round2(playerGroup.position.x); const y = round2(playerGroup.position.y); const z = round2(playerGroup.position.z); const rot = round2(playerGroup.rotation.y); if (!shouldSendPosition(x, y, z, rot, now)) return; lastSentTime = now; lastSentX = x; lastSentY = y; lastSentZ = z; lastSentRot = rot; let runFlag = (isRunning && !isResting) ? 1 : 0; const clientTs = Date.now(); window.location.href = `byond://?src=${BYOND_REF}&action=update_pos&x=${x}&y=${y}&z=${z}&rot=${rot}&run=${runFlag}&cts=${clientTs}`; }
 
 // --- GAME LOOP COM NOVA ANIMAÇÃO ---
 function animate() {
@@ -684,7 +696,7 @@ function animate() {
     
     // Render Other Players
     for(const id in otherPlayers) {
-        const other = otherPlayers[id]; const mesh = other.mesh; const elapsed = other.lastPacketTime ? (now - other.lastPacketTime) : 0; const t = other.lerpDuration ? Math.min(1, elapsed / other.lerpDuration) : 1;
+        const other = otherPlayers[id]; const mesh = other.mesh; const elapsed = other.lastPacketTime ? (now - other.lastPacketTime) : 0; const interpDelay = other.interpBuffer || 0; const adjustedElapsed = Math.max(0, elapsed - interpDelay); const t = other.lerpDuration ? Math.min(1, adjustedElapsed / other.lerpDuration) : 1;
         mesh.position.x = lerp(other.startX, other.targetX, t); mesh.position.y = lerp(other.startY, other.targetY, t); mesh.position.z = lerp(other.startZ, other.targetZ, t); mesh.rotation.y = lerpAngle(other.startRot, other.targetRot, t);
         
         const dist = Math.sqrt(Math.pow(other.targetX - mesh.position.x, 2) + Math.pow(other.targetZ - mesh.position.z, 2)); const isMoving = dist > 0.05;

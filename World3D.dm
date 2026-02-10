@@ -120,6 +120,7 @@ mob
 	var/real_y = 0
 	var/real_z = 0
 	var/real_rot = 0
+	var/last_client_ts = 0
 	var/hit_radius = 0.5 
 	var/in_game = 0
 	var/is_attacking = 0
@@ -468,6 +469,7 @@ mob
 					var/pid = "\ref[M]"
 					var/list/pData = list(
 						"x" = M.real_x, "y" = M.real_y, "z" = M.real_z, "rot" = M.real_rot,
+						"ts" = M.last_client_ts,
 						"a" = M.is_attacking, "at" = M.attack_type,
 						"it" = M.active_item_visual,
 						"rest" = M.is_resting, "ft" = M.is_fainted,
@@ -482,6 +484,7 @@ mob
 				var/nid = "\ref[N]"
 				players_list[nid] = list(
 					"x" = N.real_x, "y" = N.real_y, "z" = N.real_z, "rot" = N.real_rot,
+					"ts" = 0,
 					"a" = 0, "at" = "", "it" = "", "rest" = 0, "ft" = 0,
 					"name" = N.name, "skin" = N.skin_color, "cloth" = N.cloth_color,
 					"npc" = 1, "type" = N.npc_type,
@@ -571,6 +574,7 @@ mob
 				real_y = text2num(href_list["y"])
 				real_z = text2num(href_list["z"])
 				real_rot = text2num(href_list["rot"])
+				last_client_ts = text2num(href_list["cts"])
 				if(href_list["run"] == "1") is_running = 1
 				else is_running = 0
 
