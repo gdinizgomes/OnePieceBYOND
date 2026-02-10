@@ -124,6 +124,7 @@ function openShop(json) {
     items.forEach(item => {
         const div = document.createElement('div');
         div.className = 'shop-item';
+        // CORREÇÃO: onerror inline protegido
         div.innerHTML = `<img src="${item.id}_img.png" onerror="this.style.display='none'"><div class="shop-details"><div class="shop-name">${item.name}</div><div class="shop-price">💰 ${item.price}</div></div><button class="btn-buy" onclick="buyItem('${item.typepath}')">Comprar</button>`;
         list.appendChild(div);
     });
@@ -170,14 +171,19 @@ function loadInventory(json) {
             const img = document.createElement('img');
             img.className = 'inv-icon';
             img.src = item.id + "_img.png"; 
+            
+            // CORREÇÃO: Handler de erro mais seguro
             img.onerror = function() {
-                this.style.display = 'none';
-                if(this.parentElement) {
+                if(this && this.style) this.style.display = 'none';
+                if(this && this.parentElement) {
                     this.parentElement.style.backgroundColor = '#444';
                     this.parentElement.innerText = "?";
-                    this.parentElement.style.display = "flex"; this.parentElement.style.justifyContent = "center"; this.parentElement.style.alignItems = "center";
+                    this.parentElement.style.display = "flex"; 
+                    this.parentElement.style.justifyContent = "center"; 
+                    this.parentElement.style.alignItems = "center";
                 }
             };
+            
             slotDiv.appendChild(img);
             if(item.amount > 1) {
                 const qtyDiv = document.createElement('div'); qtyDiv.className = 'inv-qty'; qtyDiv.innerText = "x" + item.amount; slotDiv.appendChild(qtyDiv);
@@ -212,10 +218,12 @@ function updateStatusMenu(json) {
     
     function updateSlot(slotName, itemData) {
         const div = document.getElementById('slot-' + slotName); 
+        if(!div) return; // Segurança extra
         div.innerHTML = "";
         if(itemData) {
             const img = document.createElement('img'); img.className = 'equip-icon'; img.src = itemData.id + "_img.png";
-            img.onerror = function() { this.style.backgroundColor = '#777'; };
+            // CORREÇÃO: Handler de erro mais seguro
+            img.onerror = function() { if(this && this.style) this.style.backgroundColor = '#777'; };
             div.appendChild(img); 
             div.onclick = function() { unequipItem(slotName); }; 
             div.title = "Desequipar " + itemData.name;
