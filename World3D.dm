@@ -702,9 +702,10 @@ mob
 			SaveCharacter()
 			sleep(300)
 
-	Topic(href, href_list[])
-		..()
+	proc/HandleClientAction(list/href_list)
+		if(!href_list) return
 		var/action = href_list["action"]
+		if(!action) return
 		if(action == "request_slots")
 			var/list/slots_data = list()
 			for(var/i=1 to 3)
@@ -923,6 +924,22 @@ mob
 				stat_points--
 				RecalculateStats()
 				src << output("Ponto adicionado em [s]!", "map3d:mostrarNotificacao")
+
+	Topic(href, href_list[])
+		..()
+		if(!href_list) return
+
+		if(href_list["action"] == "batch")
+			var/raw_cmds = href_list["cmds"]
+			if(!raw_cmds || !length(raw_cmds)) return
+			var/list/commands = splittext(raw_cmds, "|")
+			for(var/cmd in commands)
+				if(!length(cmd)) continue
+				var/list/cmd_list = params2list(cmd)
+				if(cmd_list && cmd_list.len)
+					HandleClientAction(cmd_list)
+		else
+			HandleClientAction(href_list)
 
 	verb/TestLevelUp()
 		set category = "Debug"
