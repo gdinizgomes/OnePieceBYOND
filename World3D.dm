@@ -3,8 +3,44 @@
 // --- LISTA GLOBAL DE NPCS ---
 var/list/global_npcs = list()
 
+// --- LISTA GLOBAL DE PLAYERS ATIVOS ---
+var/list/global_players = list()
+
+// --- CACHE GLOBAL DE SNAPSHOT DE PLAYERS (1x por tick) ---
+var/list/global_players_snapshot = list()
+var/global_players_snapshot_tick = -1
+
 // --- LISTA GLOBAL DE ITENS NO CHÃO (OTIMIZAÇÃO) ---
 var/list/global_ground_items = list()
+
+proc/RebuildGlobalPlayersSnapshot()
+	global_players_snapshot = list()
+	for(var/mob/M in global_players)
+		if(!M || !M.client || !M.in_game || !M.char_loaded)
+			global_players -= M
+			continue
+
+		var/e_hand = ""; var/e_head = ""; var/e_body = ""; var/e_legs = ""; var/e_feet = ""
+		if(M.slot_hand) e_hand = M.slot_hand.id_visual
+		if(M.slot_head) e_head = M.slot_head.id_visual
+		if(M.slot_body) e_body = M.slot_body.id_visual
+		if(M.slot_legs) e_legs = M.slot_legs.id_visual
+		if(M.slot_feet) e_feet = M.slot_feet.id_visual
+
+		global_players_snapshot["\ref[M]"] = list(
+			"x" = round(M.real_x * 100) / 100, "y" = round(M.real_y * 100) / 100, "z" = round(M.real_z * 100) / 100, "rot" = round(M.real_rot * 100) / 100,
+			"a" = M.is_attacking, "at" = M.attack_type, "ak" = M.attack_seq,
+			"rn" = M.is_running,
+			"it" = e_hand,
+			"eq_h" = e_head, "eq_b" = e_body, "eq_l" = e_legs, "eq_f" = e_feet,
+			"rest" = M.is_resting, "ft" = M.is_fainted,
+			"name" = M.name, "skin" = M.skin_color, "cloth" = M.cloth_color,
+			"npc" = 0,
+			"hp" = M.current_hp, "mhp" = M.max_hp,
+			"gen" = M.char_gender
+		)
+
+	global_players_snapshot_tick = world.time
 
 // --- ESTRUTURA DE ITENS ---
 obj/item
@@ -180,6 +216,7 @@ mob
 	var/in_game = 0
 	var/is_attacking = 0
 	var/attack_type = ""
+	var/attack_seq = 0
 	var/active_item_visual = ""
 	
 	// Slots de Equipamento
@@ -191,6 +228,7 @@ mob
 	
 	// LISTA DE EVENTOS VISUAIS
 	var/list/pending_visuals = list()
+	var/resources_preloaded = 0
 
 	Login()
 		..()
@@ -201,6 +239,7 @@ mob
 		if(in_game)
 			SaveCharacter()
 			in_game = 0
+			global_players -= src
 		char_loaded = 0
 		del(src)
 		..()
@@ -484,22 +523,8 @@ mob
 		page = replacetext(page, "{{BYOND_REF}}", "\ref[src]")
 		src << browse(page, "window=map3d")
 
-	proc/StartGame(slot_index)
-		current_slot = slot_index
-		if(LoadCharacter(slot_index))
-			src << output("Carregado!", "map3d:mostrarNotificacao")
-			GiveStarterItems() 
-		else
-			real_x = 0; real_y = 0; real_z = 0
-			level = 1; experience = 0; req_experience = 100; stat_points = 0
-			strength = 5; vitality = 5; agility = 5; wisdom = 5
-			prof_punch_lvl=1; prof_kick_lvl=1; prof_sword_lvl=1; prof_gun_lvl=1
-			RecalculateStats()
-			current_hp = max_hp; current_energy = max_energy
-			active_item_visual = ""
-			GiveStarterItems()
-			src << output("Novo char!", "map3d:mostrarNotificacao")
-
+	proc/EnsureClientResources()
+		if(resources_preloaded) return
 		src << browse_rsc(file("definitions.js"), "definitions.js")
 		src << browse_rsc(file("factory.js"), "factory.js")
 		src << browse_rsc(file("engine.js"), "engine.js")
@@ -516,9 +541,29 @@ mob
 		if(fexists("armor_body_shirt_img.png")) src << browse_rsc(file("armor_body_shirt_img.png"), "armor_body_shirt_img.png")
 		if(fexists("armor_legs_pants_img.png")) src << browse_rsc(file("armor_legs_pants_img.png"), "armor_legs_pants_img.png")
 		if(fexists("armor_feet_boots_img.png")) src << browse_rsc(file("armor_feet_boots_img.png"), "armor_feet_boots_img.png")
+		resources_preloaded = 1
+
+	proc/StartGame(slot_index)
+		current_slot = slot_index
+		if(LoadCharacter(slot_index))
+			src << output("Carregado!", "map3d:mostrarNotificacao")
+			GiveStarterItems() 
+		else
+			real_x = 0; real_y = 0; real_z = 0
+			level = 1; experience = 0; req_experience = 100; stat_points = 0
+			strength = 5; vitality = 5; agility = 5; wisdom = 5
+			prof_punch_lvl=1; prof_kick_lvl=1; prof_sword_lvl=1; prof_gun_lvl=1
+			RecalculateStats()
+			current_hp = max_hp; current_energy = max_energy
+			active_item_visual = ""
+			GiveStarterItems()
+			src << output("Novo char!", "map3d:mostrarNotificacao")
+
+		EnsureClientResources()
 
 		char_loaded = 1
 		in_game = 1
+		global_players |= src
 		is_resting = 0; is_fainted = 0; is_running = 0
 		var/page = file2text('game.html')
 		page = replacetext(page, "{{BYOND_REF}}", "\ref[src]")
@@ -593,32 +638,13 @@ mob
 		while(src && in_game)
 			var/list/players_list = list()
 			
-			for(var/mob/M in world)
-				if(istype(M, /mob/npc)) continue 
-				if(M.in_game && M.char_loaded)
-					if(abs(M.real_x - src.real_x) > 30 || abs(M.real_z - src.real_z) > 30) continue
-					var/pid = "\ref[M]"
-					
-					var/e_hand = ""; var/e_head = ""; var/e_body = ""; var/e_legs = ""; var/e_feet = ""
-					if(M.slot_hand) e_hand = M.slot_hand.id_visual
-					if(M.slot_head) e_head = M.slot_head.id_visual
-					if(M.slot_body) e_body = M.slot_body.id_visual
-					if(M.slot_legs) e_legs = M.slot_legs.id_visual
-					if(M.slot_feet) e_feet = M.slot_feet.id_visual
+			if(global_players_snapshot_tick != world.time)
+				RebuildGlobalPlayersSnapshot()
 
-					// OTIMIZAÇÃO: "rn" = is_running para sync de animação
-					players_list[pid] = list(
-						"x" = R2(M.real_x), "y" = R2(M.real_y), "z" = R2(M.real_z), "rot" = R2(M.real_rot),
-						"a" = M.is_attacking, "at" = M.attack_type,
-						"rn" = M.is_running,
-						"it" = e_hand,
-						"eq_h" = e_head, "eq_b" = e_body, "eq_l" = e_legs, "eq_f" = e_feet,
-						"rest" = M.is_resting, "ft" = M.is_fainted,
-						"name" = M.name, "skin" = M.skin_color, "cloth" = M.cloth_color,
-						"npc" = 0,
-						"hp" = M.current_hp, "mhp" = M.max_hp,
-						"gen" = M.char_gender
-					)
+			for(var/pid in global_players_snapshot)
+				var/list/P = global_players_snapshot[pid]
+				if(abs(P["x"] - src.real_x) > 30 || abs(P["z"] - src.real_z) > 30) continue
+				players_list[pid] = P
 			
 			for(var/mob/npc/N in global_npcs)
 				if(abs(N.real_x - src.real_x) > 30 || abs(N.real_z - src.real_z) > 30) continue
@@ -812,7 +838,10 @@ mob
 			if(ConsumeEnergy(base_cost))
 				is_attacking = 1
 				attack_type = href_list["type"]
-				spawn(3) is_attacking = 0
+				attack_seq++
+				spawn(3)
+					is_attacking = 0
+					attack_type = ""
 
 		if(action == "register_hit" && in_game)
 			var/target_ref = href_list["target_ref"]

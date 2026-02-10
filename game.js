@@ -261,6 +261,7 @@ function interact() {
 }
 
 const tempBoxPlayer = new THREE.Box3(); const tempBoxObstacle = new THREE.Box3(); const playerSize = new THREE.Vector3(0.5, 1.8, 0.5); 
+const tempLabelV = new THREE.Vector3();
 function getGroundHeightAt(x, z) {
     let maxY = 0; if(!Engine.collidables) return maxY;
     for (let i = 0; i < Engine.collidables.length; i++) {
@@ -280,19 +281,17 @@ function checkCollision(x, y, z) {
 
 // --- COLISÃO ENTRE JOGADORES (CORREÇÃO) ---
 function checkPlayerCollision(nextX, nextZ) {
-    const futureBox = new THREE.Box3();
-    const center = new THREE.Vector3(nextX, 1, nextZ); 
-    const size = new THREE.Vector3(0.6, 1.8, 0.6); 
-    futureBox.setFromCenterAndSize(center, size);
+    // Aproximação circular barata: evita criar Box3 por player a cada frame.
+    const collisionRadius = 0.6;
+    const minDistSq = collisionRadius * collisionRadius;
 
     for (let id in otherPlayers) {
         const other = otherPlayers[id];
-        if (!other.mesh) continue;
-        const otherBox = new THREE.Box3().setFromObject(other.mesh);
-        otherBox.expandByScalar(-0.1); 
-        if (futureBox.intersectsBox(otherBox)) {
-            return true;
-        }
+        if (!other.mesh || other.isNPC) continue;
+
+        const dx = nextX - other.mesh.position.x;
+        const dz = nextZ - other.mesh.position.z;
+        if ((dx * dx + dz * dz) < minDistSq) return true;
     }
     return false;
 }
@@ -614,25 +613,44 @@ function receberDadosMultiplayer(json) {
         if (!otherPlayers[id]) {
             if(pData.skin) {
                 const newChar = CharFactory.createCharacter(pData.skin, pData.cloth);
-                newChar.position.set(pData.x, pData.y, pData.z); Engine.scene.add(newChar); Engine.collidables.push(newChar);
+                // Personagens remotos não entram em collidables: colisão entre players já é tratada por checkPlayerCollision.
+                newChar.position.set(pData.x, pData.y, pData.z); Engine.scene.add(newChar);
                 const label = document.createElement('div'); label.className = 'name-label'; label.innerHTML = `<div class="name-text">${pData.name||"?"}</div><div class="mini-hp-bg"><div class="mini-hp-fill"></div></div>`; document.getElementById('labels-container').appendChild(label);
                 
                 // Inicializa cache
                 newChar.userData.lastHead = ""; newChar.userData.lastBody = "";
                 newChar.userData.lastLegs = ""; newChar.userData.lastFeet = ""; newChar.userData.lastItem = "";
                 
-                otherPlayers[id] = { mesh: newChar, label: label, hpFill: label.querySelector('.mini-hp-fill'), startX: pData.x, startY: pData.y, startZ: pData.z, startRot: pData.rot, targetX: pData.x, targetY: pData.y, targetZ: pData.z, targetRot: pData.rot, lastPacketTime: now, lerpDuration: 180, attacking: pData.a, attackType: pData.at, resting: pData.rest, fainted: pData.ft, lastItem: "", isNPC: (pData.npc === 1), npcType: pData.type, gender: pData.gen, isRunning: false };
+                otherPlayers[id] = { mesh: newChar, label: label, hpFill: label.querySelector('.mini-hp-fill'), startX: pData.x, startY: pData.y, startZ: pData.z, startRot: pData.rot, targetX: pData.x, targetY: pData.y, targetZ: pData.z, targetRot: pData.rot, prevTargetX: pData.x, prevTargetZ: pData.z, remoteSpeed: 0, lastPacketTime: now, lerpDuration: 220, attacking: pData.a, attackType: pData.at, attackSeq: (pData.ak || 0), attackAnimUntil: 0, resting: pData.rest, fainted: pData.ft, lastItem: "", isNPC: (pData.npc === 1), npcType: pData.type, gender: pData.gen, isRunning: false };
             }
         } else {
             const other = otherPlayers[id];
             const mesh = other.mesh;
+            const packetDelta = Math.max(1, now - other.lastPacketTime);
+            const dtSec = packetDelta / 1000;
+            const moveDx = pData.x - (other.prevTargetX !== undefined ? other.prevTargetX : pData.x);
+            const moveDz = pData.z - (other.prevTargetZ !== undefined ? other.prevTargetZ : pData.z);
+            other.remoteSpeed = Math.sqrt(moveDx * moveDx + moveDz * moveDz) / Math.max(0.001, dtSec);
+            other.prevTargetX = pData.x; other.prevTargetZ = pData.z;
+
             other.startX = mesh.position.x; other.startY = mesh.position.y; other.startZ = mesh.position.z; other.startRot = mesh.rotation.y;
             other.targetX = pData.x; other.targetY = pData.y; other.targetZ = pData.z; other.targetRot = pData.rot; other.lastPacketTime = now;
+            // Ajusta interpolação de acordo com o intervalo real entre pacotes para reduzir "speed-up" visual.
+            other.lerpDuration = Math.max(130, Math.min(300, packetDelta * 1.15));
             other.attacking = pData.a; other.attackType = pData.at; other.resting = pData.rest; other.fainted = pData.ft;
             if(pData.gen) other.gender = pData.gen;
             
             // CORREÇÃO: Atualiza se está correndo
-            if(pData.rn !== undefined) other.isRunning = pData.rn;
+            if(pData.rn !== undefined) other.isRunning = (pData.rn == 1);
+
+            if(pData.ak !== undefined && pData.ak !== other.attackSeq) {
+                other.attackSeq = pData.ak;
+                if(pData.at) other.attackType = pData.at;
+                other.attackAnimUntil = now + 280;
+                if(other.attackType === "gun") {
+                    fireProjectile({ speed: 0.6, color: 0xFFFF00, ownerID: id }, false);
+                }
+            }
 
             // --- ATUALIZAÇÃO EQUIPAMENTOS (OUTROS) ---
             if(mesh.userData.lastItem !== pData.it) {
@@ -656,10 +674,21 @@ function receberDadosMultiplayer(json) {
             }
 
             if(pData.hp !== undefined && other.hpFill) other.hpFill.style.width = Math.max(0, Math.min(100, (pData.hp / pData.mhp) * 100)) + "%";
-            if (other.attacking && other.attackType === "gun" && !other.hasFiredThisCycle) { fireProjectile({ speed: 0.6, color: 0xFFFF00, ownerID: id }, false); other.hasFiredThisCycle = true; setTimeout(() => { other.hasFiredThisCycle = false; }, 500); }
         }
     }
-    for (const id in otherPlayers) { if (!receivedIds.has(id)) { Engine.scene.remove(otherPlayers[id].mesh); otherPlayers[id].label.remove(); delete otherPlayers[id]; } }
+    for (const id in otherPlayers) {
+        if (!receivedIds.has(id)) {
+            const other = otherPlayers[id];
+            Engine.scene.remove(other.mesh);
+            if(other.label) other.label.remove();
+
+            // Segurança para sessões antigas: remove referências vazadas em collidables.
+            const idx = Engine.collidables.indexOf(other.mesh);
+            if(idx !== -1) Engine.collidables.splice(idx, 1);
+
+            delete otherPlayers[id];
+        }
+    }
 }
 
 function shouldSendPosition(x, y, z, rot, now) { if (now - lastSentTime < POSITION_SYNC_INTERVAL) return false; if (Math.abs(x - lastSentX) < POSITION_EPSILON && Math.abs(y - lastSentY) < POSITION_EPSILON && Math.abs(z - lastSentZ) < POSITION_EPSILON && Math.abs(rot - lastSentRot) < POSITION_EPSILON) return false; return true; }
@@ -783,7 +812,7 @@ function animate() {
         const other = otherPlayers[id]; const mesh = other.mesh; const elapsed = other.lastPacketTime ? (now - other.lastPacketTime) : 0; const t = other.lerpDuration ? Math.min(1, elapsed / other.lerpDuration) : 1;
         mesh.position.x = lerp(other.startX, other.targetX, t); mesh.position.y = lerp(other.startY, other.targetY, t); mesh.position.z = lerp(other.startZ, other.targetZ, t); mesh.rotation.y = lerpAngle(other.startRot, other.targetRot, t);
         
-        const dist = Math.sqrt(Math.pow(other.targetX - mesh.position.x, 2) + Math.pow(other.targetZ - mesh.position.z, 2)); const isMoving = dist > 0.05;
+        const isMoving = (other.remoteSpeed || 0) > 0.15;
         const limbs = mesh.userData.limbs;
         if(limbs) {
             let remoteStance = STANCES.DEFAULT;
@@ -808,7 +837,7 @@ function animate() {
                     lerpLimbRotation(limbs.leftForeArm, restStance.leftForeArm, spd); lerpLimbRotation(limbs.rightForeArm, restStance.rightForeArm, spd);
                 }
             } else {
-                if(other.attacking) {
+                if(other.attacking || now < (other.attackAnimUntil || 0)) {
                     if(other.attackType === "sword") remoteStance = STANCES.SWORD_COMBO_1; 
                     else if(other.attackType === "fist") remoteStance = STANCES.FIST_COMBO_1;
                     else if(other.attackType === "kick") remoteStance = STANCES.KICK_COMBO_1; 
@@ -820,8 +849,8 @@ function animate() {
                     lerpLimbRotation(limbs.leftLeg, remoteStance.leftLeg || def.leftLeg, 0.4); lerpLimbRotation(limbs.rightLeg, remoteStance.rightLeg || def.rightLeg, 0.4);
                 } else if(isMoving) {
                     // CORREÇÃO: Animação remota baseada na flag 'rn' do servidor
-                    const animSpeed = other.isRunning ? 0.3 : 0.15; 
-                    const armAmp = other.isRunning ? 1.2 : 0.6;    
+                    const animSpeed = other.isRunning ? 0.22 : 0.35; 
+                    const armAmp = other.isRunning ? 1.0 : 0.55;    
 
                     limbs.leftLeg.rotation.x = Math.sin(animTime / animSpeed) * armAmp;
                     limbs.rightLeg.rotation.x = -Math.sin(animTime / animSpeed) * armAmp;
@@ -842,8 +871,8 @@ function animate() {
                 }
             }
         }
-        const tempV = new THREE.Vector3(mesh.position.x, mesh.position.y + 2, mesh.position.z); tempV.project(Engine.camera);
-        other.label.style.display = (Math.abs(tempV.z) > 1) ? 'none' : 'block'; other.label.style.left = (tempV.x * .5 + .5) * window.innerWidth + 'px'; other.label.style.top = (-(tempV.y * .5) + .5) * window.innerHeight + 'px';
+        tempLabelV.set(mesh.position.x, mesh.position.y + 2, mesh.position.z); tempLabelV.project(Engine.camera);
+        other.label.style.display = (Math.abs(tempLabelV.z) > 1) ? 'none' : 'block'; other.label.style.left = (tempLabelV.x * .5 + .5) * window.innerWidth + 'px'; other.label.style.top = (-(tempLabelV.y * .5) + .5) * window.innerHeight + 'px';
     }
     Engine.renderer.render(Engine.scene, Engine.camera);
 }
