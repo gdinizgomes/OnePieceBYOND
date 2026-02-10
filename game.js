@@ -261,6 +261,7 @@ function interact() {
 }
 
 const tempBoxPlayer = new THREE.Box3(); const tempBoxObstacle = new THREE.Box3(); const playerSize = new THREE.Vector3(0.5, 1.8, 0.5); 
+const tempLabelV = new THREE.Vector3();
 function getGroundHeightAt(x, z) {
     let maxY = 0; if(!Engine.collidables) return maxY;
     for (let i = 0; i < Engine.collidables.length; i++) {
@@ -280,19 +281,17 @@ function checkCollision(x, y, z) {
 
 // --- COLISÃO ENTRE JOGADORES (CORREÇÃO) ---
 function checkPlayerCollision(nextX, nextZ) {
-    const futureBox = new THREE.Box3();
-    const center = new THREE.Vector3(nextX, 1, nextZ); 
-    const size = new THREE.Vector3(0.6, 1.8, 0.6); 
-    futureBox.setFromCenterAndSize(center, size);
+    // Aproximação circular barata: evita criar Box3 por player a cada frame.
+    const collisionRadius = 0.6;
+    const minDistSq = collisionRadius * collisionRadius;
 
     for (let id in otherPlayers) {
         const other = otherPlayers[id];
-        if (!other.mesh) continue;
-        const otherBox = new THREE.Box3().setFromObject(other.mesh);
-        otherBox.expandByScalar(-0.1); 
-        if (futureBox.intersectsBox(otherBox)) {
-            return true;
-        }
+        if (!other.mesh || other.isNPC) continue;
+
+        const dx = nextX - other.mesh.position.x;
+        const dz = nextZ - other.mesh.position.z;
+        if ((dx * dx + dz * dz) < minDistSq) return true;
     }
     return false;
 }
@@ -858,8 +857,8 @@ function animate() {
                 }
             }
         }
-        const tempV = new THREE.Vector3(mesh.position.x, mesh.position.y + 2, mesh.position.z); tempV.project(Engine.camera);
-        other.label.style.display = (Math.abs(tempV.z) > 1) ? 'none' : 'block'; other.label.style.left = (tempV.x * .5 + .5) * window.innerWidth + 'px'; other.label.style.top = (-(tempV.y * .5) + .5) * window.innerHeight + 'px';
+        tempLabelV.set(mesh.position.x, mesh.position.y + 2, mesh.position.z); tempLabelV.project(Engine.camera);
+        other.label.style.display = (Math.abs(tempLabelV.z) > 1) ? 'none' : 'block'; other.label.style.left = (tempLabelV.x * .5 + .5) * window.innerWidth + 'px'; other.label.style.top = (-(tempLabelV.y * .5) + .5) * window.innerHeight + 'px';
     }
     Engine.renderer.render(Engine.scene, Engine.camera);
 }
