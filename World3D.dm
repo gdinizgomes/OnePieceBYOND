@@ -3,6 +3,9 @@
 // --- LISTA GLOBAL DE NPCS ---
 var/list/global_npcs = list()
 
+// --- LISTA GLOBAL DE PLAYERS ATIVOS ---
+var/list/global_players = list()
+
 // --- LISTA GLOBAL DE ITENS NO CHÃO (OTIMIZAÇÃO) ---
 var/list/global_ground_items = list()
 
@@ -201,6 +204,7 @@ mob
 		if(in_game)
 			SaveCharacter()
 			in_game = 0
+			global_players -= src
 		char_loaded = 0
 		del(src)
 		..()
@@ -519,6 +523,7 @@ mob
 
 		char_loaded = 1
 		in_game = 1
+		global_players |= src
 		is_resting = 0; is_fainted = 0; is_running = 0
 		var/page = file2text('game.html')
 		page = replacetext(page, "{{BYOND_REF}}", "\ref[src]")
@@ -593,8 +598,10 @@ mob
 		while(src && in_game)
 			var/list/players_list = list()
 			
-			for(var/mob/M in world)
-				if(istype(M, /mob/npc)) continue 
+			for(var/mob/M in global_players)
+				if(!M || !M.client)
+					global_players -= M
+					continue
 				if(M.in_game && M.char_loaded)
 					if(abs(M.real_x - src.real_x) > 30 || abs(M.real_z - src.real_z) > 30) continue
 					var/pid = "\ref[M]"
