@@ -1,4 +1,4 @@
-// game.js - Lógica Principal do Jogo e Network + EQUIPAMENTOS
+// game.js - Lógica Principal do Jogo e Network + EQUIPAMENTOS + COLISÃO + LIMITES
 
 // --- VARIÁVEIS GLOBAIS ---
 let playerGroup = null; 
@@ -55,6 +55,8 @@ const POSITION_SYNC_INTERVAL = 100;
 const POSITION_EPSILON = 0.01;
 let lastSentTime = 0;
 let lastSentX = null; let lastSentY = null; let lastSentZ = null; let lastSentRot = null;
+
+const MAP_LIMIT = 29; // Limite do mapa (tamanho 60, margem de segurança)
 
 // --- FUNÇÕES AUXILIARES UI ---
 function addLog(msg, css) { 
@@ -124,7 +126,6 @@ function openShop(json) {
     items.forEach(item => {
         const div = document.createElement('div');
         div.className = 'shop-item';
-        // CORREÇÃO: onerror inline protegido
         div.innerHTML = `<img src="${item.id}_img.png" onerror="this.style.display='none'"><div class="shop-details"><div class="shop-name">${item.name}</div><div class="shop-price">💰 ${item.price}</div></div><button class="btn-buy" onclick="buyItem('${item.typepath}')">Comprar</button>`;
         list.appendChild(div);
     });
@@ -172,7 +173,6 @@ function loadInventory(json) {
             img.className = 'inv-icon';
             img.src = item.id + "_img.png"; 
             
-            // CORREÇÃO: Handler de erro mais seguro
             img.onerror = function() {
                 if(this && this.style) this.style.display = 'none';
                 if(this && this.parentElement) {
@@ -218,11 +218,10 @@ function updateStatusMenu(json) {
     
     function updateSlot(slotName, itemData) {
         const div = document.getElementById('slot-' + slotName); 
-        if(!div) return; // Segurança extra
+        if(!div) return; 
         div.innerHTML = "";
         if(itemData) {
             const img = document.createElement('img'); img.className = 'equip-icon'; img.src = itemData.id + "_img.png";
-            // CORREÇÃO: Handler de erro mais seguro
             img.onerror = function() { if(this && this.style) this.style.backgroundColor = '#777'; };
             div.appendChild(img); 
             div.onclick = function() { unequipItem(slotName); }; 
@@ -277,6 +276,25 @@ function checkCollision(x, y, z) {
         tempBoxObstacle.setFromObject(obj); if (tempBoxPlayer.intersectsBox(tempBoxObstacle)) { if(obj.userData.standable && y >= tempBoxObstacle.max.y - 0.1) continue; return true; }
     }
     return false; 
+}
+
+// --- COLISÃO ENTRE JOGADORES (CORREÇÃO) ---
+function checkPlayerCollision(nextX, nextZ) {
+    const futureBox = new THREE.Box3();
+    const center = new THREE.Vector3(nextX, 1, nextZ); 
+    const size = new THREE.Vector3(0.6, 1.8, 0.6); 
+    futureBox.setFromCenterAndSize(center, size);
+
+    for (let id in otherPlayers) {
+        const other = otherPlayers[id];
+        if (!other.mesh) continue;
+        const otherBox = new THREE.Box3().setFromObject(other.mesh);
+        otherBox.expandByScalar(-0.1); 
+        if (futureBox.intersectsBox(otherBox)) {
+            return true;
+        }
+    }
+    return false;
 }
 
 window.addEventListener('game-action', function(e) {
@@ -445,11 +463,9 @@ function receberDadosMultiplayer(json) {
     }
     if(isCharacterReady) {
         // --- ATUALIZAÇÃO DO MEU PERSONAGEM ---
-        // Pegamos os dados visuais do 'others[myID]' porque o servidor manda tudo junto
         if(packet.others[myID]) {
             const myData = packet.others[myID];
             
-            // Atualiza equipamentos usando a nova lógica (passando o item antigo para remover)
             if(playerGroup.userData.lastItem !== myData.it) {
                 CharFactory.equipItem(playerGroup, myData.it, playerGroup.userData.lastItem); 
                 playerGroup.userData.lastItem = myData.it;
@@ -605,7 +621,7 @@ function receberDadosMultiplayer(json) {
                 newChar.userData.lastHead = ""; newChar.userData.lastBody = "";
                 newChar.userData.lastLegs = ""; newChar.userData.lastFeet = ""; newChar.userData.lastItem = "";
                 
-                otherPlayers[id] = { mesh: newChar, label: label, hpFill: label.querySelector('.mini-hp-fill'), startX: pData.x, startY: pData.y, startZ: pData.z, startRot: pData.rot, targetX: pData.x, targetY: pData.y, targetZ: pData.z, targetRot: pData.rot, lastPacketTime: now, lerpDuration: 180, attacking: pData.a, attackType: pData.at, resting: pData.rest, fainted: pData.ft, lastItem: "", isNPC: (pData.npc === 1), npcType: pData.type, gender: pData.gen };
+                otherPlayers[id] = { mesh: newChar, label: label, hpFill: label.querySelector('.mini-hp-fill'), startX: pData.x, startY: pData.y, startZ: pData.z, startRot: pData.rot, targetX: pData.x, targetY: pData.y, targetZ: pData.z, targetRot: pData.rot, lastPacketTime: now, lerpDuration: 180, attacking: pData.a, attackType: pData.at, resting: pData.rest, fainted: pData.ft, lastItem: "", isNPC: (pData.npc === 1), npcType: pData.type, gender: pData.gen, isRunning: false };
             }
         } else {
             const other = otherPlayers[id];
@@ -615,6 +631,9 @@ function receberDadosMultiplayer(json) {
             other.attacking = pData.a; other.attackType = pData.at; other.resting = pData.rest; other.fainted = pData.ft;
             if(pData.gen) other.gender = pData.gen;
             
+            // CORREÇÃO: Atualiza se está correndo
+            if(pData.rn !== undefined) other.isRunning = pData.rn;
+
             // --- ATUALIZAÇÃO EQUIPAMENTOS (OUTROS) ---
             if(mesh.userData.lastItem !== pData.it) {
                 CharFactory.equipItem(mesh, pData.it, mesh.userData.lastItem); mesh.userData.lastItem = pData.it;
@@ -680,8 +699,21 @@ function animate() {
             if(Input.keys.arrowleft) { moveX -= cos*speed; moveZ += sin*speed; moving = true; }
             if(Input.keys.arrowright) { moveX += cos*speed; moveZ -= sin*speed; moving = true; }
 
-            const nextX = playerGroup.position.x + moveX; const nextZ = playerGroup.position.z + moveZ;
-            if(!checkCollision(nextX, playerGroup.position.y, nextZ)) { playerGroup.position.x = nextX; playerGroup.position.z = nextZ; }
+            // CORREÇÃO: Limites do Mapa e Colisão
+            let nextX = playerGroup.position.x + moveX; 
+            let nextZ = playerGroup.position.z + moveZ;
+
+            if (nextX > MAP_LIMIT) nextX = MAP_LIMIT;
+            if (nextX < -MAP_LIMIT) nextX = -MAP_LIMIT;
+            if (nextZ > MAP_LIMIT) nextZ = MAP_LIMIT;
+            if (nextZ < -MAP_LIMIT) nextZ = -MAP_LIMIT;
+
+            // Checa colisão com objetos E com players
+            if(!checkCollision(nextX, playerGroup.position.y, nextZ) && 
+               !checkPlayerCollision(nextX, nextZ)) { 
+                playerGroup.position.x = nextX; 
+                playerGroup.position.z = nextZ; 
+            }
             
             if(moving) {
                 const targetCharRot = Math.atan2(moveX, moveZ); playerGroup.rotation.y = targetCharRot;
@@ -699,25 +731,28 @@ function animate() {
                 const def = STANCES.DEFAULT; 
 
                 if(moving && !isJumping && !isAttacking) {
-                    let legSpeed = isRunning ? 0.3 : 0.8; 
+                    let legSpeed = isRunning ? 0.3 : 0.8; // Se correndo, pernas mais rápidas
+                    // CORREÇÃO: Braços acompanham pernas se não estiver atacando
+                    let armAmp = isRunning ? 1.2 : 0.6; // Amplitude maior correndo
+                    
                     limbs.leftLeg.rotation.x = Math.sin(animTime * (isRunning ? 1.5 : 1)) * legSpeed;
                     limbs.rightLeg.rotation.x = -Math.sin(animTime * (isRunning ? 1.5 : 1)) * legSpeed;
                     limbs.leftShin.rotation.x = (limbs.leftLeg.rotation.x > 0) ? limbs.leftLeg.rotation.x : 0;
                     limbs.rightShin.rotation.x = (limbs.rightLeg.rotation.x > 0) ? limbs.rightLeg.rotation.x : 0;
 
                     if(charState === "DEFAULT") {
-                        limbs.leftArm.rotation.x = -Math.sin(animTime)*legSpeed;
-                        limbs.rightArm.rotation.x = Math.sin(animTime)*legSpeed;
+                        // Braços balançando
+                        limbs.leftArm.rotation.x = -Math.sin(animTime * (isRunning ? 1.5 : 1)) * armAmp;
+                        limbs.rightArm.rotation.x = Math.sin(animTime * (isRunning ? 1.5 : 1)) * armAmp;
                         limbs.leftForeArm.rotation.x = -0.2;
                         limbs.rightForeArm.rotation.x = -0.2;
-                        // Reseta Torso
                         lerpLimbRotation(limbs.torso, def.torso, 0.1);
                     } else {
+                        // Stance de combate em movimento
                         lerpLimbRotation(limbs.leftArm, targetStance.leftArm || def.leftArm, 0.2);
                         lerpLimbRotation(limbs.rightArm, targetStance.rightArm || def.rightArm, 0.2);
                         lerpLimbRotation(limbs.leftForeArm, targetStance.leftForeArm || def.leftForeArm, 0.2);
                         lerpLimbRotation(limbs.rightForeArm, targetStance.rightForeArm || def.rightForeArm, 0.2);
-                        // Torso segue a arma
                         lerpLimbRotation(limbs.torso, targetStance.torso || def.torso, 0.2);
                     }
                 } else {
@@ -774,7 +809,6 @@ function animate() {
                 }
             } else {
                 if(other.attacking) {
-                    // Para simplificar multiplayer, assumimos combo 1 se não soubermos
                     if(other.attackType === "sword") remoteStance = STANCES.SWORD_COMBO_1; 
                     else if(other.attackType === "fist") remoteStance = STANCES.FIST_COMBO_1;
                     else if(other.attackType === "kick") remoteStance = STANCES.KICK_COMBO_1; 
@@ -785,11 +819,20 @@ function animate() {
                     lerpLimbRotation(limbs.leftForeArm, remoteStance.leftForeArm || def.leftForeArm, 0.4); lerpLimbRotation(limbs.rightForeArm, remoteStance.rightForeArm || def.rightForeArm, 0.4);
                     lerpLimbRotation(limbs.leftLeg, remoteStance.leftLeg || def.leftLeg, 0.4); lerpLimbRotation(limbs.rightLeg, remoteStance.rightLeg || def.rightLeg, 0.4);
                 } else if(isMoving) {
-                    limbs.leftLeg.rotation.x = Math.sin(animTime)*0.8; limbs.rightLeg.rotation.x = -Math.sin(animTime)*0.8;
+                    // CORREÇÃO: Animação remota baseada na flag 'rn' do servidor
+                    const animSpeed = other.isRunning ? 0.3 : 0.15; 
+                    const armAmp = other.isRunning ? 1.2 : 0.6;    
+
+                    limbs.leftLeg.rotation.x = Math.sin(animTime / animSpeed) * armAmp;
+                    limbs.rightLeg.rotation.x = -Math.sin(animTime / animSpeed) * armAmp;
+                    
                     limbs.leftShin.rotation.x = (limbs.leftLeg.rotation.x > 0) ? limbs.leftLeg.rotation.x : 0;
                     limbs.rightShin.rotation.x = (limbs.rightLeg.rotation.x > 0) ? limbs.rightLeg.rotation.x : 0;
-                    limbs.leftArm.rotation.x = -Math.sin(animTime)*0.8; limbs.rightArm.rotation.x = Math.sin(animTime)*0.8;
-                    // Torso neutro ao andar
+
+                    // Braços sincronizados
+                    limbs.leftArm.rotation.x = -Math.sin(animTime / animSpeed) * armAmp;
+                    limbs.rightArm.rotation.x = Math.sin(animTime / animSpeed) * armAmp;
+                    
                     lerpLimbRotation(limbs.torso, def.torso, 0.1);
                 } else {
                     lerpLimbRotation(limbs.torso, def.torso, 0.1);

@@ -3,6 +3,9 @@
 // --- LISTA GLOBAL DE NPCS ---
 var/list/global_npcs = list()
 
+// --- LISTA GLOBAL DE ITENS NO CHÃO (OTIMIZAÇÃO) ---
+var/list/global_ground_items = list()
+
 // --- ESTRUTURA DE ITENS ---
 obj/item
 	var/id_visual = ""
@@ -12,7 +15,7 @@ obj/item
 	var/description = ""
 	var/amount = 1
 	var/max_stack = 5 
-	var/shop_tags = "" // TAG para definir em qual loja aparece (ex: "armorer")
+	var/shop_tags = "" // TAG para definir em qual loja aparece
 	var/real_x = 0
 	var/real_y = 0
 	var/real_z = 0
@@ -186,7 +189,7 @@ mob
 	var/obj/item/slot_legs = null
 	var/obj/item/slot_feet = null 
 	
-	// LISTA DE EVENTOS VISUAIS (Dano, Efeitos)
+	// LISTA DE EVENTOS VISUAIS
 	var/list/pending_visuals = list()
 
 	Login()
@@ -217,7 +220,6 @@ mob
 	proc/EquipItem(obj/item/I)
 		if(!I || !(I in contents)) return
 		
-		// Lógica Genérica de Equipar por Slot
 		var/success = 0
 		
 		if(I.slot == "hand")
@@ -285,6 +287,7 @@ mob
 			I.real_x = src.real_x
 			I.real_z = src.real_z
 			I.real_y = 0
+			global_ground_items |= I
 			src << output("Largou tudo de [I.name]", "map3d:mostrarNotificacao")
 		else
 			I.amount -= amount_to_drop
@@ -293,6 +296,7 @@ mob
 			NewI.real_x = src.real_x
 			NewI.real_z = src.real_z
 			NewI.real_y = 0
+			global_ground_items |= NewI
 			src << output("Largou [amount_to_drop] x [I.name]", "map3d:mostrarNotificacao")
 		RequestInventoryUpdate()
 
@@ -307,8 +311,11 @@ mob
 	proc/PickUpNearestItem()
 		var/obj/item/target = null
 		var/min_dist = 2.0
-		for(var/obj/item/I in world)
-			if(I.loc == null || !isturf(I.loc)) continue
+		// OTIMIZAÇÃO: Itera apenas itens no chão
+		for(var/obj/item/I in global_ground_items)
+			if(I.loc == null || !isturf(I.loc)) 
+				global_ground_items -= I
+				continue
 			var/dx = I.real_x - src.real_x
 			var/dz = I.real_z - src.real_z
 			var/dist = sqrt(dx*dx + dz*dz)
@@ -322,6 +329,7 @@ mob
 					var/space = invItem.max_stack - invItem.amount
 					if(target.amount <= space)
 						invItem.amount += target.amount
+						global_ground_items -= target
 						del(target)
 						stacked = 1
 						break
@@ -329,6 +337,7 @@ mob
 				if(contents.len >= 12)
 					src << output("Mochila cheia (12/12)!", "map3d:mostrarNotificacao")
 					return
+				global_ground_items -= target
 				target.loc = src
 				src << output("Pegou item!", "map3d:mostrarNotificacao")
 			RequestInventoryUpdate()
@@ -399,7 +408,7 @@ mob
 		RecalculateStats()
 		current_hp = max_hp
 		current_energy = max_energy
-		src << output("<span class='log-hit' style='font-size:14px; color:#ffff00'>LEVEL UP! Nível [level]</span>", "map3d:addLog")
+		src << output("<span class='log-hit' style='font-size:14px;color:#ffff00'>LEVEL UP! Nível [level]</span>", "map3d:addLog")
 		SaveCharacter()
 
 	proc/GetProficiencyReq(lvl) return 50 * (lvl * 1.2)
@@ -438,7 +447,7 @@ mob
 		is_fainted = 1
 		is_resting = 1
 		faint_end_time = world.time + 150
-		src << output("<span class='log-hit' style='color:red; font-size:16px;'>VOCÊ DESMAIOU DE EXAUSTÃO!</span>", "map3d:addLog")
+		src << output("<span class='log-hit' style='color:red;font-size:16px;'>VOCÊ DESMAIOU DE EXAUSTÃO!</span>", "map3d:addLog")
 		spawn(150) if(src) WakeUp()
 
 	proc/WakeUp()
@@ -531,8 +540,7 @@ mob
 		F["p_gun"] << prof_gun_lvl; F["exp_gun"] << prof_gun_exp
 		F["pos_x"] << src.real_x; F["pos_y"] << src.real_y; F["pos_z"] << src.real_z
 		F["skin"] << src.skin_color; F["cloth"] << src.cloth_color
-		F["inventory"] << src.contents; 
-		F["slot_hand"] << src.slot_hand
+		F["inventory"] << src.contents; F["slot_hand"] << src.slot_hand
 		F["slot_head"] << src.slot_head
 		F["slot_body"] << src.slot_body
 		F["slot_legs"] << src.slot_legs
@@ -578,9 +586,13 @@ mob
 		RecalculateStats()
 		return 1
 
+	// OTIMIZAÇÃO: Arredondamento
+	proc/R2(n) return round(n * 100) / 100
+
 	proc/UpdateLoop()
 		while(src && in_game)
 			var/list/players_list = list()
+			
 			for(var/mob/M in world)
 				if(istype(M, /mob/npc)) continue 
 				if(M.in_game && M.char_loaded)
@@ -594,36 +606,43 @@ mob
 					if(M.slot_legs) e_legs = M.slot_legs.id_visual
 					if(M.slot_feet) e_feet = M.slot_feet.id_visual
 
-					var/list/pData = list(
-						"x" = M.real_x, "y" = M.real_y, "z" = M.real_z, "rot" = M.real_rot,
+					// OTIMIZAÇÃO: "rn" = is_running para sync de animação
+					players_list[pid] = list(
+						"x" = R2(M.real_x), "y" = R2(M.real_y), "z" = R2(M.real_z), "rot" = R2(M.real_rot),
 						"a" = M.is_attacking, "at" = M.attack_type,
+						"rn" = M.is_running,
 						"it" = e_hand,
-						"eq_h" = e_head, "eq_b" = e_body, "eq_l" = e_legs, "eq_f" = e_feet, // NOVOS DADOS
+						"eq_h" = e_head, "eq_b" = e_body, "eq_l" = e_legs, "eq_f" = e_feet,
 						"rest" = M.is_resting, "ft" = M.is_fainted,
 						"name" = M.name, "skin" = M.skin_color, "cloth" = M.cloth_color,
 						"npc" = 0,
 						"hp" = M.current_hp, "mhp" = M.max_hp,
 						"gen" = M.char_gender
 					)
-					players_list[pid] = pData
+			
 			for(var/mob/npc/N in global_npcs)
 				if(abs(N.real_x - src.real_x) > 30 || abs(N.real_z - src.real_z) > 30) continue
 				var/nid = "\ref[N]"
 				players_list[nid] = list(
-					"x" = N.real_x, "y" = N.real_y, "z" = N.real_z, "rot" = N.real_rot,
+					"x" = R2(N.real_x), "y" = R2(N.real_y), "z" = R2(N.real_z), "rot" = R2(N.real_rot),
 					"a" = 0, "at" = "", "it" = "", "rest" = 0, "ft" = 0,
+					"rn" = 0,
 					"name" = N.name, "skin" = N.skin_color, "cloth" = N.cloth_color,
 					"npc" = 1, "type" = N.npc_type,
 					"hp" = N.current_hp, "mhp" = N.max_hp,
 					"gen" = N.char_gender
 				)
+			
 			var/list/ground_items = list()
-			for(var/obj/item/I in world)
+			for(var/obj/item/I in global_ground_items)
 				if(isturf(I.loc))
 					var/dx = I.real_x - src.real_x
 					var/dz = I.real_z - src.real_z
 					if(abs(dx) < 20 && abs(dz) < 20)
-						ground_items += list(list("ref" = "\ref[I]", "id" = I.id_visual, "x" = I.real_x, "y" = I.real_y, "z" = I.real_z))
+						ground_items += list(list("ref" = "\ref[I]", "id" = I.id_visual, "x" = R2(I.real_x), "y" = R2(I.real_y), "z" = R2(I.real_z)))
+				else
+					global_ground_items -= I
+			
 			var/faint_remaining = 0
 			if(src.is_fainted && src.faint_end_time > world.time)
 				faint_remaining = round((src.faint_end_time - world.time) / 10)
@@ -700,6 +719,13 @@ mob
 				real_y = text2num(href_list["y"])
 				real_z = text2num(href_list["z"])
 				real_rot = text2num(href_list["rot"])
+				
+				// CORREÇÃO: Limites do Servidor (Segurança)
+				if(real_x > 29) real_x = 29
+				if(real_x < -29) real_x = -29
+				if(real_z > 29) real_z = 29
+				if(real_z < -29) real_z = -29
+
 				if(href_list["run"] == "1") is_running = 1
 				else is_running = 0
 
