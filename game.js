@@ -86,8 +86,9 @@ function spawnDamageNumber(targetRef, amount) {
 function round2(num) { return Math.round((num + Number.EPSILON) * 100) / 100; }
 
 // --- TRANSPORTE DE REDE (BYOND://) ---
-const NET_FLUSH_INTERVAL = 33;
+const NET_FLUSH_INTERVAL = 16;
 const networkQueue = [];
+const MAX_NETWORK_QUEUE = 80;
 let networkFlushTimer = null;
 
 function encodeQuery(params) {
@@ -126,6 +127,7 @@ function queueAction(action, params, opts) {
     }
 
     networkQueue.push({ query, key: options.coalesceKey || null });
+    if (networkQueue.length > MAX_NETWORK_QUEUE) networkQueue.splice(0, networkQueue.length - MAX_NETWORK_QUEUE);
     scheduleNetworkFlush(options.flushNow);
 }
 
@@ -329,6 +331,7 @@ window.addEventListener('keydown', function(e) {
     if(e.key === 'Shift') isRunning = true;
 });
 window.addEventListener('keyup', function(e) { if(e.key === 'Shift') isRunning = false; });
+window.addEventListener('beforeunload', function() { if(networkQueue.length) flushNetworkQueue(); });
 
 function interact() {
     let targetRef = ""; for(let id in otherPlayers) { let dist = playerGroup.position.distanceTo(otherPlayers[id].mesh.position); if(dist < 3.0) { targetRef = id; break; } }
@@ -422,7 +425,7 @@ function checkCollisions(attackerBox, type, objRef) {
         if(type === "melee" && objRef.hasHit.includes(id)) continue;
         tempBoxTarget.setFromObject(target.mesh);
         if (attackerBox.intersectsBox(tempBoxTarget)) {
-            if(typeof BYOND_REF !== 'undefined') queueAction('register_hit', { target_ref: id, hit_type: type, combo: (type === 'melee' && objRef.data && objRef.data.step) ? objRef.data.step : undefined }, { flushNow: true });
+            if(typeof BYOND_REF !== 'undefined') queueAction('register_hit', { target_ref: id, hit_type: type, combo: (type === 'melee' && objRef.data && objRef.data.step) ? objRef.data.step : undefined });
             if(type === "projectile") { Engine.scene.remove(objRef.mesh); objRef.distTraveled = 99999; } else if(type === "melee") { objRef.hasHit.push(id); objRef.mesh.material.color.setHex(0xFFFFFF); }
         }
     }
@@ -504,7 +507,7 @@ function performAttack(type) {
         
         if(typeof BYOND_REF !== 'undefined') { 
             blockSync = true; 
-            sendNow('attack', { type }); 
+            queueAction('attack', { type }, { flushNow: true }); 
             setTimeout(function(){blockSync=false}, 200); 
         }
         
@@ -878,6 +881,7 @@ function animate() {
         Engine.camera.position.set(playerGroup.position.x + Math.sin(Input.camAngle)*7, playerGroup.position.y + 5, playerGroup.position.z + Math.cos(Input.camAngle)*7);
         Engine.camera.lookAt(playerGroup.position.x, playerGroup.position.y + 1.5, playerGroup.position.z);
         sendPositionUpdate(now);
+        if (networkQueue.length >= 10) scheduleNetworkFlush(true);
     }
     
     // Render Other Players
