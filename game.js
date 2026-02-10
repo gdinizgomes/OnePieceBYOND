@@ -89,6 +89,7 @@ function round2(num) { return Math.round((num + Number.EPSILON) * 100) / 100; }
 const NET_FLUSH_INTERVAL = 16;
 const networkQueue = [];
 const MAX_NETWORK_QUEUE = 80;
+const hitBatchQueue = {};
 let networkFlushTimer = null;
 
 function encodeQuery(params) {
@@ -131,6 +132,30 @@ function queueAction(action, params, opts) {
     scheduleNetworkFlush(options.flushNow);
 }
 
+
+function queueHitRegistration(targetRef, hitType, comboStep) {
+    const combo = comboStep || 0;
+    const key = `${targetRef}|${hitType}|${combo}`;
+    hitBatchQueue[key] = 1;
+    scheduleNetworkFlush(false);
+}
+
+function drainHitBatchQuery() {
+    const keys = Object.keys(hitBatchQueue);
+    if (!keys.length) return null;
+
+    const packed = [];
+    for (let i = 0; i < keys.length; i++) {
+        const parts = keys[i].split('|');
+        if (parts.length < 2) continue;
+        packed.push(`${parts[0]},${parts[1]},${parts[2] || 0}`);
+        delete hitBatchQueue[keys[i]];
+    }
+
+    if (!packed.length) return null;
+    return encodeQuery({ action: 'register_hits', hits: packed.join(';') });
+}
+
 function scheduleNetworkFlush(immediate) {
     if (networkFlushTimer) {
         if (!immediate) return;
@@ -146,9 +171,12 @@ function flushNetworkQueue() {
         clearTimeout(networkFlushTimer);
         networkFlushTimer = null;
     }
-    if (!networkQueue.length || typeof BYOND_REF === 'undefined') return;
+    if (typeof BYOND_REF === 'undefined') return;
 
     const batch = [];
+    const hitQuery = drainHitBatchQuery();
+    if (hitQuery) batch.push(hitQuery);
+    if (!batch.length && !networkQueue.length) return;
     while (networkQueue.length && batch.length < 20) {
         batch.push(networkQueue.shift().query);
     }
@@ -425,7 +453,7 @@ function checkCollisions(attackerBox, type, objRef) {
         if(type === "melee" && objRef.hasHit.includes(id)) continue;
         tempBoxTarget.setFromObject(target.mesh);
         if (attackerBox.intersectsBox(tempBoxTarget)) {
-            if(typeof BYOND_REF !== 'undefined') queueAction('register_hit', { target_ref: id, hit_type: type, combo: (type === 'melee' && objRef.data && objRef.data.step) ? objRef.data.step : undefined });
+            if(typeof BYOND_REF !== 'undefined') queueHitRegistration(id, type, (type === 'melee' && objRef.data && objRef.data.step) ? objRef.data.step : 0);
             if(type === "projectile") { Engine.scene.remove(objRef.mesh); objRef.distTraveled = 99999; } else if(type === "melee") { objRef.hasHit.push(id); objRef.mesh.material.color.setHex(0xFFFFFF); }
         }
     }
@@ -881,7 +909,7 @@ function animate() {
         Engine.camera.position.set(playerGroup.position.x + Math.sin(Input.camAngle)*7, playerGroup.position.y + 5, playerGroup.position.z + Math.cos(Input.camAngle)*7);
         Engine.camera.lookAt(playerGroup.position.x, playerGroup.position.y + 1.5, playerGroup.position.z);
         sendPositionUpdate(now);
-        if (networkQueue.length >= 10) scheduleNetworkFlush(true);
+        if (networkQueue.length >= 10 || Object.keys(hitBatchQueue).length >= 10) scheduleNetworkFlush(true);
     }
     
     // Render Other Players
