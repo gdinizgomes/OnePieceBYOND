@@ -29,7 +29,7 @@ proc/RebuildGlobalPlayersSnapshot()
 
 		global_players_snapshot["\ref[M]"] = list(
 			"x" = round(M.real_x * 100) / 100, "y" = round(M.real_y * 100) / 100, "z" = round(M.real_z * 100) / 100, "rot" = round(M.real_rot * 100) / 100,
-			"a" = M.is_attacking, "at" = M.attack_type,
+			"a" = M.is_attacking, "at" = M.attack_type, "ak" = M.attack_seq,
 			"rn" = M.is_running,
 			"it" = e_hand,
 			"eq_h" = e_head, "eq_b" = e_body, "eq_l" = e_legs, "eq_f" = e_feet,
@@ -216,6 +216,7 @@ mob
 	var/in_game = 0
 	var/is_attacking = 0
 	var/attack_type = ""
+	var/attack_seq = 0
 	var/active_item_visual = ""
 	
 	// Slots de Equipamento
@@ -837,7 +838,10 @@ mob
 			if(ConsumeEnergy(base_cost))
 				is_attacking = 1
 				attack_type = href_list["type"]
-				spawn(3) is_attacking = 0
+				attack_seq++
+				spawn(3)
+					is_attacking = 0
+					attack_type = ""
 
 		if(action == "register_hit" && in_game)
 			var/target_ref = href_list["target_ref"]

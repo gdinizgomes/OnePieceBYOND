@@ -621,21 +621,36 @@ function receberDadosMultiplayer(json) {
                 newChar.userData.lastHead = ""; newChar.userData.lastBody = "";
                 newChar.userData.lastLegs = ""; newChar.userData.lastFeet = ""; newChar.userData.lastItem = "";
                 
-                otherPlayers[id] = { mesh: newChar, label: label, hpFill: label.querySelector('.mini-hp-fill'), startX: pData.x, startY: pData.y, startZ: pData.z, startRot: pData.rot, targetX: pData.x, targetY: pData.y, targetZ: pData.z, targetRot: pData.rot, lastPacketTime: now, lerpDuration: 220, attacking: pData.a, attackType: pData.at, resting: pData.rest, fainted: pData.ft, lastItem: "", isNPC: (pData.npc === 1), npcType: pData.type, gender: pData.gen, isRunning: false };
+                otherPlayers[id] = { mesh: newChar, label: label, hpFill: label.querySelector('.mini-hp-fill'), startX: pData.x, startY: pData.y, startZ: pData.z, startRot: pData.rot, targetX: pData.x, targetY: pData.y, targetZ: pData.z, targetRot: pData.rot, prevTargetX: pData.x, prevTargetZ: pData.z, remoteSpeed: 0, lastPacketTime: now, lerpDuration: 220, attacking: pData.a, attackType: pData.at, attackSeq: (pData.ak || 0), attackAnimUntil: 0, resting: pData.rest, fainted: pData.ft, lastItem: "", isNPC: (pData.npc === 1), npcType: pData.type, gender: pData.gen, isRunning: false };
             }
         } else {
             const other = otherPlayers[id];
             const mesh = other.mesh;
             const packetDelta = Math.max(1, now - other.lastPacketTime);
+            const dtSec = packetDelta / 1000;
+            const moveDx = pData.x - (other.prevTargetX !== undefined ? other.prevTargetX : pData.x);
+            const moveDz = pData.z - (other.prevTargetZ !== undefined ? other.prevTargetZ : pData.z);
+            other.remoteSpeed = Math.sqrt(moveDx * moveDx + moveDz * moveDz) / Math.max(0.001, dtSec);
+            other.prevTargetX = pData.x; other.prevTargetZ = pData.z;
+
             other.startX = mesh.position.x; other.startY = mesh.position.y; other.startZ = mesh.position.z; other.startRot = mesh.rotation.y;
             other.targetX = pData.x; other.targetY = pData.y; other.targetZ = pData.z; other.targetRot = pData.rot; other.lastPacketTime = now;
             // Ajusta interpolação de acordo com o intervalo real entre pacotes para reduzir "speed-up" visual.
-            other.lerpDuration = Math.max(120, Math.min(280, packetDelta * 1.1));
+            other.lerpDuration = Math.max(130, Math.min(300, packetDelta * 1.15));
             other.attacking = pData.a; other.attackType = pData.at; other.resting = pData.rest; other.fainted = pData.ft;
             if(pData.gen) other.gender = pData.gen;
             
             // CORREÇÃO: Atualiza se está correndo
             if(pData.rn !== undefined) other.isRunning = (pData.rn == 1);
+
+            if(pData.ak !== undefined && pData.ak !== other.attackSeq) {
+                other.attackSeq = pData.ak;
+                if(pData.at) other.attackType = pData.at;
+                other.attackAnimUntil = now + 280;
+                if(other.attackType === "gun") {
+                    fireProjectile({ speed: 0.6, color: 0xFFFF00, ownerID: id }, false);
+                }
+            }
 
             // --- ATUALIZAÇÃO EQUIPAMENTOS (OUTROS) ---
             if(mesh.userData.lastItem !== pData.it) {
@@ -659,7 +674,6 @@ function receberDadosMultiplayer(json) {
             }
 
             if(pData.hp !== undefined && other.hpFill) other.hpFill.style.width = Math.max(0, Math.min(100, (pData.hp / pData.mhp) * 100)) + "%";
-            if (other.attacking && other.attackType === "gun" && !other.hasFiredThisCycle) { fireProjectile({ speed: 0.6, color: 0xFFFF00, ownerID: id }, false); other.hasFiredThisCycle = true; setTimeout(() => { other.hasFiredThisCycle = false; }, 500); }
         }
     }
     for (const id in otherPlayers) {
@@ -798,7 +812,7 @@ function animate() {
         const other = otherPlayers[id]; const mesh = other.mesh; const elapsed = other.lastPacketTime ? (now - other.lastPacketTime) : 0; const t = other.lerpDuration ? Math.min(1, elapsed / other.lerpDuration) : 1;
         mesh.position.x = lerp(other.startX, other.targetX, t); mesh.position.y = lerp(other.startY, other.targetY, t); mesh.position.z = lerp(other.startZ, other.targetZ, t); mesh.rotation.y = lerpAngle(other.startRot, other.targetRot, t);
         
-        const dist = Math.sqrt(Math.pow(other.targetX - mesh.position.x, 2) + Math.pow(other.targetZ - mesh.position.z, 2)); const isMoving = dist > 0.05;
+        const isMoving = (other.remoteSpeed || 0) > 0.15;
         const limbs = mesh.userData.limbs;
         if(limbs) {
             let remoteStance = STANCES.DEFAULT;
@@ -823,7 +837,7 @@ function animate() {
                     lerpLimbRotation(limbs.leftForeArm, restStance.leftForeArm, spd); lerpLimbRotation(limbs.rightForeArm, restStance.rightForeArm, spd);
                 }
             } else {
-                if(other.attacking) {
+                if(other.attacking || now < (other.attackAnimUntil || 0)) {
                     if(other.attackType === "sword") remoteStance = STANCES.SWORD_COMBO_1; 
                     else if(other.attackType === "fist") remoteStance = STANCES.FIST_COMBO_1;
                     else if(other.attackType === "kick") remoteStance = STANCES.KICK_COMBO_1; 
@@ -835,8 +849,8 @@ function animate() {
                     lerpLimbRotation(limbs.leftLeg, remoteStance.leftLeg || def.leftLeg, 0.4); lerpLimbRotation(limbs.rightLeg, remoteStance.rightLeg || def.rightLeg, 0.4);
                 } else if(isMoving) {
                     // CORREÇÃO: Animação remota baseada na flag 'rn' do servidor
-                    const animSpeed = other.isRunning ? 0.3 : 0.15; 
-                    const armAmp = other.isRunning ? 1.2 : 0.6;    
+                    const animSpeed = other.isRunning ? 0.22 : 0.35; 
+                    const armAmp = other.isRunning ? 1.0 : 0.55;    
 
                     limbs.leftLeg.rotation.x = Math.sin(animTime / animSpeed) * armAmp;
                     limbs.rightLeg.rotation.x = -Math.sin(animTime / animSpeed) * armAmp;
