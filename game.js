@@ -104,6 +104,17 @@ const BYOND_CALLBACK_NAMES = [
     'receberDadosMultiplayer',
     'updateStatusMenu'
 ];
+const UI_ACTION_NAMES = [
+    'toggleStats',
+    'toggleInventory',
+    'toggleShop',
+    'buyItem',
+    'sellItem',
+    'trashItem',
+    'equipItem',
+    'dropItem',
+    'addStat'
+];
 
 function encodeQuery(params) {
     const out = [];
@@ -325,8 +336,16 @@ function mostrarNotificacao(msg) {
 }
 
 function loadSlots(json) {
-    // Callback mantido por compatibilidade com saídas BYOND legadas.
-    return json;
+    // Compatibilidade com payloads legados de slot/equipamento enviados pelo BYOND.
+    let data;
+    try { data = JSON.parse(json); } catch(e) { return; }
+    if(!data || typeof data !== 'object') return;
+
+    updateEquipmentSlot('hand', data.hand || null);
+    updateEquipmentSlot('head', data.head || null);
+    updateEquipmentSlot('body', data.body || null);
+    updateEquipmentSlot('legs', data.legs || null);
+    updateEquipmentSlot('feet', data.feet || null);
 }
 
 function toggleShop() {
@@ -436,29 +455,31 @@ function updateStatusMenu(json) {
         document.getElementById('prof-gun').innerText = data.pg; document.getElementById('bar-gun').style.width = Math.min(100, (data.pg_x / data.pg_r) * 100) + "%";
     }
     
-    function updateSlot(slotName, itemData) {
-        const div = document.getElementById('slot-' + slotName); 
-        if(!div) return; 
-        div.innerHTML = "";
-        if(itemData) {
-            const img = document.createElement('img'); img.className = 'equip-icon'; img.src = itemData.id + "_img.png";
-            img.onerror = function() { if(this && this.style) this.style.backgroundColor = '#777'; };
-            div.appendChild(img); 
-            div.onclick = function() { unequipItem(slotName); }; 
-            div.title = "Desequipar " + itemData.name;
-        } else {
-            const label = document.createElement('label'); 
-            label.innerText = slotName.charAt(0).toUpperCase() + slotName.slice(1);
-            div.appendChild(label); 
-            div.onclick = null; 
-            div.title = "Vazio";
-        }
+    const equipData = data.equip || {};
+    updateEquipmentSlot('hand', equipData.hand || null);
+    updateEquipmentSlot('head', equipData.head || null);
+    updateEquipmentSlot('body', equipData.body || null);
+    updateEquipmentSlot('legs', equipData.legs || null);
+    updateEquipmentSlot('feet', equipData.feet || null);
+}
+
+function updateEquipmentSlot(slotName, itemData) {
+    const div = document.getElementById('slot-' + slotName); 
+    if(!div) return; 
+    div.innerHTML = "";
+    if(itemData) {
+        const img = document.createElement('img'); img.className = 'equip-icon'; img.src = itemData.id + "_img.png";
+        img.onerror = function() { if(this && this.style) this.style.backgroundColor = '#777'; };
+        div.appendChild(img); 
+        div.onclick = function() { unequipItem(slotName); }; 
+        div.title = "Desequipar " + itemData.name;
+    } else {
+        const label = document.createElement('label'); 
+        label.innerText = slotName.charAt(0).toUpperCase() + slotName.slice(1);
+        div.appendChild(label); 
+        div.onclick = null; 
+        div.title = "Vazio";
     }
-    updateSlot('hand', data.equip.hand);
-    updateSlot('head', data.equip.head);
-    updateSlot('body', data.equip.body);
-    updateSlot('legs', data.equip.legs);
-    updateSlot('feet', data.equip.feet);
 }
 
 function equipItem(ref) { if(blockSync) return; hideTooltip(); blockSync = true; sendNow('equip_item', { ref }); setTimeout(() => { blockSync = false; }, 200); }
@@ -896,8 +917,9 @@ function receberDadosMultiplayer(json) {
 }
 
 function exposeByondCallbacks() {
-    for (let i = 0; i < BYOND_CALLBACK_NAMES.length; i++) {
-        const cbName = BYOND_CALLBACK_NAMES[i];
+    const namesToExpose = BYOND_CALLBACK_NAMES.concat(UI_ACTION_NAMES);
+    for (let i = 0; i < namesToExpose.length; i++) {
+        const cbName = namesToExpose[i];
         if (typeof window[cbName] !== 'function' && typeof globalThis[cbName] === 'function') {
             window[cbName] = globalThis[cbName];
         }
