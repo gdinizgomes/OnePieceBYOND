@@ -702,9 +702,10 @@ mob
 			SaveCharacter()
 			sleep(300)
 
-	Topic(href, href_list[])
-		..()
+	proc/HandleClientAction(list/href_list)
+		if(!href_list) return
 		var/action = href_list["action"]
+		if(!action) return
 		if(action == "request_slots")
 			var/list/slots_data = list()
 			for(var/i=1 to 3)
@@ -844,74 +845,21 @@ mob
 					attack_type = ""
 
 		if(action == "register_hit" && in_game)
-			var/target_ref = href_list["target_ref"]
-			var/hit_type = href_list["hit_type"]
-			var/obj/target = locate(target_ref)
-			
-			if(!target) return
+			ProcessRegisterHit(href_list["target_ref"], href_list["hit_type"], text2num(href_list["combo"]))
 
-			// IMORTALIDADE
-			if(istype(target, /mob/npc))
-				var/mob/npc/N = target
-				if(N.npc_type == "vendor" || N.npc_type == "nurse") return 
-
-			var/max_dist = 3.0 
-			var/bonus_dmg = 0
-			var/skill_exp_type = ""
-			
-			if(hit_type == "projectile")
-				if(slot_hand && istype(slot_hand, /obj/item/weapon))
-					max_dist = slot_hand:range + 5 
-					bonus_dmg = slot_hand:power
-					skill_exp_type = "gun"
-				else return
-			else if(hit_type == "melee")
-				if(attack_type == "sword")
-					if(slot_hand && istype(slot_hand, /obj/item/weapon))
-						max_dist = slot_hand:range + 2
-						bonus_dmg = slot_hand:power
-						skill_exp_type = "sword"
-				else if(attack_type == "kick")
-					max_dist = 3.5; skill_exp_type = "kick"
-				else 
-					max_dist = 2.5; skill_exp_type = "fist"
-			
-			var/dist = get_dist_euclid(src.real_x, src.real_z, target:real_x, target:real_z)
-			if(dist > max_dist) return
-
-			var/prof_bonus = 0
-			if(skill_exp_type == "sword") prof_bonus = prof_sword_lvl * 2
-			else if(skill_exp_type == "gun") prof_bonus = prof_gun_lvl * 2
-			else if(skill_exp_type == "kick") prof_bonus = prof_kick_lvl * 2
-			else prof_bonus = prof_punch_lvl * 2
-
-			// --- LÓGICA DE DANO COMBO ---
-			var/damage_mult = 1.0
-			var/combo_step = text2num(href_list["combo"])
-			if(combo_step == 3) damage_mult = 1.2 // 20% Bônus no 3º hit
-
-			var/damage = round(((strength * 0.4) + prof_bonus + bonus_dmg + rand(0, 3)) * damage_mult)
-			
-			src.pending_visuals += list(list("type"="dmg", "val"=damage, "tid"=target_ref))
-
-			if(istype(target, /mob/npc))
-				var/mob/npc/N = target
-				if(N.npc_type == "prop")
-					var/msg = "TREINO: [damage] dmg"
-					if(combo_step == 3) msg = "COMBO: [damage] dmg!"
-					src << output("<span class='log-hit' style='color:orange'>[msg]</span>", "map3d:addLog")
-					GainExperience(5)
-					if(skill_exp_type) GainWeaponExp(skill_exp_type, 3)
-				else
-					src << output("<span class='log-hit'>HIT em [N.name]! Dano: [damage]</span>", "map3d:addLog")
-					N.current_hp -= damage
-					if(N.current_hp <= 0)
-						src << output("<span class='log-hit' style='color:red'>[N.name] eliminado!</span>", "map3d:addLog")
-						N.current_hp = N.max_hp
-						N.real_x = rand(-10, 10)
-						N.real_z = rand(-10, 10)
-					GainExperience(10)
-					if(skill_exp_type) GainWeaponExp(skill_exp_type, 5)
+		if(action == "register_hits" && in_game)
+			var/raw_hits = href_list["hits"]
+			if(raw_hits && length(raw_hits))
+				var/list/hits = splittext(raw_hits, ";")
+				for(var/h in hits)
+					if(!length(h)) continue
+					var/list/parts = splittext(h, ",")
+					if(parts.len < 2) continue
+					var/target_ref = parts[1]
+					var/hit_type = parts[2]
+					var/combo_step = 0
+					if(parts.len >= 3) combo_step = text2num(parts[3])
+					ProcessRegisterHit(target_ref, hit_type, combo_step)
 
 		if(action == "add_stat" && in_game)
 			if(stat_points > 0)
@@ -923,6 +871,87 @@ mob
 				stat_points--
 				RecalculateStats()
 				src << output("Ponto adicionado em [s]!", "map3d:mostrarNotificacao")
+
+
+	proc/ProcessRegisterHit(target_ref, hit_type, combo_step)
+		if(!target_ref || !hit_type) return
+		var/obj/target = locate(target_ref)
+		if(!target) return
+
+		if(istype(target, /mob/npc))
+			var/mob/npc/N = target
+			if(N.npc_type == "vendor" || N.npc_type == "nurse") return
+
+		var/max_dist = 3.0
+		var/bonus_dmg = 0
+		var/skill_exp_type = ""
+
+		if(hit_type == "projectile")
+			if(slot_hand && istype(slot_hand, /obj/item/weapon))
+				max_dist = slot_hand:range + 5
+				bonus_dmg = slot_hand:power
+				skill_exp_type = "gun"
+			else return
+		else if(hit_type == "melee")
+			if(attack_type == "sword")
+				if(slot_hand && istype(slot_hand, /obj/item/weapon))
+					max_dist = slot_hand:range + 2
+					bonus_dmg = slot_hand:power
+					skill_exp_type = "sword"
+			else if(attack_type == "kick")
+				max_dist = 3.5; skill_exp_type = "kick"
+			else
+				max_dist = 2.5; skill_exp_type = "fist"
+
+		var/dist = get_dist_euclid(src.real_x, src.real_z, target:real_x, target:real_z)
+		if(dist > max_dist) return
+
+		var/prof_bonus = 0
+		if(skill_exp_type == "sword") prof_bonus = prof_sword_lvl * 2
+		else if(skill_exp_type == "gun") prof_bonus = prof_gun_lvl * 2
+		else if(skill_exp_type == "kick") prof_bonus = prof_kick_lvl * 2
+		else prof_bonus = prof_punch_lvl * 2
+
+		var/damage_mult = 1.0
+		if(combo_step == 3) damage_mult = 1.2
+
+		var/damage = round(((strength * 0.4) + prof_bonus + bonus_dmg + rand(0, 3)) * damage_mult)
+		src.pending_visuals += list(list("type"="dmg", "val"=damage, "tid"=target_ref))
+
+		if(istype(target, /mob/npc))
+			var/mob/npc/N = target
+			if(N.npc_type == "prop")
+				var/msg = "TREINO: [damage] dmg"
+				if(combo_step == 3) msg = "COMBO: [damage] dmg!"
+				src << output("<span class='log-hit' style='color:orange'>[msg]</span>", "map3d:addLog")
+				GainExperience(5)
+				if(skill_exp_type) GainWeaponExp(skill_exp_type, 3)
+			else
+				src << output("<span class='log-hit'>HIT em [N.name]! Dano: [damage]</span>", "map3d:addLog")
+				N.current_hp -= damage
+				if(N.current_hp <= 0)
+					src << output("<span class='log-hit' style='color:red'>[N.name] eliminado!</span>", "map3d:addLog")
+					N.current_hp = N.max_hp
+					N.real_x = rand(-10, 10)
+					N.real_z = rand(-10, 10)
+				GainExperience(10)
+				if(skill_exp_type) GainWeaponExp(skill_exp_type, 5)
+
+	Topic(href, href_list[])
+		..()
+		if(!href_list) return
+
+		if(href_list["action"] == "batch")
+			var/raw_cmds = href_list["cmds"]
+			if(!raw_cmds || !length(raw_cmds)) return
+			var/list/commands = splittext(raw_cmds, "|")
+			for(var/cmd in commands)
+				if(!length(cmd)) continue
+				var/list/cmd_list = params2list(cmd)
+				if(cmd_list && cmd_list.len)
+					HandleClientAction(cmd_list)
+		else
+			HandleClientAction(href_list)
 
 	verb/TestLevelUp()
 		set category = "Debug"
