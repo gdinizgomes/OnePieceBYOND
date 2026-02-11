@@ -571,7 +571,7 @@ function performAttack(type) {
         
         if(typeof BYOND_REF !== 'undefined') { 
             blockSync = true; 
-            queueAction('attack', { type }, { flushNow: true }); 
+            queueAction('attack', { type }); 
             setTimeout(function(){blockSync=false}, 200); 
         }
         
