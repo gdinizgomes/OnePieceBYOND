@@ -95,6 +95,15 @@ let networkPumpStarted = false;
 let networkTickInFlight = false;
 let networkBootstrapReady = false;
 let gameplayInputsBound = false;
+const BYOND_CALLBACK_NAMES = [
+    'addLog',
+    'loadInventory',
+    'loadSlots',
+    'mostrarNotificacao',
+    'openShop',
+    'receberDadosMultiplayer',
+    'updateStatusMenu'
+];
 
 function encodeQuery(params) {
     const out = [];
@@ -139,11 +148,14 @@ function sendNow(action, params) {
     queueAction(action, params, { priority: true });
 }
 
-function sendRare(action, params) {
+function sendReliable(action, params) {
     if (typeof BYOND_REF === 'undefined') return;
-    ensureNetworkPumpActive();
     const payload = encodeQuery(Object.assign({ action }, params || {}));
     window.location.href = buildByondUrl(payload);
+}
+
+function sendRare(action, params) {
+    sendReliable(action, params);
 }
 
 function queueAction(action, params, opts) {
@@ -224,7 +236,7 @@ function startNetworkPump() {
 
 function ensureNetworkPumpActive() {
     if (networkPumpStarted) return true;
-    if (typeof BYOND_REF === 'undefined' && !isCharacterReady) return false;
+    if (typeof BYOND_REF === 'undefined') return false;
     startNetworkPump();
     return true;
 }
@@ -261,17 +273,18 @@ function bindGameplayInputHandlers() {
 
 function bootstrapNetwork() {
     if (networkBootstrapReady) return;
-    if (!ensureNetworkPumpActive()) return;
     bindGameplayInputHandlers();
+    ensureNetworkPumpActive();
     networkBootstrapReady = true;
 }
 
 function initNetworkBootstrap() {
     bootstrapNetwork();
-    if (networkBootstrapReady) return;
+    if (networkBootstrapReady && networkPumpStarted) return;
     const bootstrapTimer = setInterval(function() {
         bootstrapNetwork();
-        if (networkBootstrapReady) clearInterval(bootstrapTimer);
+        ensureNetworkPumpActive();
+        if (networkBootstrapReady && networkPumpStarted) clearInterval(bootstrapTimer);
     }, 100);
 }
 
@@ -283,7 +296,7 @@ function toggleStats() {
     if(isStatWindowOpen) {
         isInvWindowOpen = false; 
         document.getElementById('inventory-window').style.display = 'none';
-        sendNow('request_status');
+        sendReliable('request_status');
     }
 }
 
@@ -295,8 +308,25 @@ function toggleInventory() {
     if(isInvWindowOpen) {
         isStatWindowOpen = false;
         document.getElementById('stat-window').style.display = 'none';
-        sendNow('request_inventory');
+        sendReliable('request_inventory');
     }
+}
+
+function mostrarNotificacao(msg) {
+    const area = document.getElementById('notif-area');
+    if(!area) return;
+    const div = document.createElement('div');
+    div.style.cssText = 'margin-top:6px;padding:8px 12px;border-radius:6px;background:rgba(0,0,0,0.75);color:#fff;border:1px solid rgba(255,255,255,0.2);font-size:13px;pointer-events:none;';
+    div.innerText = msg;
+    area.appendChild(div);
+    setTimeout(function() {
+        if(div && div.parentNode) div.parentNode.removeChild(div);
+    }, 2000);
+}
+
+function loadSlots(json) {
+    // Callback mantido por compatibilidade com saídas BYOND legadas.
+    return json;
 }
 
 function toggleShop() {
@@ -865,6 +895,15 @@ function receberDadosMultiplayer(json) {
     }
 }
 
+function exposeByondCallbacks() {
+    for (let i = 0; i < BYOND_CALLBACK_NAMES.length; i++) {
+        const cbName = BYOND_CALLBACK_NAMES[i];
+        if (typeof window[cbName] !== 'function' && typeof globalThis[cbName] === 'function') {
+            window[cbName] = globalThis[cbName];
+        }
+    }
+}
+
 function shouldSendPosition(x, y, z, rot, now) { if (now - lastSentTime < POSITION_SYNC_INTERVAL) return false; if (Math.abs(x - lastSentX) < POSITION_EPSILON && Math.abs(y - lastSentY) < POSITION_EPSILON && Math.abs(z - lastSentZ) < POSITION_EPSILON && Math.abs(rot - lastSentRot) < POSITION_EPSILON) return false; return true; }
 function sendPositionUpdate(now) { if (!isCharacterReady || blockSync || typeof BYOND_REF === 'undefined') return; const x = round2(playerGroup.position.x); const y = round2(playerGroup.position.y); const z = round2(playerGroup.position.z); const rot = round2(playerGroup.rotation.y); if (!shouldSendPosition(x, y, z, rot, now)) return; lastSentTime = now; lastSentX = x; lastSentY = y; lastSentZ = z; lastSentRot = rot; let runFlag = (isRunning && !isResting) ? 1 : 0; queueAction('update_pos', { x, y, z, rot, run: runFlag }, { coalesceKey: 'update_pos' }); }
 
@@ -1052,5 +1091,6 @@ function animate() {
 }
 
 initNetworkBootstrap();
+exposeByondCallbacks();
 animate();
 setInterval(function() { if(isCharacterReady && Date.now() - lastPacketTime > 4000) { addLog("AVISO: Conexão com o servidor perdida.", "log-hit"); isCharacterReady = false; } }, 1000);
