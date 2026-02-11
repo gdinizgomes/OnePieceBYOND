@@ -93,6 +93,8 @@ const hitBatchQueue = {};
 const MAX_BATCH_PER_TICK = 20;
 let networkPumpStarted = false;
 let networkTickInFlight = false;
+let networkBootstrapReady = false;
+let gameplayInputsBound = false;
 
 function encodeQuery(params) {
     const out = [];
@@ -139,12 +141,14 @@ function sendNow(action, params) {
 
 function sendRare(action, params) {
     if (typeof BYOND_REF === 'undefined') return;
+    ensureNetworkPumpActive();
     const payload = encodeQuery(Object.assign({ action }, params || {}));
     window.location.href = buildByondUrl(payload);
 }
 
 function queueAction(action, params, opts) {
     if (typeof BYOND_REF === 'undefined') return;
+    if (!ensureNetworkPumpActive()) return;
     const options = opts || {};
     const query = encodeQuery(Object.assign({ action }, params || {}));
 
@@ -165,6 +169,7 @@ function queueAction(action, params, opts) {
 
 
 function queueHitRegistration(targetRef, hitType, comboStep) {
+    ensureNetworkPumpActive();
     const combo = comboStep || 0;
     const key = `${targetRef}|${hitType}|${combo}`;
     hitBatchQueue[key] = 1;
@@ -215,6 +220,59 @@ function startNetworkPump() {
     if (networkPumpStarted) return;
     networkPumpStarted = true;
     setInterval(flushNetworkQueue, NETWORK_TICK_MS);
+}
+
+function ensureNetworkPumpActive() {
+    if (networkPumpStarted) return true;
+    if (typeof BYOND_REF === 'undefined' && !isCharacterReady) return false;
+    startNetworkPump();
+    return true;
+}
+
+function bindGameplayInputHandlers() {
+    if (gameplayInputsBound) return;
+    gameplayInputsBound = true;
+
+    window.addEventListener('keydown', function(e) {
+        const k = e.key.toLowerCase();
+        if(k === 'c') toggleStats(); if(k === 'i') toggleInventory(); if(k === 'x') interact();
+        if(k === 'e' && !blockSync) { blockSync = true; sendNow('pick_up'); setTimeout(function() { blockSync = false; }, 300); }
+        if(k === 'r' && !blockSync) { blockSync = true; sendNow('toggle_rest'); setTimeout(function() { blockSync = false; }, 500); }
+        if(e.key === 'Shift') isRunning = true;
+    });
+    window.addEventListener('keyup', function(e) { if(e.key === 'Shift') isRunning = false; });
+    window.addEventListener('beforeunload', function() {
+        const hitQuery = drainHitBatchQuery();
+        const batch = [];
+        if (hitQuery) batch.push(hitQuery);
+        while (networkQueue.length && batch.length < MAX_BATCH_PER_TICK) batch.push(networkQueue.shift().query);
+        if (!batch.length) return;
+        const payload = (batch.length === 1) ? batch[0] : `action=batch&cmds=${encodeURIComponent(batch.join('|'))}`;
+        const url = buildAsyncUrl(payload);
+        if (url && navigator.sendBeacon) navigator.sendBeacon(url, '');
+    });
+
+    window.addEventListener('game-action', function(e) {
+        if(isFainted) return; const k = e.detail;
+        if(k === 'd') performAttack("sword"); else if(k === 'f') performAttack("gun"); else if(k === 'a') performAttack("fist"); else if(k === 's') performAttack("kick");
+        else if(k === 'p' && !blockSync) { blockSync = true; sendRare('force_save'); addLog("Salvando...", "log-miss"); setTimeout(function() { blockSync = false; }, 500); }
+    });
+}
+
+function bootstrapNetwork() {
+    if (networkBootstrapReady) return;
+    if (!ensureNetworkPumpActive()) return;
+    bindGameplayInputHandlers();
+    networkBootstrapReady = true;
+}
+
+function initNetworkBootstrap() {
+    bootstrapNetwork();
+    if (networkBootstrapReady) return;
+    const bootstrapTimer = setInterval(function() {
+        bootstrapNetwork();
+        if (networkBootstrapReady) clearInterval(bootstrapTimer);
+    }, 100);
 }
 
 // --- CONTROLE DA INTERFACE ---
@@ -378,25 +436,6 @@ function unequipItem(slotName) { if(blockSync) return; blockSync = true; sendNow
 function dropItem(ref, maxAmount) { if(blockSync) return; hideTooltip(); let qty = 1; if(maxAmount > 1) { let input = prompt(`Quantos? (Máx: ${maxAmount})`, "1"); if(input===null) return; qty = parseInt(input); if(isNaN(qty) || qty <= 0) return; if(qty > maxAmount) qty = maxAmount; } blockSync = true; sendNow('drop_item', { ref, amount: qty }); setTimeout(() => { blockSync = false; }, 200); }
 function addStat(statName) { if(blockSync) return; blockSync = true; sendNow('add_stat', { stat: statName }); setTimeout(function() { blockSync = false; }, 200); }
 
-window.addEventListener('keydown', function(e) {
-    const k = e.key.toLowerCase();
-    if(k === 'c') toggleStats(); if(k === 'i') toggleInventory(); if(k === 'x') interact();
-    if(k === 'e' && !blockSync) { blockSync = true; sendNow('pick_up'); setTimeout(function() { blockSync = false; }, 300); }
-    if(k === 'r' && !blockSync) { blockSync = true; sendNow('toggle_rest'); setTimeout(function() { blockSync = false; }, 500); }
-    if(e.key === 'Shift') isRunning = true;
-});
-window.addEventListener('keyup', function(e) { if(e.key === 'Shift') isRunning = false; });
-window.addEventListener('beforeunload', function() {
-    const hitQuery = drainHitBatchQuery();
-    const batch = [];
-    if (hitQuery) batch.push(hitQuery);
-    while (networkQueue.length && batch.length < MAX_BATCH_PER_TICK) batch.push(networkQueue.shift().query);
-    if (!batch.length) return;
-    const payload = (batch.length === 1) ? batch[0] : `action=batch&cmds=${encodeURIComponent(batch.join('|'))}`;
-    const url = buildAsyncUrl(payload);
-    if (url && navigator.sendBeacon) navigator.sendBeacon(url, '');
-});
-
 function interact() {
     let targetRef = ""; for(let id in otherPlayers) { let dist = playerGroup.position.distanceTo(otherPlayers[id].mesh.position); if(dist < 3.0) { targetRef = id; break; } }
     if(targetRef !== "") sendNow('interact_npc', { ref: targetRef });
@@ -437,12 +476,6 @@ function checkPlayerCollision(nextX, nextZ) {
     }
     return false;
 }
-
-window.addEventListener('game-action', function(e) {
-    if(isFainted) return; const k = e.detail;
-    if(k === 'd') performAttack("sword"); else if(k === 'f') performAttack("gun"); else if(k === 'a') performAttack("fist"); else if(k === 's') performAttack("kick");
-    else if(k === 'p' && !blockSync) { blockSync = true; sendRare('force_save'); addLog("Salvando...", "log-miss"); setTimeout(function() { blockSync = false; }, 500); }
-});
 
 function fireProjectile(projectileDef, isMine) {
     const geo = new THREE.BoxGeometry(1, 1, 1); const mat = new THREE.MeshBasicMaterial({ color: projectileDef.color }); const bullet = new THREE.Mesh(geo, mat);
@@ -593,6 +626,7 @@ function receberDadosMultiplayer(json) {
             playerGroup = CharFactory.createCharacter(myData.skin, myData.cloth);
             playerGroup.visible = true; playerGroup.position.set(myData.x, myData.y, myData.z);
             Engine.scene.add(playerGroup); isCharacterReady = true; Input.camAngle = myData.rot + Math.PI; 
+            bootstrapNetwork();
             
             // Inicializa user data para evitar undefined
             playerGroup.userData.lastHead = ""; playerGroup.userData.lastBody = ""; 
@@ -1017,6 +1051,6 @@ function animate() {
     Engine.renderer.render(Engine.scene, Engine.camera);
 }
 
-startNetworkPump();
+initNetworkBootstrap();
 animate();
 setInterval(function() { if(isCharacterReady && Date.now() - lastPacketTime > 4000) { addLog("AVISO: Conexão com o servidor perdida.", "log-hit"); isCharacterReady = false; } }, 1000);
