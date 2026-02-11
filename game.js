@@ -92,6 +92,7 @@ const MAX_NETWORK_QUEUE = 80;
 const hitBatchQueue = {};
 const MAX_BATCH_PER_TICK = 20;
 let networkPumpStarted = false;
+let networkTickInFlight = false;
 
 function encodeQuery(params) {
     const out = [];
@@ -107,8 +108,39 @@ function buildByondUrl(query) {
     return `byond://?src=${BYOND_REF}&${query}`;
 }
 
+function resolveAsyncEndpoint() {
+    if (typeof BYOND_ASYNC_ENDPOINT !== 'undefined' && BYOND_ASYNC_ENDPOINT) return BYOND_ASYNC_ENDPOINT;
+    if (window.location && window.location.protocol && window.location.protocol.indexOf('http') === 0) return `${window.location.origin}/`;
+    return null;
+}
+
+const ASYNC_ENDPOINT = resolveAsyncEndpoint();
+
+function buildAsyncUrl(query) {
+    if (!ASYNC_ENDPOINT || typeof BYOND_REF === 'undefined') return null;
+    const sep = ASYNC_ENDPOINT.indexOf('?') === -1 ? '?' : '&';
+    return `${ASYNC_ENDPOINT}${sep}src=${encodeURIComponent(BYOND_REF)}&${query}`;
+}
+
+async function dispatchAsyncQuery(query) {
+    const url = buildAsyncUrl(query);
+    if (!url) return false;
+    try {
+        await fetch(url, { method: 'GET', mode: 'no-cors', cache: 'no-store', keepalive: true });
+        return true;
+    } catch (e) {
+        return false;
+    }
+}
+
 function sendNow(action, params) {
     queueAction(action, params, { priority: true });
+}
+
+function sendRare(action, params) {
+    if (typeof BYOND_REF === 'undefined') return;
+    const payload = encodeQuery(Object.assign({ action }, params || {}));
+    window.location.href = buildByondUrl(payload);
 }
 
 function queueAction(action, params, opts) {
@@ -154,23 +186,29 @@ function drainHitBatchQuery() {
     return encodeQuery({ action: 'register_hits', hits: packed.join(';') });
 }
 
-function flushNetworkQueue() {
+async function flushNetworkQueue() {
+    if (networkTickInFlight) return;
     if (typeof BYOND_REF === 'undefined') return;
+    networkTickInFlight = true;
 
     const batch = [];
     const hitQuery = drainHitBatchQuery();
     if (hitQuery) batch.push(hitQuery);
-    if (!batch.length && !networkQueue.length) return;
+    if (!batch.length && !networkQueue.length) { networkTickInFlight = false; return; }
     while (networkQueue.length && batch.length < MAX_BATCH_PER_TICK) {
         batch.push(networkQueue.shift().query);
     }
 
-    if (batch.length === 1) {
-        window.location.href = buildByondUrl(batch[0]);
-    } else {
-        window.location.href = buildByondUrl(`action=batch&cmds=${encodeURIComponent(batch.join('|'))}`);
+    const payload = (batch.length === 1) ? batch[0] : `action=batch&cmds=${encodeURIComponent(batch.join('|'))}`;
+    const sent = await dispatchAsyncQuery(payload);
+
+    if (!sent) {
+        // Reinsere para tentar novamente no próximo tick sem bloquear o loop principal
+        for (let i = batch.length - 1; i >= 0; i--) networkQueue.unshift({ query: batch[i], key: null });
+        if (networkQueue.length > MAX_NETWORK_QUEUE) networkQueue.splice(MAX_NETWORK_QUEUE);
     }
 
+    networkTickInFlight = false;
 }
 
 function startNetworkPump() {
@@ -348,7 +386,16 @@ window.addEventListener('keydown', function(e) {
     if(e.key === 'Shift') isRunning = true;
 });
 window.addEventListener('keyup', function(e) { if(e.key === 'Shift') isRunning = false; });
-window.addEventListener('beforeunload', function() { if(networkQueue.length || Object.keys(hitBatchQueue).length) flushNetworkQueue(); });
+window.addEventListener('beforeunload', function() {
+    const hitQuery = drainHitBatchQuery();
+    const batch = [];
+    if (hitQuery) batch.push(hitQuery);
+    while (networkQueue.length && batch.length < MAX_BATCH_PER_TICK) batch.push(networkQueue.shift().query);
+    if (!batch.length) return;
+    const payload = (batch.length === 1) ? batch[0] : `action=batch&cmds=${encodeURIComponent(batch.join('|'))}`;
+    const url = buildAsyncUrl(payload);
+    if (url && navigator.sendBeacon) navigator.sendBeacon(url, '');
+});
 
 function interact() {
     let targetRef = ""; for(let id in otherPlayers) { let dist = playerGroup.position.distanceTo(otherPlayers[id].mesh.position); if(dist < 3.0) { targetRef = id; break; } }
@@ -394,7 +441,7 @@ function checkPlayerCollision(nextX, nextZ) {
 window.addEventListener('game-action', function(e) {
     if(isFainted) return; const k = e.detail;
     if(k === 'd') performAttack("sword"); else if(k === 'f') performAttack("gun"); else if(k === 'a') performAttack("fist"); else if(k === 's') performAttack("kick");
-    else if(k === 'p' && !blockSync) { blockSync = true; sendNow('force_save'); addLog("Salvando...", "log-miss"); setTimeout(function() { blockSync = false; }, 500); }
+    else if(k === 'p' && !blockSync) { blockSync = true; sendRare('force_save'); addLog("Salvando...", "log-miss"); setTimeout(function() { blockSync = false; }, 500); }
 });
 
 function fireProjectile(projectileDef, isMine) {

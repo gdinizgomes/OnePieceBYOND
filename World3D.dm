@@ -567,6 +567,9 @@ mob
 		is_resting = 0; is_fainted = 0; is_running = 0
 		var/page = file2text('game.html')
 		page = replacetext(page, "{{BYOND_REF}}", "\ref[src]")
+		var/async_endpoint = "http://[world.address]:[world.port]/"
+		if(!length("[world.address]")) async_endpoint = "http://[world.internet_address]:[world.port]/"
+		page = replacetext(page, "{{BYOND_ASYNC_ENDPOINT}}", async_endpoint)
 		src << browse(page, "window=map3d")
 		spawn(10) UpdateLoop()
 		spawn(600) AutoSaveLoop()
