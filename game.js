@@ -945,6 +945,7 @@ function animate() {
         Engine.camera.position.set(playerGroup.position.x + Math.sin(Input.camAngle)*7, playerGroup.position.y + 5, playerGroup.position.z + Math.cos(Input.camAngle)*7);
         Engine.camera.lookAt(playerGroup.position.x, playerGroup.position.y + 1.5, playerGroup.position.z);
         sendPositionUpdate(now);
+        if (networkQueue.length >= 10 || Object.keys(hitBatchQueue).length >= 10) scheduleNetworkFlush(true);
     }
     
     // Render Other Players
