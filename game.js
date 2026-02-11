@@ -86,11 +86,12 @@ function spawnDamageNumber(targetRef, amount) {
 function round2(num) { return Math.round((num + Number.EPSILON) * 100) / 100; }
 
 // --- TRANSPORTE DE REDE (BYOND://) ---
-const NET_FLUSH_INTERVAL = 16;
+const NETWORK_TICK_MS = 50; // 20Hz fixo para desacoplar rede do frame loop
 const networkQueue = [];
 const MAX_NETWORK_QUEUE = 80;
 const hitBatchQueue = {};
-let networkFlushTimer = null;
+const MAX_BATCH_PER_TICK = 20;
+let networkPumpStarted = false;
 
 function encodeQuery(params) {
     const out = [];
@@ -107,9 +108,7 @@ function buildByondUrl(query) {
 }
 
 function sendNow(action, params) {
-    if (typeof BYOND_REF === 'undefined') return;
-    const payload = encodeQuery(Object.assign({ action }, params || {}));
-    window.location.href = buildByondUrl(payload);
+    queueAction(action, params, { priority: true });
 }
 
 function queueAction(action, params, opts) {
@@ -121,15 +120,15 @@ function queueAction(action, params, opts) {
         for (let i = networkQueue.length - 1; i >= 0; i--) {
             if (networkQueue[i].key === options.coalesceKey) {
                 networkQueue[i].query = query;
-                scheduleNetworkFlush(options.flushNow);
                 return;
             }
         }
     }
 
-    networkQueue.push({ query, key: options.coalesceKey || null });
+    if (options.priority) networkQueue.unshift({ query, key: options.coalesceKey || null });
+    else networkQueue.push({ query, key: options.coalesceKey || null });
+
     if (networkQueue.length > MAX_NETWORK_QUEUE) networkQueue.splice(0, networkQueue.length - MAX_NETWORK_QUEUE);
-    scheduleNetworkFlush(options.flushNow);
 }
 
 
@@ -137,7 +136,6 @@ function queueHitRegistration(targetRef, hitType, comboStep) {
     const combo = comboStep || 0;
     const key = `${targetRef}|${hitType}|${combo}`;
     hitBatchQueue[key] = 1;
-    scheduleNetworkFlush(false);
 }
 
 function drainHitBatchQuery() {
@@ -156,28 +154,14 @@ function drainHitBatchQuery() {
     return encodeQuery({ action: 'register_hits', hits: packed.join(';') });
 }
 
-function scheduleNetworkFlush(immediate) {
-    if (networkFlushTimer) {
-        if (!immediate) return;
-        clearTimeout(networkFlushTimer);
-        networkFlushTimer = null;
-    }
-    const delay = immediate ? 0 : NET_FLUSH_INTERVAL;
-    networkFlushTimer = setTimeout(flushNetworkQueue, delay);
-}
-
 function flushNetworkQueue() {
-    if (networkFlushTimer) {
-        clearTimeout(networkFlushTimer);
-        networkFlushTimer = null;
-    }
     if (typeof BYOND_REF === 'undefined') return;
 
     const batch = [];
     const hitQuery = drainHitBatchQuery();
     if (hitQuery) batch.push(hitQuery);
     if (!batch.length && !networkQueue.length) return;
-    while (networkQueue.length && batch.length < 20) {
+    while (networkQueue.length && batch.length < MAX_BATCH_PER_TICK) {
         batch.push(networkQueue.shift().query);
     }
 
@@ -187,7 +171,12 @@ function flushNetworkQueue() {
         window.location.href = buildByondUrl(`action=batch&cmds=${encodeURIComponent(batch.join('|'))}`);
     }
 
-    if (networkQueue.length) scheduleNetworkFlush(false);
+}
+
+function startNetworkPump() {
+    if (networkPumpStarted) return;
+    networkPumpStarted = true;
+    setInterval(flushNetworkQueue, NETWORK_TICK_MS);
 }
 
 // --- CONTROLE DA INTERFACE ---
@@ -359,7 +348,7 @@ window.addEventListener('keydown', function(e) {
     if(e.key === 'Shift') isRunning = true;
 });
 window.addEventListener('keyup', function(e) { if(e.key === 'Shift') isRunning = false; });
-window.addEventListener('beforeunload', function() { if(networkQueue.length) flushNetworkQueue(); });
+window.addEventListener('beforeunload', function() { if(networkQueue.length || Object.keys(hitBatchQueue).length) flushNetworkQueue(); });
 
 function interact() {
     let targetRef = ""; for(let id in otherPlayers) { let dist = playerGroup.position.distanceTo(otherPlayers[id].mesh.position); if(dist < 3.0) { targetRef = id; break; } }
@@ -982,5 +971,6 @@ function animate() {
     Engine.renderer.render(Engine.scene, Engine.camera);
 }
 
+startNetworkPump();
 animate();
 setInterval(function() { if(isCharacterReady && Date.now() - lastPacketTime > 4000) { addLog("AVISO: Conexão com o servidor perdida.", "log-hit"); isCharacterReady = false; } }, 1000);
