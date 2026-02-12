@@ -44,7 +44,7 @@ datum/game_controller
 
 					all_player_data[pid] = list(
 						"x" = M.R2(M.real_x), "y" = M.R2(M.real_y), "z" = M.R2(M.real_z), "rot" = M.R2(M.real_rot),
-						"a" = M.is_attacking, "at" = M.attack_type,
+						"a" = M.is_attacking, "at" = M.attack_type, "cs" = M.combo_step, // NOVO: CS = Combo Step
 						"rn" = M.is_running,
 						"it" = e_hand,
 						"eq_h" = e_head, "eq_b" = e_body, "eq_l" = e_legs, "eq_f" = e_feet,
@@ -59,7 +59,7 @@ datum/game_controller
 				var/nid = "\ref[N]"
 				all_player_data[nid] = list(
 					"x" = N.R2(N.real_x), "y" = N.R2(N.real_y), "z" = N.R2(N.real_z), "rot" = N.R2(N.real_rot),
-					"a" = 0, "at" = "", "it" = "", "rest" = 0, "ft" = 0,
+					"a" = 0, "at" = "", "cs" = 0, "it" = "", "rest" = 0, "ft" = 0,
 					"rn" = 0,
 					"name" = N.name, "skin" = N.skin_color, "cloth" = N.cloth_color,
 					"npc" = 1, "type" = N.npc_type,
@@ -94,7 +94,7 @@ datum/game_controller
 					"my_id" = "\ref[M]",
 					"me" = list(
 						"loaded" = 1,
-						// Stats Básicos e HUD - INCLUINDO NOME AGORA
+						// Stats Básicos e HUD
 						"nick" = M.name, "class" = M.char_class,
 						"lvl" = M.level, "exp" = M.experience, "req_exp" = M.req_experience, "pts" = M.stat_points,
 						"str" = M.strength, "vit" = M.vitality, "agi" = M.agility,  "wis" = M.wisdom,
@@ -303,6 +303,7 @@ mob
 	var/in_game = 0
 	var/is_attacking = 0
 	var/attack_type = ""
+	var/combo_step = 0 // NOVO: Sincronia de animação
 	var/active_item_visual = ""
 	
 	// Slots de Equipamento
@@ -857,6 +858,10 @@ mob
 			if(ConsumeEnergy(base_cost))
 				is_attacking = 1
 				attack_type = href_list["type"]
+				// CORREÇÃO: Lê o passo do combo enviado pelo cliente
+				combo_step = text2num(href_list["step"]) 
+				if(!combo_step) combo_step = 1
+				
 				spawn(3) is_attacking = 0
 
 		if(action == "register_hit" && in_game)
@@ -902,8 +907,9 @@ mob
 
 			// --- LÓGICA DE DANO COMBO ---
 			var/damage_mult = 1.0
-			var/combo_step = text2num(href_list["combo"])
-			if(combo_step == 3) damage_mult = 1.2
+			// Lê combo do HIT para cálculo de dano
+			var/c_step = text2num(href_list["combo"])
+			if(c_step == 3) damage_mult = 1.2
 
 			var/damage = round(((strength * 0.4) + prof_bonus + bonus_dmg + rand(0, 3)) * damage_mult)
 			
@@ -913,7 +919,7 @@ mob
 				var/mob/npc/N = target
 				if(N.npc_type == "prop")
 					var/msg = "TREINO: [damage] dmg"
-					if(combo_step == 3) msg = "COMBO: [damage] dmg!"
+					if(c_step == 3) msg = "COMBO: [damage] dmg!"
 					src << output("<span class='log-hit' style='color:orange'>[msg]</span>", "map3d:addLog")
 					GainExperience(5)
 					if(skill_exp_type) GainWeaponExp(skill_exp_type, 3)

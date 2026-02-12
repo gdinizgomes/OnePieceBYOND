@@ -358,11 +358,13 @@ function performAttack(type) {
     isAttacking = true; 
     lastCombatActionTime = Date.now();
     let windupStance = "SWORD_WINDUP"; let atkStance = "SWORD_ATK_1"; let idleStance = "SWORD_IDLE";
+    let currentComboStep = 1;
 
     if(type === "fist") {
         if(Date.now() - lastFistAttackTime > 600) fistComboStep = 0;
         fistComboStep++; if(fistComboStep > 3) fistComboStep = 1; 
         lastFistAttackTime = Date.now();
+        currentComboStep = fistComboStep;
         windupStance = "FIST_WINDUP"; atkStance = "FIST_COMBO_" + fistComboStep; idleStance = "FIST_IDLE";
         let pushDist = (fistComboStep === 3) ? 1.5 : 0.5; 
         const sin = Math.sin(playerGroup.rotation.y); const cos = Math.cos(playerGroup.rotation.y);
@@ -373,6 +375,7 @@ function performAttack(type) {
         if(Date.now() - lastKickAttackTime > 600) kickComboStep = 0;
         kickComboStep++; if(kickComboStep > 3) kickComboStep = 1;
         lastKickAttackTime = Date.now();
+        currentComboStep = kickComboStep;
         windupStance = "KICK_WINDUP"; atkStance = "KICK_COMBO_" + kickComboStep; idleStance = "FIST_IDLE";
         let pushDist = (kickComboStep === 3) ? 1.2 : 0.4;
         const sin = Math.sin(playerGroup.rotation.y); const cos = Math.cos(playerGroup.rotation.y);
@@ -383,6 +386,7 @@ function performAttack(type) {
         if(Date.now() - lastSwordAttackTime > 600) swordComboStep = 0;
         swordComboStep++; if(swordComboStep > 3) swordComboStep = 1;
         lastSwordAttackTime = Date.now();
+        currentComboStep = swordComboStep;
         windupStance = "SWORD_WINDUP"; atkStance = "SWORD_COMBO_" + swordComboStep; idleStance = "SWORD_IDLE";
         let pushDist = (swordComboStep === 3) ? 1.8 : 0.5; 
         const sin = Math.sin(playerGroup.rotation.y); const cos = Math.cos(playerGroup.rotation.y);
@@ -411,7 +415,8 @@ function performAttack(type) {
         
         if(typeof BYOND_REF !== 'undefined') { 
             blockSync = true; 
-            window.location.href = `byond://?src=${BYOND_REF}&action=attack&type=${type}`; 
+            // CORREÇÃO: Enviando o passo do combo para o servidor!
+            window.location.href = `byond://?src=${BYOND_REF}&action=attack&type=${type}&step=${currentComboStep}`; 
             setTimeout(function(){blockSync=false}, 200); 
         }
         setTimeout(function() { charState = idleStance; isAttacking = false; }, 300);
@@ -469,14 +474,16 @@ function receberDadosGlobal(json) {
                 newChar.userData.lastHead = ""; newChar.userData.lastBody = "";
                 newChar.userData.lastLegs = ""; newChar.userData.lastFeet = ""; newChar.userData.lastItem = "";
                 
-                otherPlayers[id] = { mesh: newChar, label: label, hpFill: label.querySelector('.mini-hp-fill'), startX: pData.x, startY: pData.y, startZ: pData.z, startRot: pData.rot, targetX: pData.x, targetY: pData.y, targetZ: pData.z, targetRot: pData.rot, lastPacketTime: now, lerpDuration: 100, attacking: pData.a, attackType: pData.at, resting: pData.rest, fainted: pData.ft, lastItem: "", isNPC: (pData.npc === 1), npcType: pData.type, gender: pData.gen, isRunning: false };
+                otherPlayers[id] = { mesh: newChar, label: label, hpFill: label.querySelector('.mini-hp-fill'), startX: pData.x, startY: pData.y, startZ: pData.z, startRot: pData.rot, targetX: pData.x, targetY: pData.y, targetZ: pData.z, targetRot: pData.rot, lastPacketTime: now, lerpDuration: 100, attacking: pData.a, attackType: pData.at, comboStep: pData.cs, resting: pData.rest, fainted: pData.ft, lastItem: "", isNPC: (pData.npc === 1), npcType: pData.type, gender: pData.gen, isRunning: false };
             }
         } else {
             const other = otherPlayers[id];
             const mesh = other.mesh;
             other.startX = mesh.position.x; other.startY = mesh.position.y; other.startZ = mesh.position.z; other.startRot = mesh.rotation.y;
             other.targetX = pData.x; other.targetY = pData.y; other.targetZ = pData.z; other.targetRot = pData.rot; other.lastPacketTime = now;
-            other.attacking = pData.a; other.attackType = pData.at; other.resting = pData.rest; other.fainted = pData.ft;
+            other.attacking = pData.a; other.attackType = pData.at; 
+            other.comboStep = pData.cs; // NOVO: Armazena o passo do combo do outro
+            other.resting = pData.rest; other.fainted = pData.ft;
             if(pData.gen) other.gender = pData.gen;
             if(pData.rn !== undefined) other.isRunning = pData.rn;
 
@@ -729,9 +736,11 @@ function animate() {
 
         let remoteState = "DEFAULT";
         if(other.attacking) {
-            if(other.attackType === "sword") remoteState = "SWORD_COMBO_1"; 
-            else if(other.attackType === "fist") remoteState = "FIST_COMBO_1";
-            else if(other.attackType === "kick") remoteState = "KICK_COMBO_1"; 
+            // CORREÇÃO VISUAL: Usa o passo do combo exato enviado pelo servidor
+            let step = other.comboStep || 1;
+            if(other.attackType === "sword") remoteState = "SWORD_COMBO_" + step; 
+            else if(other.attackType === "fist") remoteState = "FIST_COMBO_" + step;
+            else if(other.attackType === "kick") remoteState = "KICK_COMBO_" + step; 
             else if(other.attackType === "gun") remoteState = "GUN_ATK";
         }
 
