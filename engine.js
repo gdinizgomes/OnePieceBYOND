@@ -1,5 +1,7 @@
 // engine.js - Core do Cliente (Input, Math, Graphics)
 
+const RENDER_HEIGHT = 480; // CONFIGURAÇÃO: Tente 360, 480 ou 720. Quanto menor, mais rápido.
+
 function lerp(start, end, t) { return start * (1 - t) + end * t; }
 function mod(n, m) { return ((n % m) + m) % m; }
 function lerpAngle(start, end, t) {
@@ -234,10 +236,20 @@ const Engine = {
         this.scene.background = new THREE.Color(0x87CEEB);
         this.scene.fog = new THREE.Fog(0x87CEEB, 15, 60);
         this.camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
-        this.renderer = new THREE.WebGLRenderer({ antialias: true });
-        this.renderer.setSize(window.innerWidth, window.innerHeight);
-        this.renderer.shadowMap.enabled = true;
+        
+        // --- PERFORMANCE FIX: RESOLUÇÃO TRAVADA (SCALING) ---
+        // Desligamos antialias para performance e usamos setSize para definir o buffer interno
+        this.renderer = new THREE.WebGLRenderer({ antialias: false }); 
+        
         document.body.appendChild(this.renderer.domElement);
+        
+        // Estilo CSS força o canvas a ocupar 100% da tela, esticando a imagem de baixa resolução
+        this.renderer.domElement.style.width = "100%";
+        this.renderer.domElement.style.height = "100%";
+        this.renderer.domElement.style.display = "block";
+        // Garante visual "pixel art" nítido em vez de borrado
+        this.renderer.domElement.style.imageRendering = "pixelated"; 
+        
         const ambientLight = new THREE.AmbientLight(0xFFFFFF, 0.7);
         this.scene.add(ambientLight);
         const dirLight = new THREE.DirectionalLight(0xffffff, 0.6);
@@ -246,11 +258,24 @@ const Engine = {
         this.scene.add(dirLight);
         this.createGround();
         this.spawnProps();
-        window.addEventListener('resize', () => {
-            this.renderer.setSize(window.innerWidth, window.innerHeight);
-            this.camera.aspect = window.innerWidth / window.innerHeight;
+
+        // Lógica de Resize Inteligente
+        const onResize = () => {
+            const aspect = window.innerWidth / window.innerHeight;
+            
+            // Calcula a largura necessária para manter a proporção correta com a altura fixa
+            const renderWidth = Math.floor(RENDER_HEIGHT * aspect);
+            
+            this.camera.aspect = aspect;
             this.camera.updateProjectionMatrix();
-        });
+
+            // O terceiro argumento 'false' impede que o Three.js altere o estilo CSS do canvas.
+            // Isso mantém o canvas esticado na tela toda (CSS), enquanto o render ocorre em baixa resolução.
+            this.renderer.setSize(renderWidth, RENDER_HEIGHT, false);
+        };
+
+        window.addEventListener('resize', onResize);
+        onResize(); // Ajuste inicial
     },
     createGround: function() {
         const MAP_SIZE = 60; 
