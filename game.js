@@ -1,4 +1,4 @@
-// game.js - Lógica Principal do Jogo e Network + EQUIPAMENTOS + COLISÃO + LIMITES
+// game.js - Lógica Principal do Jogo e Network + EQUIPAMENTOS + COLISÃO MELHORADA
 
 // --- VARIÁVEIS GLOBAIS ---
 let playerGroup = null; 
@@ -415,7 +415,6 @@ function performAttack(type) {
         
         if(typeof BYOND_REF !== 'undefined') { 
             blockSync = true; 
-            // CORREÇÃO: Enviando o passo do combo para o servidor!
             window.location.href = `byond://?src=${BYOND_REF}&action=attack&type=${type}&step=${currentComboStep}`; 
             setTimeout(function(){blockSync=false}, 200); 
         }
@@ -468,12 +467,17 @@ function receberDadosGlobal(json) {
         if (!otherPlayers[id]) {
             if(pData.skin) {
                 const newChar = CharFactory.createCharacter(pData.skin, pData.cloth);
-                newChar.position.set(pData.x, pData.y, pData.z); Engine.scene.add(newChar); Engine.collidables.push(newChar);
+                // MELHORIA CRÍTICA: SETA A POSIÇÃO DIRETO (SEM LERP NA CRIAÇÃO)
+                // Isso resolve o problema de ver o player "viajando" do 0,0,0 até a posição real ao entrar.
+                newChar.position.set(pData.x, pData.y, pData.z); 
+                
+                Engine.scene.add(newChar); Engine.collidables.push(newChar);
                 const label = document.createElement('div'); label.className = 'name-label'; label.innerHTML = `<div class="name-text">${pData.name||"?"}</div><div class="mini-hp-bg"><div class="mini-hp-fill"></div></div>`; document.getElementById('labels-container').appendChild(label);
                 
                 newChar.userData.lastHead = ""; newChar.userData.lastBody = "";
                 newChar.userData.lastLegs = ""; newChar.userData.lastFeet = ""; newChar.userData.lastItem = "";
                 
+                // startX/targetX agora começam já na posição certa
                 otherPlayers[id] = { mesh: newChar, label: label, hpFill: label.querySelector('.mini-hp-fill'), startX: pData.x, startY: pData.y, startZ: pData.z, startRot: pData.rot, targetX: pData.x, targetY: pData.y, targetZ: pData.z, targetRot: pData.rot, lastPacketTime: now, lerpDuration: 100, attacking: pData.a, attackType: pData.at, comboStep: pData.cs, resting: pData.rest, fainted: pData.ft, lastItem: "", isNPC: (pData.npc === 1), npcType: pData.type, gender: pData.gen, isRunning: false };
             }
         } else {
@@ -482,7 +486,7 @@ function receberDadosGlobal(json) {
             other.startX = mesh.position.x; other.startY = mesh.position.y; other.startZ = mesh.position.z; other.startRot = mesh.rotation.y;
             other.targetX = pData.x; other.targetY = pData.y; other.targetZ = pData.z; other.targetRot = pData.rot; other.lastPacketTime = now;
             other.attacking = pData.a; other.attackType = pData.at; 
-            other.comboStep = pData.cs; // NOVO: Armazena o passo do combo do outro
+            other.comboStep = pData.cs; 
             other.resting = pData.rest; other.fainted = pData.ft;
             if(pData.gen) other.gender = pData.gen;
             if(pData.rn !== undefined) other.isRunning = pData.rn;
@@ -532,7 +536,6 @@ function receberDadosPessoal(json) {
         isResting = me.rest; isFainted = me.ft; 
         if(me.gen) playerGroup.userData.gender = me.gen;
 
-        // CORREÇÃO: Atualiza o NICK na interface HUD do jogador
         if(me.nick) document.getElementById('name-display').innerText = me.nick;
 
         if(playerGroup.userData.lastItem !== me.it) { CharFactory.equipItem(playerGroup, me.it, playerGroup.userData.lastItem); playerGroup.userData.lastItem = me.it; }
@@ -627,20 +630,16 @@ function animateCharacterRig(mesh, state, isMoving, isRunning, isResting, isFain
         }
     } 
     else {
-        // Correção de Posição Base
-        if(mesh !== playerGroup) mesh.position.y = lerp(mesh.position.y, groundH, 0.2); // Outros players apenas lerpam para o chão
-        
-        // Reset rotação corpo
+        if(mesh !== playerGroup) mesh.position.y = lerp(mesh.position.y, groundH, 0.2); 
         mesh.rotation.x = lerp(mesh.rotation.x, 0, 0.2);
 
         let targetStance = STANCES[state] || STANCES.DEFAULT;
         const def = STANCES.DEFAULT;
 
-        if(isMoving && state === "DEFAULT") { // Andando sem atacar
+        if(isMoving && state === "DEFAULT") { 
             let legSpeed = isRunning ? 0.3 : 0.8; 
             let armAmp = isRunning ? 1.2 : 0.6; 
             
-            // MATH UNIFICADO: Todos usam a mesma fórmula baseada em animTime
             limbs.leftLeg.rotation.x = Math.sin(animTime * (isRunning ? 1.5 : 1)) * legSpeed;
             limbs.rightLeg.rotation.x = -Math.sin(animTime * (isRunning ? 1.5 : 1)) * legSpeed;
             limbs.leftShin.rotation.x = (limbs.leftLeg.rotation.x > 0) ? limbs.leftLeg.rotation.x : 0;
@@ -652,7 +651,6 @@ function animateCharacterRig(mesh, state, isMoving, isRunning, isResting, isFain
             limbs.rightForeArm.rotation.x = -0.2;
             lerpLimbRotation(limbs.torso, def.torso, 0.1);
         } else {
-            // Parado ou Atacando
             const spd = (state !== "DEFAULT") ? 0.4 : 0.1;
             lerpLimbRotation(limbs.torso, targetStance.torso || def.torso, spd);
             lerpLimbRotation(limbs.leftArm, targetStance.leftArm || def.leftArm, spd);
@@ -683,31 +681,52 @@ function animate() {
         if(!isResting && !isFainted) {
             let moveX = 0, moveZ = 0, moving = false; let speed = currentMoveSpeed * (isRunning ? 1.5 : 1); 
             const sin = Math.sin(Input.camAngle); const cos = Math.cos(Input.camAngle);
-            if(Input.keys.arrowup) { moveX -= sin*speed; moveZ -= cos*speed; moving = true; }
-            if(Input.keys.arrowdown) { moveX += sin*speed; moveZ += cos*speed; moving = true; }
-            if(Input.keys.arrowleft) { moveX -= cos*speed; moveZ += sin*speed; moving = true; }
-            if(Input.keys.arrowright) { moveX += cos*speed; moveZ -= sin*speed; moving = true; }
+            
+            // Vetor de Movimento Desejado
+            let inputX = 0; let inputZ = 0;
+            if(Input.keys.arrowup) { inputX -= sin; inputZ -= cos; moving = true; }
+            if(Input.keys.arrowdown) { inputX += sin; inputZ += cos; moving = true; }
+            if(Input.keys.arrowleft) { inputX -= cos; inputZ += sin; moving = true; }
+            if(Input.keys.arrowright) { inputX += cos; inputZ -= sin; moving = true; }
 
-            let nextX = playerGroup.position.x + moveX; 
-            let nextZ = playerGroup.position.z + moveZ;
-            if (nextX > MAP_LIMIT) nextX = MAP_LIMIT; if (nextX < -MAP_LIMIT) nextX = -MAP_LIMIT;
-            if (nextZ > MAP_LIMIT) nextZ = MAP_LIMIT; if (nextZ < -MAP_LIMIT) nextZ = -MAP_LIMIT;
-
-            if(!checkCollision(nextX, playerGroup.position.y, nextZ) && !checkPlayerCollision(nextX, nextZ)) { 
-                playerGroup.position.x = nextX; playerGroup.position.z = nextZ; 
-            }
             if(moving) {
-                const targetCharRot = Math.atan2(moveX, moveZ); playerGroup.rotation.y = targetCharRot;
+                // Normaliza para velocidade constante diagonal
+                const len = Math.sqrt(inputX*inputX + inputZ*inputZ);
+                if(len > 0) { inputX /= len; inputZ /= len; }
+                
+                inputX *= speed; 
+                inputZ *= speed;
+
+                let nextX = playerGroup.position.x + inputX; 
+                let nextZ = playerGroup.position.z + inputZ;
+
+                // --- MELHORIA: COLISÃO COM DESLIZAMENTO (Wall Sliding) ---
+                // 1. Tenta mover em X
+                let canMoveX = true;
+                if(nextX > MAP_LIMIT || nextX < -MAP_LIMIT || checkCollision(nextX, playerGroup.position.y, playerGroup.position.z) || checkPlayerCollision(nextX, playerGroup.position.z)) {
+                    canMoveX = false;
+                } else {
+                    playerGroup.position.x = nextX;
+                }
+
+                // 2. Tenta mover em Z (independentemente de X)
+                let canMoveZ = true;
+                if(nextZ > MAP_LIMIT || nextZ < -MAP_LIMIT || checkCollision(playerGroup.position.x, playerGroup.position.y, nextZ) || checkPlayerCollision(playerGroup.position.x, nextZ)) {
+                    canMoveZ = false;
+                } else {
+                    playerGroup.position.z = nextZ;
+                }
+
+                const targetCharRot = Math.atan2(inputX, inputZ); playerGroup.rotation.y = targetCharRot;
                 if(!Input.keys.arrowdown && !Input.mouseRight) Input.camAngle = lerpAngle(Input.camAngle, targetCharRot + Math.PI, 0.02);
             }
+
             if(Input.keys[" "] && !isJumping && Math.abs(playerGroup.position.y - groundHeight) < 0.1) { verticalVelocity = currentJumpForce; isJumping = true; }
             playerGroup.position.y += verticalVelocity; verticalVelocity += gravity;
             if(playerGroup.position.y < groundHeight) { playerGroup.position.y = groundHeight; isJumping = false; verticalVelocity = 0; }
             
-            // Chama Animação Unificada
             animateCharacterRig(playerGroup, charState, moving, isRunning, isResting, isFainted, groundHeight);
         } else {
-            // Parado/Descansando
             animateCharacterRig(playerGroup, charState, false, false, isResting, isFainted, groundHeight);
         }
 
@@ -723,11 +742,9 @@ function animate() {
         const elapsed = other.lastPacketTime ? (now - other.lastPacketTime) : 0; 
         const t = other.lerpDuration ? Math.min(1, elapsed / other.lerpDuration) : 1;
         
-        // Interpolação de Posição
         mesh.position.x = lerp(other.startX, other.targetX, t); 
         mesh.position.z = lerp(other.startZ, other.targetZ, t); 
-        // Y é tratado na animação para se ajustar ao chão
-        const currentGroundH = other.targetY; // Simplificação: assume que o targetY do server é o chão correto
+        const currentGroundH = other.targetY; 
         
         mesh.rotation.y = lerpAngle(other.startRot, other.targetRot, t);
         
@@ -736,7 +753,6 @@ function animate() {
 
         let remoteState = "DEFAULT";
         if(other.attacking) {
-            // CORREÇÃO VISUAL: Usa o passo do combo exato enviado pelo servidor
             let step = other.comboStep || 1;
             if(other.attackType === "sword") remoteState = "SWORD_COMBO_" + step; 
             else if(other.attackType === "fist") remoteState = "FIST_COMBO_" + step;
@@ -744,7 +760,6 @@ function animate() {
             else if(other.attackType === "gun") remoteState = "GUN_ATK";
         }
 
-        // Chama a MESMA função de animação
         animateCharacterRig(mesh, remoteState, isMoving, other.isRunning, other.resting, other.fainted, currentGroundH);
 
         const tempV = new THREE.Vector3(mesh.position.x, mesh.position.y + 2, mesh.position.z); tempV.project(Engine.camera);
