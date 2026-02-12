@@ -420,7 +420,6 @@ function performAttack(type) {
 
 // --- NETWORK HANDLERS (SEPARADOS: GLOBAL VS PESSOAL) ---
 function receberDadosGlobal(json) {
-    // Processa posições de outros jogadores e itens do chão
     let packet; try { packet = JSON.parse(json); } catch(e) { return; }
     lastPacketTime = Date.now();
     const now = performance.now();
@@ -457,7 +456,7 @@ function receberDadosGlobal(json) {
     const serverPlayers = packet.others; 
     const receivedIds = new Set();
     for (const id in serverPlayers) {
-        if (id === myID) continue; // Ignora eu mesmo
+        if (id === myID) continue; 
         receivedIds.add(id); 
         const pData = serverPlayers[id];
         
@@ -487,7 +486,6 @@ function receberDadosGlobal(json) {
             if(mesh.userData.lastLegs !== pData.eq_l) { CharFactory.equipItem(mesh, pData.eq_l, mesh.userData.lastLegs); mesh.userData.lastLegs = pData.eq_l; }
             if(mesh.userData.lastFeet !== pData.eq_f) { CharFactory.equipItem(mesh, pData.eq_f, mesh.userData.lastFeet); mesh.userData.lastFeet = pData.eq_f; }
 
-            // ATUALIZAÇÃO DO NOME (HUD LATERAL)
             if(pData.name && other.label.querySelector('.name-text').innerText !== pData.name) { other.label.querySelector('.name-text').innerText = pData.name; }
             
             if(pData.hp !== undefined && other.hpFill) other.hpFill.style.width = Math.max(0, Math.min(100, (pData.hp / pData.mhp) * 100)) + "%";
@@ -511,16 +509,13 @@ function receberDadosGlobal(json) {
 }
 
 function receberDadosPessoal(json) {
-    // Processa dados exclusivos do MEU personagem (HUD, Status, VISUAL LOCAL)
     let packet; try { packet = JSON.parse(json); } catch(e) { return; }
     const me = packet.me; 
     myID = packet.my_id;
 
     if(me.loaded == 1 && !isCharacterReady) {
-        // CORREÇÃO: Usa as cores reais vindas do pacote
         playerGroup = CharFactory.createCharacter(me.skin || "FFCCAA", me.cloth || "FF0000"); 
         Engine.scene.add(playerGroup); isCharacterReady = true; 
-        
         playerGroup.userData.lastHead = ""; playerGroup.userData.lastBody = ""; 
         playerGroup.userData.lastLegs = ""; playerGroup.userData.lastFeet = ""; 
         playerGroup.userData.lastItem = "";
@@ -530,7 +525,9 @@ function receberDadosPessoal(json) {
         isResting = me.rest; isFainted = me.ft; 
         if(me.gen) playerGroup.userData.gender = me.gen;
 
-        // CORREÇÃO: Aplica equipamentos locais imediatamente
+        // CORREÇÃO: Atualiza o NICK na interface HUD do jogador
+        if(me.nick) document.getElementById('name-display').innerText = me.nick;
+
         if(playerGroup.userData.lastItem !== me.it) { CharFactory.equipItem(playerGroup, me.it, playerGroup.userData.lastItem); playerGroup.userData.lastItem = me.it; }
         if(playerGroup.userData.lastHead !== me.eq_h) { CharFactory.equipItem(playerGroup, me.eq_h, playerGroup.userData.lastHead); playerGroup.userData.lastHead = me.eq_h; }
         if(playerGroup.userData.lastBody !== me.eq_b) { CharFactory.equipItem(playerGroup, me.eq_b, playerGroup.userData.lastBody); playerGroup.userData.lastBody = me.eq_b; }
@@ -598,33 +595,85 @@ function receberDadosPessoal(json) {
 function shouldSendPosition(x, y, z, rot, now) { if (now - lastSentTime < POSITION_SYNC_INTERVAL) return false; if (Math.abs(x - lastSentX) < POSITION_EPSILON && Math.abs(y - lastSentY) < POSITION_EPSILON && Math.abs(z - lastSentZ) < POSITION_EPSILON && Math.abs(rot - lastSentRot) < POSITION_EPSILON) return false; return true; }
 function sendPositionUpdate(now) { if (!isCharacterReady || blockSync || typeof BYOND_REF === 'undefined') return; const x = round2(playerGroup.position.x); const y = round2(playerGroup.position.y); const z = round2(playerGroup.position.z); const rot = round2(playerGroup.rotation.y); if (!shouldSendPosition(x, y, z, rot, now)) return; lastSentTime = now; lastSentX = x; lastSentY = y; lastSentZ = z; lastSentRot = rot; let runFlag = (isRunning && !isResting) ? 1 : 0; window.location.href = `byond://?src=${BYOND_REF}&action=update_pos&x=${x}&y=${y}&z=${z}&rot=${rot}&run=${runFlag}`; }
 
-// --- GAME LOOP COM NOVA ANIMAÇÃO ---
+// --- FUNÇÃO UNIFICADA DE ANIMAÇÃO ---
+function animateCharacterRig(mesh, state, isMoving, isRunning, isResting, isFainted, groundH) {
+    const limbs = mesh.userData.limbs;
+    if(!limbs) return;
+
+    if (isFainted) {
+        mesh.rotation.x = lerp(mesh.rotation.x, -Math.PI/2, 0.1); 
+        mesh.position.y = lerp(mesh.position.y, groundH + 0.2, 0.1);
+    } 
+    else if (isResting) {
+        mesh.rotation.x = lerp(mesh.rotation.x, 0, 0.1);
+        const yOffset = -0.6;
+        mesh.position.y = lerp(mesh.position.y, groundH + yOffset, 0.1);
+        
+        const restStance = STANCES.REST_SIMPLE;
+        if(restStance) {
+            const spd = 0.1;
+            lerpLimbRotation(limbs.torso, restStance.torso, spd);
+            lerpLimbRotation(limbs.leftLeg, restStance.leftLeg, spd); lerpLimbRotation(limbs.rightLeg, restStance.rightLeg, spd);
+            lerpLimbRotation(limbs.leftShin, restStance.leftShin, spd); lerpLimbRotation(limbs.rightShin, restStance.rightShin, spd);
+            lerpLimbRotation(limbs.leftArm, restStance.leftArm, spd); lerpLimbRotation(limbs.rightArm, restStance.rightArm, spd);
+            lerpLimbRotation(limbs.leftForeArm, restStance.leftForeArm, spd); lerpLimbRotation(limbs.rightForeArm, restStance.rightForeArm, spd);
+        }
+    } 
+    else {
+        // Correção de Posição Base
+        if(mesh !== playerGroup) mesh.position.y = lerp(mesh.position.y, groundH, 0.2); // Outros players apenas lerpam para o chão
+        
+        // Reset rotação corpo
+        mesh.rotation.x = lerp(mesh.rotation.x, 0, 0.2);
+
+        let targetStance = STANCES[state] || STANCES.DEFAULT;
+        const def = STANCES.DEFAULT;
+
+        if(isMoving && state === "DEFAULT") { // Andando sem atacar
+            let legSpeed = isRunning ? 0.3 : 0.8; 
+            let armAmp = isRunning ? 1.2 : 0.6; 
+            
+            // MATH UNIFICADO: Todos usam a mesma fórmula baseada em animTime
+            limbs.leftLeg.rotation.x = Math.sin(animTime * (isRunning ? 1.5 : 1)) * legSpeed;
+            limbs.rightLeg.rotation.x = -Math.sin(animTime * (isRunning ? 1.5 : 1)) * legSpeed;
+            limbs.leftShin.rotation.x = (limbs.leftLeg.rotation.x > 0) ? limbs.leftLeg.rotation.x : 0;
+            limbs.rightShin.rotation.x = (limbs.rightLeg.rotation.x > 0) ? limbs.rightLeg.rotation.x : 0;
+
+            limbs.leftArm.rotation.x = -Math.sin(animTime * (isRunning ? 1.5 : 1)) * armAmp;
+            limbs.rightArm.rotation.x = Math.sin(animTime * (isRunning ? 1.5 : 1)) * armAmp;
+            limbs.leftForeArm.rotation.x = -0.2;
+            limbs.rightForeArm.rotation.x = -0.2;
+            lerpLimbRotation(limbs.torso, def.torso, 0.1);
+        } else {
+            // Parado ou Atacando
+            const spd = (state !== "DEFAULT") ? 0.4 : 0.1;
+            lerpLimbRotation(limbs.torso, targetStance.torso || def.torso, spd);
+            lerpLimbRotation(limbs.leftArm, targetStance.leftArm || def.leftArm, spd);
+            lerpLimbRotation(limbs.rightArm, targetStance.rightArm || def.rightArm, spd);
+            lerpLimbRotation(limbs.leftForeArm, targetStance.leftForeArm || def.leftForeArm, spd);
+            lerpLimbRotation(limbs.rightForeArm, targetStance.rightForeArm || def.rightForeArm, spd);
+            lerpLimbRotation(limbs.leftLeg, targetStance.leftLeg || def.leftLeg, spd);
+            lerpLimbRotation(limbs.rightLeg, targetStance.rightLeg || def.rightLeg, spd);
+            lerpLimbRotation(limbs.leftShin, targetStance.leftShin || def.leftShin, spd);
+            lerpLimbRotation(limbs.rightShin, targetStance.rightShin || def.rightShin, spd);
+        }
+    }
+}
+
+// --- GAME LOOP ---
 function animate() {
-    requestAnimationFrame(animate); animTime += 0.1; const now = performance.now();
+    requestAnimationFrame(animate); 
+    animTime += 0.1; 
+    const now = performance.now();
     updateCombatHitboxes(); 
+    
+    // 1. ANIMAR MEU JOGADOR
     if (isCharacterReady) {
         if(!isAttacking && charState !== "DEFAULT") { if(Date.now() - lastCombatActionTime > 3000) charState = "DEFAULT"; }
         const groundHeight = getGroundHeightAt(playerGroup.position.x, playerGroup.position.z);
 
-        if(isFainted) {
-            playerGroup.rotation.x = lerp(playerGroup.rotation.x, -Math.PI/2, 0.1); playerGroup.position.y = lerp(playerGroup.position.y, groundHeight + 0.2, 0.1);
-        } else if(isResting) {
-            playerGroup.rotation.x = lerp(playerGroup.rotation.x, 0, 0.1); 
-            const yOffset = -0.6; 
-            playerGroup.position.y = lerp(playerGroup.position.y, groundHeight + yOffset, 0.1);
-            
-            const restStance = STANCES.REST_SIMPLE;
-            const limbs = playerGroup.userData.limbs;
-            if(limbs && restStance) {
-                const spd = 0.1;
-                if(restStance.torso) lerpLimbRotation(limbs.torso, restStance.torso, spd);
-                lerpLimbRotation(limbs.leftLeg, restStance.leftLeg, spd); lerpLimbRotation(limbs.rightLeg, restStance.rightLeg, spd);
-                lerpLimbRotation(limbs.leftShin, restStance.leftShin, spd); lerpLimbRotation(limbs.rightShin, restStance.rightShin, spd);
-                lerpLimbRotation(limbs.leftArm, restStance.leftArm, spd); lerpLimbRotation(limbs.rightArm, restStance.rightArm, spd);
-                lerpLimbRotation(limbs.leftForeArm, restStance.leftForeArm, spd); lerpLimbRotation(limbs.rightForeArm, restStance.rightForeArm, spd);
-            }
-
-        } else {
+        // Lógica de Movimento (Input)
+        if(!isResting && !isFainted) {
             let moveX = 0, moveZ = 0, moving = false; let speed = currentMoveSpeed * (isRunning ? 1.5 : 1); 
             const sin = Math.sin(Input.camAngle); const cos = Math.cos(Input.camAngle);
             if(Input.keys.arrowup) { moveX -= sin*speed; moveZ -= cos*speed; moving = true; }
@@ -632,22 +681,14 @@ function animate() {
             if(Input.keys.arrowleft) { moveX -= cos*speed; moveZ += sin*speed; moving = true; }
             if(Input.keys.arrowright) { moveX += cos*speed; moveZ -= sin*speed; moving = true; }
 
-            // CORREÇÃO: Limites do Mapa e Colisão
             let nextX = playerGroup.position.x + moveX; 
             let nextZ = playerGroup.position.z + moveZ;
+            if (nextX > MAP_LIMIT) nextX = MAP_LIMIT; if (nextX < -MAP_LIMIT) nextX = -MAP_LIMIT;
+            if (nextZ > MAP_LIMIT) nextZ = MAP_LIMIT; if (nextZ < -MAP_LIMIT) nextZ = -MAP_LIMIT;
 
-            if (nextX > MAP_LIMIT) nextX = MAP_LIMIT;
-            if (nextX < -MAP_LIMIT) nextX = -MAP_LIMIT;
-            if (nextZ > MAP_LIMIT) nextZ = MAP_LIMIT;
-            if (nextZ < -MAP_LIMIT) nextZ = -MAP_LIMIT;
-
-            // Checa colisão com objetos E com players
-            if(!checkCollision(nextX, playerGroup.position.y, nextZ) && 
-               !checkPlayerCollision(nextX, nextZ)) { 
-                playerGroup.position.x = nextX; 
-                playerGroup.position.z = nextZ; 
+            if(!checkCollision(nextX, playerGroup.position.y, nextZ) && !checkPlayerCollision(nextX, nextZ)) { 
+                playerGroup.position.x = nextX; playerGroup.position.z = nextZ; 
             }
-            
             if(moving) {
                 const targetCharRot = Math.atan2(moveX, moveZ); playerGroup.rotation.y = targetCharRot;
                 if(!Input.keys.arrowdown && !Input.mouseRight) Input.camAngle = lerpAngle(Input.camAngle, targetCharRot + Math.PI, 0.02);
@@ -655,117 +696,48 @@ function animate() {
             if(Input.keys[" "] && !isJumping && Math.abs(playerGroup.position.y - groundHeight) < 0.1) { verticalVelocity = currentJumpForce; isJumping = true; }
             playerGroup.position.y += verticalVelocity; verticalVelocity += gravity;
             if(playerGroup.position.y < groundHeight) { playerGroup.position.y = groundHeight; isJumping = false; verticalVelocity = 0; }
-            playerGroup.rotation.x = lerp(playerGroup.rotation.x, 0, 0.2); 
-
-            // --- ANIMATION SYSTEM 2.0 (ARTICULADO) ---
-            const limbs = playerGroup.userData.limbs;
-            if(limbs) {
-                let targetStance = STANCES[charState] || STANCES.DEFAULT;
-                const def = STANCES.DEFAULT; 
-
-                if(moving && !isJumping && !isAttacking) {
-                    let legSpeed = isRunning ? 0.3 : 0.8; 
-                    let armAmp = isRunning ? 1.2 : 0.6; 
-                    
-                    limbs.leftLeg.rotation.x = Math.sin(animTime * (isRunning ? 1.5 : 1)) * legSpeed;
-                    limbs.rightLeg.rotation.x = -Math.sin(animTime * (isRunning ? 1.5 : 1)) * legSpeed;
-                    limbs.leftShin.rotation.x = (limbs.leftLeg.rotation.x > 0) ? limbs.leftLeg.rotation.x : 0;
-                    limbs.rightShin.rotation.x = (limbs.rightLeg.rotation.x > 0) ? limbs.rightLeg.rotation.x : 0;
-
-                    if(charState === "DEFAULT") {
-                        limbs.leftArm.rotation.x = -Math.sin(animTime * (isRunning ? 1.5 : 1)) * armAmp;
-                        limbs.rightArm.rotation.x = Math.sin(animTime * (isRunning ? 1.5 : 1)) * armAmp;
-                        limbs.leftForeArm.rotation.x = -0.2;
-                        limbs.rightForeArm.rotation.x = -0.2;
-                        lerpLimbRotation(limbs.torso, def.torso, 0.1);
-                    } else {
-                        lerpLimbRotation(limbs.leftArm, targetStance.leftArm || def.leftArm, 0.2);
-                        lerpLimbRotation(limbs.rightArm, targetStance.rightArm || def.rightArm, 0.2);
-                        lerpLimbRotation(limbs.leftForeArm, targetStance.leftForeArm || def.leftForeArm, 0.2);
-                        lerpLimbRotation(limbs.rightForeArm, targetStance.rightForeArm || def.rightForeArm, 0.2);
-                        lerpLimbRotation(limbs.torso, targetStance.torso || def.torso, 0.2);
-                    }
-                } else {
-                    const spd = isAttacking ? 0.4 : 0.1;
-                    if(targetStance.torso) lerpLimbRotation(limbs.torso, targetStance.torso, spd);
-                    else lerpLimbRotation(limbs.torso, def.torso, spd);
-                    lerpLimbRotation(limbs.leftArm, targetStance.leftArm || def.leftArm, spd);
-                    lerpLimbRotation(limbs.rightArm, targetStance.rightArm || def.rightArm, spd);
-                    lerpLimbRotation(limbs.leftForeArm, targetStance.leftForeArm || def.leftForeArm, spd);
-                    lerpLimbRotation(limbs.rightForeArm, targetStance.rightForeArm || def.rightForeArm, spd);
-                    lerpLimbRotation(limbs.leftLeg, targetStance.leftLeg || def.leftLeg, spd);
-                    lerpLimbRotation(limbs.rightLeg, targetStance.rightLeg || def.rightLeg, spd);
-                    lerpLimbRotation(limbs.leftShin, targetStance.leftShin || def.leftShin, spd);
-                    lerpLimbRotation(limbs.rightShin, targetStance.rightShin || def.rightShin, spd);
-                }
-            }
+            
+            // Chama Animação Unificada
+            animateCharacterRig(playerGroup, charState, moving, isRunning, isResting, isFainted, groundHeight);
+        } else {
+            // Parado/Descansando
+            animateCharacterRig(playerGroup, charState, false, false, isResting, isFainted, groundHeight);
         }
+
         Engine.camera.position.set(playerGroup.position.x + Math.sin(Input.camAngle)*7, playerGroup.position.y + 5, playerGroup.position.z + Math.cos(Input.camAngle)*7);
         Engine.camera.lookAt(playerGroup.position.x, playerGroup.position.y + 1.5, playerGroup.position.z);
         sendPositionUpdate(now);
     }
     
-    // Render Other Players
+    // 2. ANIMAR OUTROS JOGADORES
     for(const id in otherPlayers) {
-        const other = otherPlayers[id]; const mesh = other.mesh; const elapsed = other.lastPacketTime ? (now - other.lastPacketTime) : 0; const t = other.lerpDuration ? Math.min(1, elapsed / other.lerpDuration) : 1;
-        mesh.position.x = lerp(other.startX, other.targetX, t); mesh.position.y = lerp(other.startY, other.targetY, t); mesh.position.z = lerp(other.startZ, other.targetZ, t); mesh.rotation.y = lerpAngle(other.startRot, other.targetRot, t);
+        const other = otherPlayers[id]; 
+        const mesh = other.mesh; 
+        const elapsed = other.lastPacketTime ? (now - other.lastPacketTime) : 0; 
+        const t = other.lerpDuration ? Math.min(1, elapsed / other.lerpDuration) : 1;
         
-        const dist = Math.sqrt(Math.pow(other.targetX - mesh.position.x, 2) + Math.pow(other.targetZ - mesh.position.z, 2)); const isMoving = dist > 0.05;
-        const limbs = mesh.userData.limbs;
-        if(limbs) {
-            let remoteStance = STANCES.DEFAULT;
-            const def = STANCES.DEFAULT;
+        // Interpolação de Posição
+        mesh.position.x = lerp(other.startX, other.targetX, t); 
+        mesh.position.z = lerp(other.startZ, other.targetZ, t); 
+        // Y é tratado na animação para se ajustar ao chão
+        const currentGroundH = other.targetY; // Simplificação: assume que o targetY do server é o chão correto
+        
+        mesh.rotation.y = lerpAngle(other.startRot, other.targetRot, t);
+        
+        const dist = Math.sqrt(Math.pow(other.targetX - mesh.position.x, 2) + Math.pow(other.targetZ - mesh.position.z, 2)); 
+        const isMoving = dist > 0.02;
 
-            if (other.fainted) {
-                mesh.rotation.x = lerp(mesh.rotation.x, -Math.PI/2, 0.1); 
-                mesh.position.y = lerp(mesh.position.y, 0.2, 0.1);
-            }
-            else if (other.resting) {
-                mesh.rotation.x = lerp(mesh.rotation.x, 0, 0.1);
-                const yOffset = -0.6;
-                mesh.position.y = lerp(mesh.position.y, other.targetY + yOffset, 0.1); 
-
-                const restStance = STANCES.REST_SIMPLE;
-                if(restStance) {
-                    const spd = 0.1;
-                    if(restStance.torso) lerpLimbRotation(limbs.torso, restStance.torso, spd);
-                    lerpLimbRotation(limbs.leftLeg, restStance.leftLeg, spd); lerpLimbRotation(limbs.rightLeg, restStance.rightLeg, spd);
-                    lerpLimbRotation(limbs.leftShin, restStance.leftShin, spd); lerpLimbRotation(limbs.rightShin, restStance.rightShin, spd);
-                    lerpLimbRotation(limbs.leftArm, restStance.leftArm, spd); lerpLimbRotation(limbs.rightArm, restStance.rightArm, spd);
-                    lerpLimbRotation(limbs.leftForeArm, restStance.leftForeArm, spd); lerpLimbRotation(limbs.rightForeArm, restStance.rightForeArm, spd);
-                }
-            } else {
-                if(other.attacking) {
-                    if(other.attackType === "sword") remoteStance = STANCES.SWORD_COMBO_1; 
-                    else if(other.attackType === "fist") remoteStance = STANCES.FIST_COMBO_1;
-                    else if(other.attackType === "kick") remoteStance = STANCES.KICK_COMBO_1; 
-                    else if(other.attackType === "gun") remoteStance = STANCES.GUN_ATK;
-                    
-                    if(remoteStance.torso) lerpLimbRotation(limbs.torso, remoteStance.torso, 0.4);
-                    lerpLimbRotation(limbs.leftArm, remoteStance.leftArm || def.leftArm, 0.4); lerpLimbRotation(limbs.rightArm, remoteStance.rightArm || def.rightArm, 0.4);
-                    lerpLimbRotation(limbs.leftForeArm, remoteStance.leftForeArm || def.leftForeArm, 0.4); lerpLimbRotation(limbs.rightForeArm, remoteStance.rightForeArm || def.rightForeArm, 0.4);
-                    lerpLimbRotation(limbs.leftLeg, remoteStance.leftLeg || def.leftLeg, 0.4); lerpLimbRotation(limbs.rightLeg, remoteStance.rightLeg || def.rightLeg, 0.4);
-                } else if(isMoving) {
-                    const animSpeed = other.isRunning ? 0.3 : 0.15; 
-                    const armAmp = other.isRunning ? 1.2 : 0.6;    
-
-                    limbs.leftLeg.rotation.x = Math.sin(animTime / animSpeed) * armAmp;
-                    limbs.rightLeg.rotation.x = -Math.sin(animTime / animSpeed) * armAmp;
-                    
-                    limbs.leftShin.rotation.x = (limbs.leftLeg.rotation.x > 0) ? limbs.leftLeg.rotation.x : 0;
-                    limbs.rightShin.rotation.x = (limbs.rightLeg.rotation.x > 0) ? limbs.rightLeg.rotation.x : 0;
-                    limbs.leftArm.rotation.x = -Math.sin(animTime / animSpeed) * armAmp;
-                    limbs.rightArm.rotation.x = Math.sin(animTime / animSpeed) * armAmp;
-                    
-                    lerpLimbRotation(limbs.torso, def.torso, 0.1);
-                } else {
-                    lerpLimbRotation(limbs.torso, def.torso, 0.1);
-                    lerpLimbRotation(limbs.leftLeg, STANCES.DEFAULT.leftLeg, 0.1); lerpLimbRotation(limbs.rightLeg, STANCES.DEFAULT.rightLeg, 0.1);
-                    lerpLimbRotation(limbs.leftShin, STANCES.DEFAULT.leftShin, 0.1); lerpLimbRotation(limbs.rightShin, STANCES.DEFAULT.rightShin, 0.1);
-                    lerpLimbRotation(limbs.leftArm, STANCES.DEFAULT.leftArm, 0.1); lerpLimbRotation(limbs.rightArm, STANCES.DEFAULT.rightArm, 0.1);
-                }
-            }
+        let remoteState = "DEFAULT";
+        if(other.attacking) {
+            if(other.attackType === "sword") remoteState = "SWORD_COMBO_1"; 
+            else if(other.attackType === "fist") remoteState = "FIST_COMBO_1";
+            else if(other.attackType === "kick") remoteState = "KICK_COMBO_1"; 
+            else if(other.attackType === "gun") remoteState = "GUN_ATK";
         }
+
+        // Chama a MESMA função de animação
+        animateCharacterRig(mesh, remoteState, isMoving, other.isRunning, other.resting, other.fainted, currentGroundH);
+
         const tempV = new THREE.Vector3(mesh.position.x, mesh.position.y + 2, mesh.position.z); tempV.project(Engine.camera);
         other.label.style.display = (Math.abs(tempV.z) > 1) ? 'none' : 'block'; other.label.style.left = (tempV.x * .5 + .5) * window.innerWidth + 'px'; other.label.style.top = (-(tempV.y * .5) + .5) * window.innerHeight + 'px';
     }
