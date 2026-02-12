@@ -1,6 +1,6 @@
 // engine.js - Core do Cliente (Input, Math, Graphics)
 
-const RENDER_HEIGHT = 480; // CONFIGURAÇÃO: Tente 360, 480 ou 720. Quanto menor, mais rápido.
+const RENDER_HEIGHT = 720; // CONFIGURAÇÃO: Tente 360, 480 ou 720. Quanto menor, mais rápido.
 
 function lerp(start, end, t) { return start * (1 - t) + end * t; }
 function mod(n, m) { return ((n % m) + m) % m; }

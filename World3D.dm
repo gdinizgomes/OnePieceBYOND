@@ -1,21 +1,140 @@
 #define SAVE_DIR "saves/"
 
+// --- CONTROLADOR GLOBAL DO SERVIDOR ---
+var/global/datum/game_controller/SSserver
+
+// Inicialização Global
+world/New()
+	world.maxx = 1
+	world.maxy = 1
+	world.maxz = 1
+	..()
+	if(!SSserver)
+		SSserver = new()
+		spawn(5) SSserver.Heartbeat()
+
+	new /mob/npc/dummy()
+	new /mob/npc/vendor()
+	new /mob/npc/nurse()
+	new /mob/npc/prop/log()
+
+// --- CLASSE DO CONTROLADOR ---
+datum/game_controller
+	var/tick_rate = 1 // 10 ticks por segundo (fluidez de movimento)
+	var/running = 1
+
+	proc/Heartbeat()
+		set background = 1
+		while(running)
+			// 1. Coletar dados de TODOS os jogadores e NPCs
+			var/list/all_player_data = list()
+			var/list/active_clients = list()
+
+			for(var/mob/M in global_players_list)
+				if(M.client && M.in_game && M.char_loaded)
+					active_clients += M
+					var/pid = "\ref[M]"
+
+					var/e_hand = ""; var/e_head = ""; var/e_body = ""; var/e_legs = ""; var/e_feet = ""
+					if(M.slot_hand) e_hand = M.slot_hand.id_visual
+					if(M.slot_head) e_head = M.slot_head.id_visual
+					if(M.slot_body) e_body = M.slot_body.id_visual
+					if(M.slot_legs) e_legs = M.slot_legs.id_visual
+					if(M.slot_feet) e_feet = M.slot_feet.id_visual
+
+					all_player_data[pid] = list(
+						"x" = M.R2(M.real_x), "y" = M.R2(M.real_y), "z" = M.R2(M.real_z), "rot" = M.R2(M.real_rot),
+						"a" = M.is_attacking, "at" = M.attack_type,
+						"rn" = M.is_running,
+						"it" = e_hand,
+						"eq_h" = e_head, "eq_b" = e_body, "eq_l" = e_legs, "eq_f" = e_feet,
+						"rest" = M.is_resting, "ft" = M.is_fainted,
+						"name" = M.name, "skin" = M.skin_color, "cloth" = M.cloth_color,
+						"npc" = 0,
+						"hp" = M.current_hp, "mhp" = M.max_hp,
+						"gen" = M.char_gender
+					)
+
+			for(var/mob/npc/N in global_npcs)
+				var/nid = "\ref[N]"
+				all_player_data[nid] = list(
+					"x" = N.R2(N.real_x), "y" = N.R2(N.real_y), "z" = N.R2(N.real_z), "rot" = N.R2(N.real_rot),
+					"a" = 0, "at" = "", "it" = "", "rest" = 0, "ft" = 0,
+					"rn" = 0,
+					"name" = N.name, "skin" = N.skin_color, "cloth" = N.cloth_color,
+					"npc" = 1, "type" = N.npc_type,
+					"hp" = N.current_hp, "mhp" = N.max_hp,
+					"gen" = N.char_gender
+				)
+
+			// 2. Coletar Itens do chão
+			var/list/ground_data = list()
+			for(var/obj/item/I in global_ground_items)
+				if(isturf(I.loc))
+					ground_data += list(list("ref" = "\ref[I]", "id" = I.id_visual, "x" = I.real_x, "y" = I.real_y, "z" = I.real_z))
+				else
+					global_ground_items -= I
+
+			// JSON Global (Outros Players + Chão)
+			var/global_json = json_encode(list("others" = all_player_data, "ground" = ground_data, "t" = world.time))
+
+			// 3. Enviar Pacotes Individuais
+			for(var/mob/M in active_clients)
+				var/faint_rem = 0
+				if(M.is_fainted && M.faint_end_time > world.time) faint_rem = round((M.faint_end_time - world.time) / 10)
+
+				var/my_hand = ""; var/my_head = ""; var/my_body = ""; var/my_legs = ""; var/my_feet = ""
+				if(M.slot_hand) my_hand = M.slot_hand.id_visual
+				if(M.slot_head) my_head = M.slot_head.id_visual
+				if(M.slot_body) my_body = M.slot_body.id_visual
+				if(M.slot_legs) my_legs = M.slot_legs.id_visual
+				if(M.slot_feet) my_feet = M.slot_feet.id_visual
+
+				var/list/my_stats = list(
+					"my_id" = "\ref[M]",
+					"me" = list(
+						"loaded" = 1,
+						"lvl" = M.level, "exp" = M.experience, "req_exp" = M.req_experience, "pts" = M.stat_points,
+						"str" = M.strength, "vit" = M.vitality, "agi" = M.agility,  "wis" = M.wisdom,
+						"gold" = M.gold, "hp" = M.current_hp, "max_hp" = M.max_hp, "en" = M.current_energy, "max_en" = M.max_energy,
+						"pp" = M.prof_punch_lvl, "pp_x" = M.prof_punch_exp, "pp_r" = M.GetProficiencyReq(M.prof_punch_lvl),
+						"pk" = M.prof_kick_lvl,  "pk_x" = M.prof_kick_exp,  "pk_r" = M.GetProficiencyReq(M.prof_kick_lvl),
+						"ps" = M.prof_sword_lvl, "ps_x" = M.prof_sword_exp, "ps_r" = M.GetProficiencyReq(M.prof_sword_lvl),
+						"pg" = M.prof_gun_lvl,   "pg_x" = M.prof_gun_exp,   "pg_r" = M.GetProficiencyReq(M.prof_gun_lvl),
+						"mspd" = M.calc_move_speed, "jmp" = M.calc_jump_power,
+						"rest" = M.is_resting, "ft" = M.is_fainted, "rem" = faint_rem,
+						// DADOS VISUAIS PESSOAIS (CORRIGIDO)
+						"skin" = M.skin_color, "cloth" = M.cloth_color, "gen" = M.char_gender,
+						"it" = my_hand, "eq_h" = my_head, "eq_b" = my_body, "eq_l" = my_legs, "eq_f" = my_feet
+					),
+					"evts" = M.pending_visuals
+				)
+
+				if(M.pending_visuals.len > 0) M.pending_visuals = list()
+
+				M << output(global_json, "map3d:receberDadosGlobal")
+				M << output(json_encode(my_stats), "map3d:receberDadosPessoal")
+
+			sleep(tick_rate)
+
+
 // --- LISTA GLOBAL DE NPCS ---
 var/list/global_npcs = list()
-
-// --- LISTA GLOBAL DE ITENS NO CHÃO (OTIMIZAÇÃO) ---
+// --- LISTA GLOBAL DE PLAYERS ---
+var/list/global_players_list = list()
+// --- LISTA GLOBAL DE ITENS ---
 var/list/global_ground_items = list()
 
 // --- ESTRUTURA DE ITENS ---
 obj/item
 	var/id_visual = ""
-	var/slot = "none" // hand, head, body, legs, feet
+	var/slot = "none"
 	var/power = 0
 	var/price = 0
 	var/description = ""
 	var/amount = 1
-	var/max_stack = 5 
-	var/shop_tags = "" // TAG para definir em qual loja aparece
+	var/max_stack = 5
+	var/shop_tags = ""
 	var/real_x = 0
 	var/real_y = 0
 	var/real_z = 0
@@ -24,8 +143,8 @@ obj/item
 obj/item/weapon
 	slot = "hand"
 	max_stack = 1
-	var/range = 1.0 
-	var/projectile_speed = 0 // 0 = Melee, >0 = Projétil
+	var/range = 1.0
+	var/projectile_speed = 0
 
 obj/item/weapon/sword_wood
 	name = "Espada de Treino"
@@ -60,8 +179,8 @@ obj/item/weapon/gun_wood
 	description = "Dispara rolhas."
 	power = 12
 	price = 80
-	range = 10.0 
-	projectile_speed = 0.6 
+	range = 10.0
+	projectile_speed = 0.6
 	shop_tags = "armorer"
 
 obj/item/weapon/gun_flintlock
@@ -71,7 +190,7 @@ obj/item/weapon/gun_flintlock
 	power = 25
 	price = 250
 	range = 14.0
-	projectile_speed = 3.6 
+	projectile_speed = 3.6
 	shop_tags = "armorer"
 
 obj/item/weapon/gun_silver
@@ -81,7 +200,7 @@ obj/item/weapon/gun_silver
 	power = 40
 	price = 800
 	range = 22.0
-	projectile_speed = 7.2 
+	projectile_speed = 7.2
 	shop_tags = "armorer"
 
 // -- Roupas e Armaduras --
@@ -94,7 +213,7 @@ obj/item/armor/head_bandana
 	slot = "head"
 	description = "Um pano simples para a cabeça."
 	price = 30
-	power = 0 
+	power = 0
 	shop_tags = "armorer"
 
 obj/item/armor/head_bandana_black
@@ -176,28 +295,30 @@ mob
 	var/real_y = 0
 	var/real_z = 0
 	var/real_rot = 0
-	var/hit_radius = 0.5 
+	var/hit_radius = 0.5
 	var/in_game = 0
 	var/is_attacking = 0
 	var/attack_type = ""
 	var/active_item_visual = ""
-	
+
 	// Slots de Equipamento
 	var/obj/item/slot_hand = null
 	var/obj/item/slot_head = null
 	var/obj/item/slot_body = null
 	var/obj/item/slot_legs = null
-	var/obj/item/slot_feet = null 
-	
+	var/obj/item/slot_feet = null
+
 	// LISTA DE EVENTOS VISUAIS
 	var/list/pending_visuals = list()
 
 	Login()
 		..()
 		in_game = 0
+		global_players_list += src
 		ShowCharacterMenu()
 
 	Logout()
+		global_players_list -= src
 		if(in_game)
 			SaveCharacter()
 			in_game = 0
@@ -211,17 +332,17 @@ mob
 		for(var/obj/item/I in contents)
 			if(istype(I, /obj/item/weapon/sword_wood)) has_weapon = 1
 			if(istype(I, /obj/item/armor/head_bandana)) has_bandana = 1
-		
+
 		if(!has_weapon && !slot_hand) new /obj/item/weapon/sword_wood(src)
 		if(!has_bandana && !slot_head) new /obj/item/armor/head_bandana(src)
-		
+
 		src << output("Itens iniciais verificados!", "map3d:mostrarNotificacao")
 
 	proc/EquipItem(obj/item/I)
 		if(!I || !(I in contents)) return
-		
+
 		var/success = 0
-		
+
 		if(I.slot == "hand")
 			if(slot_hand) UnequipItem("hand")
 			slot_hand = I
@@ -243,7 +364,7 @@ mob
 			if(slot_feet) UnequipItem("feet")
 			slot_feet = I
 			success = 1
-			
+
 		if(success)
 			contents -= I
 			src << output("Equipou [I.name].", "map3d:mostrarNotificacao")
@@ -252,25 +373,25 @@ mob
 
 	proc/UnequipItem(slot_name)
 		var/obj/item/I = null
-		
+
 		if(slot_name == "hand") I = slot_hand
 		else if(slot_name == "head") I = slot_head
 		else if(slot_name == "body") I = slot_body
 		else if(slot_name == "legs") I = slot_legs
 		else if(slot_name == "feet") I = slot_feet
-		
+
 		if(I)
 			if(contents.len >= 12)
 				src << output("Mochila cheia!", "map3d:mostrarNotificacao")
 				return
-			
+
 			// Remove do slot
 			if(slot_name == "hand") { slot_hand = null; active_item_visual = ""; }
 			else if(slot_name == "head") slot_head = null
 			else if(slot_name == "body") slot_body = null
 			else if(slot_name == "legs") slot_legs = null
 			else if(slot_name == "feet") slot_feet = null
-			
+
 			contents += I
 			src << output("Desequipou [I.name].", "map3d:mostrarNotificacao")
 			RequestInventoryUpdate()
@@ -313,7 +434,7 @@ mob
 		var/min_dist = 2.0
 		// OTIMIZAÇÃO: Itera apenas itens no chão
 		for(var/obj/item/I in global_ground_items)
-			if(I.loc == null || !isturf(I.loc)) 
+			if(I.loc == null || !isturf(I.loc))
 				global_ground_items -= I
 				continue
 			var/dx = I.real_x - src.real_x
@@ -348,21 +469,25 @@ mob
 		var/list/inv_data = list()
 		for(var/obj/item/I in contents)
 			if(!I) continue
+			// CORREÇÃO: Ternário removido de dentro da lista para evitar erro de compilação
+			var/desc_txt = I.description
+			if(!desc_txt) desc_txt = "Sem descrição"
+
 			inv_data += list(list(
 				"name" = I.name,
-				"desc" = (I.description ? I.description : "Sem descrição"),
+				"desc" = desc_txt,
 				"ref" = "\ref[I]",
 				"amount" = I.amount,
 				"id" = I.id_visual,
 				"power" = I.power,
-				"price" = I.price, 
+				"price" = I.price,
 				"equipped" = 0
 			))
 		src << output(json_encode(inv_data), "map3d:loadInventory")
 
 	proc/RequestStatusUpdate()
 		var/list/eq_data = list("hand" = null, "head" = null, "body" = null, "legs" = null, "feet" = null)
-		
+
 		if(slot_hand) eq_data["hand"] = list("id"=slot_hand.id_visual, "ref"="\ref[slot_hand]", "name"=slot_hand.name)
 		if(slot_head) eq_data["head"] = list("id"=slot_head.id_visual, "ref"="\ref[slot_head]", "name"=slot_head.name)
 		if(slot_body) eq_data["body"] = list("id"=slot_body.id_visual, "ref"="\ref[slot_body]", "name"=slot_body.name)
@@ -488,7 +613,7 @@ mob
 		current_slot = slot_index
 		if(LoadCharacter(slot_index))
 			src << output("Carregado!", "map3d:mostrarNotificacao")
-			GiveStarterItems() 
+			GiveStarterItems()
 		else
 			real_x = 0; real_y = 0; real_z = 0
 			level = 1; experience = 0; req_experience = 100; stat_points = 0
@@ -523,7 +648,7 @@ mob
 		var/page = file2text('game.html')
 		page = replacetext(page, "{{BYOND_REF}}", "\ref[src]")
 		src << browse(page, "window=map3d")
-		spawn(10) UpdateLoop()
+
 		spawn(600) AutoSaveLoop()
 		spawn(10) RestLoop()
 
@@ -580,7 +705,7 @@ mob
 		if(!src.req_experience || src.req_experience <= 0)
 			src.req_experience = 100 * (1.5 ** (src.level - 1))
 			if(src.req_experience < 100) src.req_experience = 100
-		
+
 		active_item_visual = ""
 		if(slot_hand) active_item_visual = slot_hand.id_visual
 		RecalculateStats()
@@ -588,88 +713,6 @@ mob
 
 	// OTIMIZAÇÃO: Arredondamento
 	proc/R2(n) return round(n * 100) / 100
-
-	proc/UpdateLoop()
-		while(src && in_game)
-			var/list/players_list = list()
-			
-			for(var/mob/M in world)
-				if(istype(M, /mob/npc)) continue 
-				if(M.in_game && M.char_loaded)
-					if(abs(M.real_x - src.real_x) > 30 || abs(M.real_z - src.real_z) > 30) continue
-					var/pid = "\ref[M]"
-					
-					var/e_hand = ""; var/e_head = ""; var/e_body = ""; var/e_legs = ""; var/e_feet = ""
-					if(M.slot_hand) e_hand = M.slot_hand.id_visual
-					if(M.slot_head) e_head = M.slot_head.id_visual
-					if(M.slot_body) e_body = M.slot_body.id_visual
-					if(M.slot_legs) e_legs = M.slot_legs.id_visual
-					if(M.slot_feet) e_feet = M.slot_feet.id_visual
-
-					// OTIMIZAÇÃO: "rn" = is_running para sync de animação
-					players_list[pid] = list(
-						"x" = R2(M.real_x), "y" = R2(M.real_y), "z" = R2(M.real_z), "rot" = R2(M.real_rot),
-						"a" = M.is_attacking, "at" = M.attack_type,
-						"rn" = M.is_running,
-						"it" = e_hand,
-						"eq_h" = e_head, "eq_b" = e_body, "eq_l" = e_legs, "eq_f" = e_feet,
-						"rest" = M.is_resting, "ft" = M.is_fainted,
-						"name" = M.name, "skin" = M.skin_color, "cloth" = M.cloth_color,
-						"npc" = 0,
-						"hp" = M.current_hp, "mhp" = M.max_hp,
-						"gen" = M.char_gender
-					)
-			
-			for(var/mob/npc/N in global_npcs)
-				if(abs(N.real_x - src.real_x) > 30 || abs(N.real_z - src.real_z) > 30) continue
-				var/nid = "\ref[N]"
-				players_list[nid] = list(
-					"x" = R2(N.real_x), "y" = R2(N.real_y), "z" = R2(N.real_z), "rot" = R2(N.real_rot),
-					"a" = 0, "at" = "", "it" = "", "rest" = 0, "ft" = 0,
-					"rn" = 0,
-					"name" = N.name, "skin" = N.skin_color, "cloth" = N.cloth_color,
-					"npc" = 1, "type" = N.npc_type,
-					"hp" = N.current_hp, "mhp" = N.max_hp,
-					"gen" = N.char_gender
-				)
-			
-			var/list/ground_items = list()
-			for(var/obj/item/I in global_ground_items)
-				if(isturf(I.loc))
-					var/dx = I.real_x - src.real_x
-					var/dz = I.real_z - src.real_z
-					if(abs(dx) < 20 && abs(dz) < 20)
-						ground_items += list(list("ref" = "\ref[I]", "id" = I.id_visual, "x" = R2(I.real_x), "y" = R2(I.real_y), "z" = R2(I.real_z)))
-				else
-					global_ground_items -= I
-			
-			var/faint_remaining = 0
-			if(src.is_fainted && src.faint_end_time > world.time)
-				faint_remaining = round((src.faint_end_time - world.time) / 10)
-			
-			var/list/packet = list(
-				"my_id" = "\ref[src]",
-				"me" = list(
-					"loaded" = src.char_loaded,
-					"lvl" = src.level, "exp" = src.experience, "req_exp" = src.req_experience, "pts" = src.stat_points,
-					"str" = src.strength, "vit" = src.vitality, "agi" = src.agility,  "wis" = src.wisdom,
-					"gold" = src.gold, "hp" = src.current_hp, "max_hp" = src.max_hp, "en" = src.current_energy, "max_en" = src.max_energy,
-					"pp" = prof_punch_lvl, "pp_x" = prof_punch_exp, "pp_r" = GetProficiencyReq(prof_punch_lvl),
-					"pk" = prof_kick_lvl,  "pk_x" = prof_kick_exp,  "pk_r" = GetProficiencyReq(prof_kick_lvl),
-					"ps" = prof_sword_lvl, "ps_x" = prof_sword_exp, "ps_r" = GetProficiencyReq(prof_sword_lvl),
-					"pg" = prof_gun_lvl,   "pg_x" = prof_gun_exp,   "pg_r" = GetProficiencyReq(prof_gun_lvl),
-					"mspd" = calc_move_speed, "jmp" = calc_jump_power,
-					"rest" = src.is_resting, "ft" = src.is_fainted, "rem" = faint_remaining,
-					"gen" = src.char_gender
-				),
-				"others" = players_list, "ground" = ground_items, "t" = world.time,
-				"evts" = src.pending_visuals
-			)
-			src << output(json_encode(packet), "map3d:receberDadosMultiplayer")
-			
-			if(src.pending_visuals.len > 0) src.pending_visuals = list()
-			
-			sleep(2)
 
 	proc/AutoSaveLoop()
 		while(src && in_game)
@@ -685,7 +728,7 @@ mob
 				if(fexists("[SAVE_DIR][src.ckey]_slot[i].sav"))
 					var/savefile/F = new("[SAVE_DIR][src.ckey]_slot[i].sav")
 					var/n; var/l; var/g; var/ge
-					F["name"] >> n; F["level"] >> l; F["gold"] >> g; 
+					F["name"] >> n; F["level"] >> l; F["gold"] >> g;
 					if(F["gender"]) F["gender"] >> ge; else ge = "Male"
 					slots_data["slot[i]"] = list("name"=n, "lvl"=l, "gold"=g, "gender"=ge)
 				else slots_data["slot[i]"] = null
@@ -704,8 +747,8 @@ mob
 			src.name = href_list["name"]
 			src.skin_color = href_list["skin"]
 			src.cloth_color = href_list["cloth"]
-			src.char_gender = href_list["gender"] 
-			src.level = 1; src.gold = 10000 
+			src.char_gender = href_list["gender"]
+			src.level = 1; src.gold = 10000
 			src.real_x = 0; src.real_y = 0; src.real_z = 0
 			current_slot = slot
 			SaveCharacter()
@@ -719,8 +762,7 @@ mob
 				real_y = text2num(href_list["y"])
 				real_z = text2num(href_list["z"])
 				real_rot = text2num(href_list["rot"])
-				
-				// CORREÇÃO: Limites do Servidor (Segurança)
+
 				if(real_x > 29) real_x = 29
 				if(real_x < -29) real_x = -29
 				if(real_z > 29) real_z = 29
@@ -765,7 +807,7 @@ mob
 					for(var/path in V.stock)
 						var/obj/item/tmpI = new path()
 						shop_items += list(list("name"=tmpI.name, "id"=tmpI.id_visual, "price"=tmpI.price, "desc"=tmpI.description, "typepath"=path))
-						del(tmpI) 
+						del(tmpI)
 					src << output(json_encode(shop_items), "map3d:openShop")
 					RequestInventoryUpdate()
 				else if(istype(N, /mob/npc/nurse))
@@ -818,21 +860,20 @@ mob
 			var/target_ref = href_list["target_ref"]
 			var/hit_type = href_list["hit_type"]
 			var/obj/target = locate(target_ref)
-			
+
 			if(!target) return
 
-			// IMORTALIDADE
 			if(istype(target, /mob/npc))
 				var/mob/npc/N = target
-				if(N.npc_type == "vendor" || N.npc_type == "nurse") return 
+				if(N.npc_type == "vendor" || N.npc_type == "nurse") return
 
-			var/max_dist = 3.0 
+			var/max_dist = 3.0
 			var/bonus_dmg = 0
 			var/skill_exp_type = ""
-			
+
 			if(hit_type == "projectile")
 				if(slot_hand && istype(slot_hand, /obj/item/weapon))
-					max_dist = slot_hand:range + 5 
+					max_dist = slot_hand:range + 5
 					bonus_dmg = slot_hand:power
 					skill_exp_type = "gun"
 				else return
@@ -844,9 +885,9 @@ mob
 						skill_exp_type = "sword"
 				else if(attack_type == "kick")
 					max_dist = 3.5; skill_exp_type = "kick"
-				else 
+				else
 					max_dist = 2.5; skill_exp_type = "fist"
-			
+
 			var/dist = get_dist_euclid(src.real_x, src.real_z, target:real_x, target:real_z)
 			if(dist > max_dist) return
 
@@ -859,10 +900,10 @@ mob
 			// --- LÓGICA DE DANO COMBO ---
 			var/damage_mult = 1.0
 			var/combo_step = text2num(href_list["combo"])
-			if(combo_step == 3) damage_mult = 1.2 // 20% Bônus no 3º hit
+			if(combo_step == 3) damage_mult = 1.2
 
 			var/damage = round(((strength * 0.4) + prof_bonus + bonus_dmg + rand(0, 3)) * damage_mult)
-			
+
 			src.pending_visuals += list(list("type"="dmg", "val"=damage, "tid"=target_ref))
 
 			if(istype(target, /mob/npc))
@@ -906,7 +947,7 @@ mob/npc
 	in_game = 1
 	char_loaded = 1
 	var/npc_type = "base"
-	var/wanders = 1 
+	var/wanders = 1
 	char_gender = "Female"
 	New()
 		..()
@@ -934,8 +975,8 @@ mob/npc/prop
 
 mob/npc/prop/log
 	name = "Tronco de Treino"
-	skin_color = "8B4513" 
-	hit_radius = 0.8 
+	skin_color = "8B4513"
+	hit_radius = 0.8
 	New()
 		..()
 		real_x = 5
@@ -950,17 +991,17 @@ mob/npc/vendor
 	npc_type = "vendor"
 	skin_color = "FFE0BD"
 	cloth_color = "555555"
-	wanders = 0 
+	wanders = 0
 	char_gender = "Male"
 	var/list/stock = list()
-	
+
 	New()
 		..()
 		real_x = 2
 		real_z = 2
 		real_y = 0.1
 		real_rot = 3.14
-		
+
 		// POPULAÇÃO AUTOMÁTICA DA LOJA VIA TAGS
 		for(var/T in typesof(/obj/item))
 			var/obj/item/temp = new T()
@@ -973,7 +1014,7 @@ mob/npc/nurse
 	npc_type = "nurse"
 	skin_color = "FFE0BD"
 	cloth_color = "FF69B4"
-	wanders = 0 
+	wanders = 0
 	char_gender = "Female"
 	New()
 		..()
@@ -991,13 +1032,3 @@ mob/npc/dummy
 	New()
 		..()
 		real_x = rand(-10, 10); real_z = rand(-10, 10)
-
-world/New()
-	world.maxx = 1
-	world.maxy = 1
-	world.maxz = 1
-	..()
-	new /mob/npc/dummy() 
-	new /mob/npc/vendor()
-	new /mob/npc/nurse()
-	new /mob/npc/prop/log()

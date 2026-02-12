@@ -23,15 +23,9 @@ let currentJumpForce = 0.20;
 // --- SISTEMA DE COMBOS ---
 let lastCombatActionTime = 0; 
 let isAttacking = false; 
-// Soco
-let fistComboStep = 0; 
-let lastFistAttackTime = 0;
-// Chute
-let kickComboStep = 0;
-let lastKickAttackTime = 0;
-// Espada
-let swordComboStep = 0;
-let lastSwordAttackTime = 0;
+let fistComboStep = 0; let lastFistAttackTime = 0;
+let kickComboStep = 0; let lastKickAttackTime = 0;
+let swordComboStep = 0; let lastSwordAttackTime = 0;
 
 let animTime = 0; 
 let isJumping = false; 
@@ -56,7 +50,7 @@ const POSITION_EPSILON = 0.01;
 let lastSentTime = 0;
 let lastSentX = null; let lastSentY = null; let lastSentZ = null; let lastSentRot = null;
 
-const MAP_LIMIT = 29; // Limite do mapa (tamanho 60, margem de segurança)
+const MAP_LIMIT = 29; 
 
 // --- FUNÇÕES AUXILIARES UI ---
 function addLog(msg, css) { 
@@ -277,22 +271,17 @@ function checkCollision(x, y, z) {
     }
     return false; 
 }
-
-// --- COLISÃO ENTRE JOGADORES (CORREÇÃO) ---
 function checkPlayerCollision(nextX, nextZ) {
     const futureBox = new THREE.Box3();
     const center = new THREE.Vector3(nextX, 1, nextZ); 
     const size = new THREE.Vector3(0.6, 1.8, 0.6); 
     futureBox.setFromCenterAndSize(center, size);
-
     for (let id in otherPlayers) {
         const other = otherPlayers[id];
         if (!other.mesh) continue;
         const otherBox = new THREE.Box3().setFromObject(other.mesh);
         otherBox.expandByScalar(-0.1); 
-        if (futureBox.intersectsBox(otherBox)) {
-            return true;
-        }
+        if (futureBox.intersectsBox(otherBox)) { return true; }
     }
     return false;
 }
@@ -321,7 +310,6 @@ function spawnHitbox(size, forwardOffset, lifetime, customData, yOffset) {
     const hitbox = new THREE.Mesh(geo, mat);
     hitbox.position.copy(playerGroup.position); 
     hitbox.position.y += (yOffset !== undefined ? yOffset : 1.0); 
-
     const bodyRot = playerGroup.rotation.y; const sin = Math.sin(bodyRot); const cos = Math.cos(bodyRot);
     hitbox.position.x += sin * forwardOffset; hitbox.position.z += cos * forwardOffset; hitbox.rotation.y = bodyRot;
     Engine.scene.add(hitbox);
@@ -369,18 +357,13 @@ function performAttack(type) {
     
     isAttacking = true; 
     lastCombatActionTime = Date.now();
+    let windupStance = "SWORD_WINDUP"; let atkStance = "SWORD_ATK_1"; let idleStance = "SWORD_IDLE";
 
-    let windupStance = "SWORD_WINDUP"; 
-    let atkStance = "SWORD_ATK_1"; 
-    let idleStance = "SWORD_IDLE";
-
-    // --- COMBO SOCO ---
     if(type === "fist") {
         if(Date.now() - lastFistAttackTime > 600) fistComboStep = 0;
         fistComboStep++; if(fistComboStep > 3) fistComboStep = 1; 
         lastFistAttackTime = Date.now();
         windupStance = "FIST_WINDUP"; atkStance = "FIST_COMBO_" + fistComboStep; idleStance = "FIST_IDLE";
-        
         let pushDist = (fistComboStep === 3) ? 1.5 : 0.5; 
         const sin = Math.sin(playerGroup.rotation.y); const cos = Math.cos(playerGroup.rotation.y);
         const nextX = playerGroup.position.x + sin * pushDist; const nextZ = playerGroup.position.z + cos * pushDist;
@@ -390,9 +373,7 @@ function performAttack(type) {
         if(Date.now() - lastKickAttackTime > 600) kickComboStep = 0;
         kickComboStep++; if(kickComboStep > 3) kickComboStep = 1;
         lastKickAttackTime = Date.now();
-        
         windupStance = "KICK_WINDUP"; atkStance = "KICK_COMBO_" + kickComboStep; idleStance = "FIST_IDLE";
-
         let pushDist = (kickComboStep === 3) ? 1.2 : 0.4;
         const sin = Math.sin(playerGroup.rotation.y); const cos = Math.cos(playerGroup.rotation.y);
         const nextX = playerGroup.position.x + sin * pushDist; const nextZ = playerGroup.position.z + cos * pushDist;
@@ -402,9 +383,7 @@ function performAttack(type) {
         if(Date.now() - lastSwordAttackTime > 600) swordComboStep = 0;
         swordComboStep++; if(swordComboStep > 3) swordComboStep = 1;
         lastSwordAttackTime = Date.now();
-
         windupStance = "SWORD_WINDUP"; atkStance = "SWORD_COMBO_" + swordComboStep; idleStance = "SWORD_IDLE";
-
         let pushDist = (swordComboStep === 3) ? 1.8 : 0.5; 
         const sin = Math.sin(playerGroup.rotation.y); const cos = Math.cos(playerGroup.rotation.y);
         const nextX = playerGroup.position.x + sin * pushDist; const nextZ = playerGroup.position.z + cos * pushDist;
@@ -435,104 +414,128 @@ function performAttack(type) {
             window.location.href = `byond://?src=${BYOND_REF}&action=attack&type=${type}`; 
             setTimeout(function(){blockSync=false}, 200); 
         }
-        
-        setTimeout(function() { 
-            charState = idleStance; 
-            isAttacking = false; 
-        }, 300);
+        setTimeout(function() { charState = idleStance; isAttacking = false; }, 300);
     }, 100); 
 }
 
-function receberDadosMultiplayer(json) {
-    lastPacketTime = Date.now();
+// --- NETWORK HANDLERS (SEPARADOS: GLOBAL VS PESSOAL) ---
+function receberDadosGlobal(json) {
+    // Processa posições de outros jogadores e itens do chão
     let packet; try { packet = JSON.parse(json); } catch(e) { return; }
-    const me = packet.me; myID = packet.my_id; const now = performance.now();
+    lastPacketTime = Date.now();
+    const now = performance.now();
 
-    if(me.loaded == 1 && !isCharacterReady) {
-        if(packet.others[myID] && packet.others[myID].skin) {
-            const myData = packet.others[myID];
-            playerGroup = CharFactory.createCharacter(myData.skin, myData.cloth);
-            playerGroup.visible = true; playerGroup.position.set(myData.x, myData.y, myData.z);
-            Engine.scene.add(playerGroup); isCharacterReady = true; Input.camAngle = myData.rot + Math.PI; 
-            
-            // Inicializa user data para evitar undefined
-            playerGroup.userData.lastHead = ""; playerGroup.userData.lastBody = ""; 
-            playerGroup.userData.lastLegs = ""; playerGroup.userData.lastFeet = ""; 
-            playerGroup.userData.lastItem = "";
+    // 1. ITEMS NO CHÃO
+    const serverGroundItems = packet.ground || [];
+    const seenItems = new Set();
+    let closestDist = 999;
+    serverGroundItems.forEach(itemData => {
+        seenItems.add(itemData.ref);
+        if(!groundItemsMeshes[itemData.ref]) {
+            const mesh = CharFactory.createFromDef(itemData.id);
+            mesh.position.set(itemData.x, 0.5, itemData.z); 
+            Engine.scene.add(mesh);
+            groundItemsMeshes[itemData.ref] = mesh;
+        } else {
+            const mesh = groundItemsMeshes[itemData.ref];
+            mesh.position.x = lerp(mesh.position.x, itemData.x, 0.2);
+            mesh.position.z = lerp(mesh.position.z, itemData.z, 0.2);
         }
-    }
-    if(isCharacterReady) {
-        // --- ATUALIZAÇÃO DO MEU PERSONAGEM ---
-        if(packet.others[myID]) {
-            const myData = packet.others[myID];
-            
-            if(playerGroup.userData.lastItem !== myData.it) {
-                CharFactory.equipItem(playerGroup, myData.it, playerGroup.userData.lastItem); 
-                playerGroup.userData.lastItem = myData.it;
-            }
-            if(playerGroup.userData.lastHead !== myData.eq_h) {
-                CharFactory.equipItem(playerGroup, myData.eq_h, playerGroup.userData.lastHead); 
-                playerGroup.userData.lastHead = myData.eq_h;
-            }
-            if(playerGroup.userData.lastBody !== myData.eq_b) {
-                CharFactory.equipItem(playerGroup, myData.eq_b, playerGroup.userData.lastBody); 
-                playerGroup.userData.lastBody = myData.eq_b;
-            }
-            if(playerGroup.userData.lastLegs !== myData.eq_l) {
-                CharFactory.equipItem(playerGroup, myData.eq_l, playerGroup.userData.lastLegs); 
-                playerGroup.userData.lastLegs = myData.eq_l;
-            }
-            if(playerGroup.userData.lastFeet !== myData.eq_f) {
-                CharFactory.equipItem(playerGroup, myData.eq_f, playerGroup.userData.lastFeet); 
-                playerGroup.userData.lastFeet = myData.eq_f;
-            }
-        }
-
-        // --- 1. ITENS NO CHÃO ---
-        const serverGroundItems = packet.ground || [];
-        const seenItems = new Set();
-        let closestDist = 999;
-
-        serverGroundItems.forEach(itemData => {
-            seenItems.add(itemData.ref);
-            if(!groundItemsMeshes[itemData.ref]) {
-                const mesh = CharFactory.createFromDef(itemData.id);
-                mesh.position.set(itemData.x, 0.5, itemData.z); 
-                Engine.scene.add(mesh);
-                groundItemsMeshes[itemData.ref] = mesh;
-            } else {
-                const mesh = groundItemsMeshes[itemData.ref];
-                mesh.position.x = lerp(mesh.position.x, itemData.x, 0.2);
-                mesh.position.z = lerp(mesh.position.z, itemData.z, 0.2);
-            }
+        if(playerGroup) {
             const d = playerGroup.position.distanceTo(groundItemsMeshes[itemData.ref].position);
             if(d < closestDist) closestDist = d;
-        });
-
-        for(let ref in groundItemsMeshes) {
-            if(!seenItems.has(ref)) {
-                Engine.scene.remove(groundItemsMeshes[ref]);
-                delete groundItemsMeshes[ref];
-            }
         }
-
-        // --- 2. INTERAÇÃO ---
-        const hint = document.getElementById('interaction-hint');
-        let npcNear = false;
-        for(let id in otherPlayers) {
-            if(otherPlayers[id].isNPC) { 
-                 let d = playerGroup.position.distanceTo(otherPlayers[id].mesh.position);
-                 if(d < 3.0) npcNear = true;
-            }
+    });
+    for(let ref in groundItemsMeshes) {
+        if(!seenItems.has(ref)) {
+            Engine.scene.remove(groundItemsMeshes[ref]);
+            delete groundItemsMeshes[ref];
         }
+    }
 
-        if(closestDist < 2.0) { hint.innerText = "[E] Pegar Item"; hint.style.display = 'block'; }
-        else if(npcNear) { hint.innerText = "[X] Interagir"; hint.style.display = 'block'; }
-        else hint.style.display = 'none';
+    // 2. OUTROS JOGADORES
+    const serverPlayers = packet.others; 
+    const receivedIds = new Set();
+    for (const id in serverPlayers) {
+        if (id === myID) continue; // Ignora eu mesmo
+        receivedIds.add(id); 
+        const pData = serverPlayers[id];
+        
+        if (!otherPlayers[id]) {
+            if(pData.skin) {
+                const newChar = CharFactory.createCharacter(pData.skin, pData.cloth);
+                newChar.position.set(pData.x, pData.y, pData.z); Engine.scene.add(newChar); Engine.collidables.push(newChar);
+                const label = document.createElement('div'); label.className = 'name-label'; label.innerHTML = `<div class="name-text">${pData.name||"?"}</div><div class="mini-hp-bg"><div class="mini-hp-fill"></div></div>`; document.getElementById('labels-container').appendChild(label);
+                
+                newChar.userData.lastHead = ""; newChar.userData.lastBody = "";
+                newChar.userData.lastLegs = ""; newChar.userData.lastFeet = ""; newChar.userData.lastItem = "";
+                
+                otherPlayers[id] = { mesh: newChar, label: label, hpFill: label.querySelector('.mini-hp-fill'), startX: pData.x, startY: pData.y, startZ: pData.z, startRot: pData.rot, targetX: pData.x, targetY: pData.y, targetZ: pData.z, targetRot: pData.rot, lastPacketTime: now, lerpDuration: 100, attacking: pData.a, attackType: pData.at, resting: pData.rest, fainted: pData.ft, lastItem: "", isNPC: (pData.npc === 1), npcType: pData.type, gender: pData.gen, isRunning: false };
+            }
+        } else {
+            const other = otherPlayers[id];
+            const mesh = other.mesh;
+            other.startX = mesh.position.x; other.startY = mesh.position.y; other.startZ = mesh.position.z; other.startRot = mesh.rotation.y;
+            other.targetX = pData.x; other.targetY = pData.y; other.targetZ = pData.z; other.targetRot = pData.rot; other.lastPacketTime = now;
+            other.attacking = pData.a; other.attackType = pData.at; other.resting = pData.rest; other.fainted = pData.ft;
+            if(pData.gen) other.gender = pData.gen;
+            if(pData.rn !== undefined) other.isRunning = pData.rn;
 
-        // --- 3. DADOS HUD ---
-        const myData = packet.others[myID]; isResting = me.rest; isFainted = me.ft; 
+            if(mesh.userData.lastItem !== pData.it) { CharFactory.equipItem(mesh, pData.it, mesh.userData.lastItem); mesh.userData.lastItem = pData.it; }
+            if(mesh.userData.lastHead !== pData.eq_h) { CharFactory.equipItem(mesh, pData.eq_h, mesh.userData.lastHead); mesh.userData.lastHead = pData.eq_h; }
+            if(mesh.userData.lastBody !== pData.eq_b) { CharFactory.equipItem(mesh, pData.eq_b, mesh.userData.lastBody); mesh.userData.lastBody = pData.eq_b; }
+            if(mesh.userData.lastLegs !== pData.eq_l) { CharFactory.equipItem(mesh, pData.eq_l, mesh.userData.lastLegs); mesh.userData.lastLegs = pData.eq_l; }
+            if(mesh.userData.lastFeet !== pData.eq_f) { CharFactory.equipItem(mesh, pData.eq_f, mesh.userData.lastFeet); mesh.userData.lastFeet = pData.eq_f; }
+
+            // ATUALIZAÇÃO DO NOME (HUD LATERAL)
+            if(pData.name && other.label.querySelector('.name-text').innerText !== pData.name) { other.label.querySelector('.name-text').innerText = pData.name; }
+            
+            if(pData.hp !== undefined && other.hpFill) other.hpFill.style.width = Math.max(0, Math.min(100, (pData.hp / pData.mhp) * 100)) + "%";
+            if (other.attacking && other.attackType === "gun" && !other.hasFiredThisCycle) { fireProjectile({ speed: 0.6, color: 0xFFFF00, ownerID: id }, false); other.hasFiredThisCycle = true; setTimeout(() => { other.hasFiredThisCycle = false; }, 500); }
+        }
+    }
+    for (const id in otherPlayers) { if (!receivedIds.has(id)) { Engine.scene.remove(otherPlayers[id].mesh); otherPlayers[id].label.remove(); delete otherPlayers[id]; } }
+    
+    // Atualiza hint
+    const hint = document.getElementById('interaction-hint');
+    let npcNear = false;
+    for(let id in otherPlayers) {
+        if(otherPlayers[id].isNPC) { 
+             let d = playerGroup ? playerGroup.position.distanceTo(otherPlayers[id].mesh.position) : 999;
+             if(d < 3.0) npcNear = true;
+        }
+    }
+    if(closestDist < 2.0) { hint.innerText = "[E] Pegar Item"; hint.style.display = 'block'; }
+    else if(npcNear) { hint.innerText = "[X] Interagir"; hint.style.display = 'block'; }
+    else hint.style.display = 'none';
+}
+
+function receberDadosPessoal(json) {
+    // Processa dados exclusivos do MEU personagem (HUD, Status, VISUAL LOCAL)
+    let packet; try { packet = JSON.parse(json); } catch(e) { return; }
+    const me = packet.me; 
+    myID = packet.my_id;
+
+    if(me.loaded == 1 && !isCharacterReady) {
+        // CORREÇÃO: Usa as cores reais vindas do pacote
+        playerGroup = CharFactory.createCharacter(me.skin || "FFCCAA", me.cloth || "FF0000"); 
+        Engine.scene.add(playerGroup); isCharacterReady = true; 
+        
+        playerGroup.userData.lastHead = ""; playerGroup.userData.lastBody = ""; 
+        playerGroup.userData.lastLegs = ""; playerGroup.userData.lastFeet = ""; 
+        playerGroup.userData.lastItem = "";
+    }
+
+    if(isCharacterReady) {
+        isResting = me.rest; isFainted = me.ft; 
         if(me.gen) playerGroup.userData.gender = me.gen;
+
+        // CORREÇÃO: Aplica equipamentos locais imediatamente
+        if(playerGroup.userData.lastItem !== me.it) { CharFactory.equipItem(playerGroup, me.it, playerGroup.userData.lastItem); playerGroup.userData.lastItem = me.it; }
+        if(playerGroup.userData.lastHead !== me.eq_h) { CharFactory.equipItem(playerGroup, me.eq_h, playerGroup.userData.lastHead); playerGroup.userData.lastHead = me.eq_h; }
+        if(playerGroup.userData.lastBody !== me.eq_b) { CharFactory.equipItem(playerGroup, me.eq_b, playerGroup.userData.lastBody); playerGroup.userData.lastBody = me.eq_b; }
+        if(playerGroup.userData.lastLegs !== me.eq_l) { CharFactory.equipItem(playerGroup, me.eq_l, playerGroup.userData.lastLegs); playerGroup.userData.lastLegs = me.eq_l; }
+        if(playerGroup.userData.lastFeet !== me.eq_f) { CharFactory.equipItem(playerGroup, me.eq_f, playerGroup.userData.lastFeet); playerGroup.userData.lastFeet = me.eq_f; }
         
         const overlay = document.getElementById('faint-overlay');
         if(me.rem > 0 && isFainted) {
@@ -545,18 +548,8 @@ function receberDadosMultiplayer(json) {
         if(me.mspd) currentMoveSpeed = me.mspd;
         if(me.jmp) currentJumpForce = me.jmp;
 
-        if(myData && myData.name && myData.name !== cachedName) {
-            document.getElementById('name-display').innerText = myData.name;
-            cachedName = myData.name;
-        }
-        if(me.lvl !== cachedLvl) {
-            document.getElementById('lvl-display').innerText = me.lvl;
-            cachedLvl = me.lvl;
-        }
-        if(me.gold !== cachedGold) {
-            document.getElementById('gold-display').innerText = me.gold;
-            cachedGold = me.gold;
-        }
+        if(me.lvl !== cachedLvl) { document.getElementById('lvl-display').innerText = me.lvl; cachedLvl = me.lvl; }
+        if(me.gold !== cachedGold) { document.getElementById('gold-display').innerText = me.gold; cachedGold = me.gold; }
         
         if(me.hp !== cachedHP || me.max_hp !== cachedMaxHP) {
             const pct = Math.max(0, Math.min(100, (me.hp / me.max_hp) * 100));
@@ -564,14 +557,12 @@ function receberDadosMultiplayer(json) {
             document.getElementById('hp-text').innerText = me.hp + "/" + me.max_hp;
             cachedHP = me.hp; cachedMaxHP = me.max_hp;
         }
-
         if(me.en !== cachedEn || me.max_en !== cachedMaxEn) {
             const pct = Math.max(0, Math.min(100, (me.en / me.max_en) * 100));
             document.getElementById('en-bar-fill').style.width = pct + "%";
             document.getElementById('en-text').innerText = Math.floor(me.en) + "/" + me.max_en;
             cachedEn = me.en; cachedMaxEn = me.max_en;
         }
-
         if(me.exp !== cachedExp || me.req_exp !== cachedReqExp) {
             const xpPct = Math.max(0, Math.min(100, (me.exp / me.req_exp) * 100));
             document.getElementById('xp-bar-fill').style.width = xpPct + "%";
@@ -585,7 +576,6 @@ function receberDadosMultiplayer(json) {
                 document.getElementById('val-vit').innerText = me.vit;
                 document.getElementById('val-agi').innerText = me.agi;
                 document.getElementById('val-wis').innerText = me.wis;
-                
                 document.getElementById('prof-punch').innerText = me.pp;
                 document.getElementById('bar-punch').style.width = Math.min(100, (me.pp_x / me.pp_r) * 100) + "%";
                 document.getElementById('prof-kick').innerText = me.pk;
@@ -594,72 +584,15 @@ function receberDadosMultiplayer(json) {
                 document.getElementById('bar-sword').style.width = Math.min(100, (me.ps_x / me.ps_r) * 100) + "%";
                 document.getElementById('prof-gun').innerText = me.pg;
                 document.getElementById('bar-gun').style.width = Math.min(100, (me.pg_x / me.pg_r) * 100) + "%";
-
                 const btns = document.getElementsByClassName('stat-btn');
                 for(let i = 0; i < btns.length; i++) btns[i].disabled = (me.pts <= 0);
-
                 cachedPts = me.pts;
                 cachedStats = { str: me.str, vit: me.vit, agi: me.agi, wis: me.wis };
                 cachedProfs = { pp: me.pp, pk: me.pk, ps: me.ps, pg: me.pg };
             }
         }
-        
         if(packet.evts) packet.evts.forEach(evt => { if(evt.type === "dmg") spawnDamageNumber(evt.tid, evt.val); });
     }
-
-    const serverPlayers = packet.others; const receivedIds = new Set();
-    for (const id in serverPlayers) {
-        if (id === myID) continue; receivedIds.add(id); const pData = serverPlayers[id];
-        
-        if (!otherPlayers[id]) {
-            if(pData.skin) {
-                const newChar = CharFactory.createCharacter(pData.skin, pData.cloth);
-                newChar.position.set(pData.x, pData.y, pData.z); Engine.scene.add(newChar); Engine.collidables.push(newChar);
-                const label = document.createElement('div'); label.className = 'name-label'; label.innerHTML = `<div class="name-text">${pData.name||"?"}</div><div class="mini-hp-bg"><div class="mini-hp-fill"></div></div>`; document.getElementById('labels-container').appendChild(label);
-                
-                // Inicializa cache
-                newChar.userData.lastHead = ""; newChar.userData.lastBody = "";
-                newChar.userData.lastLegs = ""; newChar.userData.lastFeet = ""; newChar.userData.lastItem = "";
-                
-                otherPlayers[id] = { mesh: newChar, label: label, hpFill: label.querySelector('.mini-hp-fill'), startX: pData.x, startY: pData.y, startZ: pData.z, startRot: pData.rot, targetX: pData.x, targetY: pData.y, targetZ: pData.z, targetRot: pData.rot, lastPacketTime: now, lerpDuration: 180, attacking: pData.a, attackType: pData.at, resting: pData.rest, fainted: pData.ft, lastItem: "", isNPC: (pData.npc === 1), npcType: pData.type, gender: pData.gen, isRunning: false };
-            }
-        } else {
-            const other = otherPlayers[id];
-            const mesh = other.mesh;
-            other.startX = mesh.position.x; other.startY = mesh.position.y; other.startZ = mesh.position.z; other.startRot = mesh.rotation.y;
-            other.targetX = pData.x; other.targetY = pData.y; other.targetZ = pData.z; other.targetRot = pData.rot; other.lastPacketTime = now;
-            other.attacking = pData.a; other.attackType = pData.at; other.resting = pData.rest; other.fainted = pData.ft;
-            if(pData.gen) other.gender = pData.gen;
-            
-            // CORREÇÃO: Atualiza se está correndo
-            if(pData.rn !== undefined) other.isRunning = pData.rn;
-
-            // --- ATUALIZAÇÃO EQUIPAMENTOS (OUTROS) ---
-            if(mesh.userData.lastItem !== pData.it) {
-                CharFactory.equipItem(mesh, pData.it, mesh.userData.lastItem); mesh.userData.lastItem = pData.it;
-            }
-            if(mesh.userData.lastHead !== pData.eq_h) {
-                CharFactory.equipItem(mesh, pData.eq_h, mesh.userData.lastHead); mesh.userData.lastHead = pData.eq_h;
-            }
-            if(mesh.userData.lastBody !== pData.eq_b) {
-                CharFactory.equipItem(mesh, pData.eq_b, mesh.userData.lastBody); mesh.userData.lastBody = pData.eq_b;
-            }
-            if(mesh.userData.lastLegs !== pData.eq_l) {
-                CharFactory.equipItem(mesh, pData.eq_l, mesh.userData.lastLegs); mesh.userData.lastLegs = pData.eq_l;
-            }
-            if(mesh.userData.lastFeet !== pData.eq_f) {
-                CharFactory.equipItem(mesh, pData.eq_f, mesh.userData.lastFeet); mesh.userData.lastFeet = pData.eq_f;
-            }
-
-            if(pData.name && other.label.querySelector('.name-text').innerText !== pData.name) {
-                other.label.querySelector('.name-text').innerText = pData.name;
-            }
-
-            if(pData.hp !== undefined && other.hpFill) other.hpFill.style.width = Math.max(0, Math.min(100, (pData.hp / pData.mhp) * 100)) + "%";
-            if (other.attacking && other.attackType === "gun" && !other.hasFiredThisCycle) { fireProjectile({ speed: 0.6, color: 0xFFFF00, ownerID: id }, false); other.hasFiredThisCycle = true; setTimeout(() => { other.hasFiredThisCycle = false; }, 500); }
-        }
-    }
-    for (const id in otherPlayers) { if (!receivedIds.has(id)) { Engine.scene.remove(otherPlayers[id].mesh); otherPlayers[id].label.remove(); delete otherPlayers[id]; } }
 }
 
 function shouldSendPosition(x, y, z, rot, now) { if (now - lastSentTime < POSITION_SYNC_INTERVAL) return false; if (Math.abs(x - lastSentX) < POSITION_EPSILON && Math.abs(y - lastSentY) < POSITION_EPSILON && Math.abs(z - lastSentZ) < POSITION_EPSILON && Math.abs(rot - lastSentRot) < POSITION_EPSILON) return false; return true; }
@@ -731,9 +664,8 @@ function animate() {
                 const def = STANCES.DEFAULT; 
 
                 if(moving && !isJumping && !isAttacking) {
-                    let legSpeed = isRunning ? 0.3 : 0.8; // Se correndo, pernas mais rápidas
-                    // CORREÇÃO: Braços acompanham pernas se não estiver atacando
-                    let armAmp = isRunning ? 1.2 : 0.6; // Amplitude maior correndo
+                    let legSpeed = isRunning ? 0.3 : 0.8; 
+                    let armAmp = isRunning ? 1.2 : 0.6; 
                     
                     limbs.leftLeg.rotation.x = Math.sin(animTime * (isRunning ? 1.5 : 1)) * legSpeed;
                     limbs.rightLeg.rotation.x = -Math.sin(animTime * (isRunning ? 1.5 : 1)) * legSpeed;
@@ -741,14 +673,12 @@ function animate() {
                     limbs.rightShin.rotation.x = (limbs.rightLeg.rotation.x > 0) ? limbs.rightLeg.rotation.x : 0;
 
                     if(charState === "DEFAULT") {
-                        // Braços balançando
                         limbs.leftArm.rotation.x = -Math.sin(animTime * (isRunning ? 1.5 : 1)) * armAmp;
                         limbs.rightArm.rotation.x = Math.sin(animTime * (isRunning ? 1.5 : 1)) * armAmp;
                         limbs.leftForeArm.rotation.x = -0.2;
                         limbs.rightForeArm.rotation.x = -0.2;
                         lerpLimbRotation(limbs.torso, def.torso, 0.1);
                     } else {
-                        // Stance de combate em movimento
                         lerpLimbRotation(limbs.leftArm, targetStance.leftArm || def.leftArm, 0.2);
                         lerpLimbRotation(limbs.rightArm, targetStance.rightArm || def.rightArm, 0.2);
                         lerpLimbRotation(limbs.leftForeArm, targetStance.leftForeArm || def.leftForeArm, 0.2);
@@ -757,15 +687,12 @@ function animate() {
                     }
                 } else {
                     const spd = isAttacking ? 0.4 : 0.1;
-                    
                     if(targetStance.torso) lerpLimbRotation(limbs.torso, targetStance.torso, spd);
                     else lerpLimbRotation(limbs.torso, def.torso, spd);
-
                     lerpLimbRotation(limbs.leftArm, targetStance.leftArm || def.leftArm, spd);
                     lerpLimbRotation(limbs.rightArm, targetStance.rightArm || def.rightArm, spd);
                     lerpLimbRotation(limbs.leftForeArm, targetStance.leftForeArm || def.leftForeArm, spd);
                     lerpLimbRotation(limbs.rightForeArm, targetStance.rightForeArm || def.rightForeArm, spd);
-                    
                     lerpLimbRotation(limbs.leftLeg, targetStance.leftLeg || def.leftLeg, spd);
                     lerpLimbRotation(limbs.rightLeg, targetStance.rightLeg || def.rightLeg, spd);
                     lerpLimbRotation(limbs.leftShin, targetStance.leftShin || def.leftShin, spd);
@@ -819,7 +746,6 @@ function animate() {
                     lerpLimbRotation(limbs.leftForeArm, remoteStance.leftForeArm || def.leftForeArm, 0.4); lerpLimbRotation(limbs.rightForeArm, remoteStance.rightForeArm || def.rightForeArm, 0.4);
                     lerpLimbRotation(limbs.leftLeg, remoteStance.leftLeg || def.leftLeg, 0.4); lerpLimbRotation(limbs.rightLeg, remoteStance.rightLeg || def.rightLeg, 0.4);
                 } else if(isMoving) {
-                    // CORREÇÃO: Animação remota baseada na flag 'rn' do servidor
                     const animSpeed = other.isRunning ? 0.3 : 0.15; 
                     const armAmp = other.isRunning ? 1.2 : 0.6;    
 
@@ -828,8 +754,6 @@ function animate() {
                     
                     limbs.leftShin.rotation.x = (limbs.leftLeg.rotation.x > 0) ? limbs.leftLeg.rotation.x : 0;
                     limbs.rightShin.rotation.x = (limbs.rightLeg.rotation.x > 0) ? limbs.rightLeg.rotation.x : 0;
-
-                    // Braços sincronizados
                     limbs.leftArm.rotation.x = -Math.sin(animTime / animSpeed) * armAmp;
                     limbs.rightArm.rotation.x = Math.sin(animTime / animSpeed) * armAmp;
                     
