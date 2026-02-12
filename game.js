@@ -1,4 +1,4 @@
-// game.js - Lógica Principal do Jogo e Network + EQUIPAMENTOS + COLISÃO MELHORADA
+// game.js - Lógica Principal com DELTA TIME + Wall Sliding + Instant Snap
 
 // --- VARIÁVEIS GLOBAIS ---
 let playerGroup = null; 
@@ -7,6 +7,11 @@ let myID = null;
 let isCharacterReady = false;
 let lastPacketTime = Date.now();
 let blockSync = false;
+
+// --- DELTA TIME VARS ---
+let lastFrameTime = performance.now();
+const TARGET_FPS = 60;
+const OPTIMAL_FRAME_TIME = 1000 / TARGET_FPS; // ~16.6ms
 
 const groundItemsMeshes = {}; 
 const activeProjectiles = []; 
@@ -317,9 +322,15 @@ function spawnHitbox(size, forwardOffset, lifetime, customData, yOffset) {
 }
 
 const tempBoxAttacker = new THREE.Box3(); const tempBoxTarget = new THREE.Box3();
-function updateCombatHitboxes() {
+function updateCombatHitboxes(timeScale) { // Recebe timeScale para projéteis
     for (let i = activeProjectiles.length - 1; i >= 0; i--) {
-        const p = activeProjectiles[i]; p.mesh.position.x += p.dirX * p.speed; p.mesh.position.z += p.dirZ * p.speed; p.distTraveled += p.speed;
+        const p = activeProjectiles[i]; 
+        // Aplica TimeScale no movimento do projétil
+        const moveStep = p.speed * timeScale;
+        p.mesh.position.x += p.dirX * moveStep; 
+        p.mesh.position.z += p.dirZ * moveStep; 
+        p.distTraveled += moveStep;
+        
         if (p.isMine) { tempBoxAttacker.setFromObject(p.mesh); checkCollisions(tempBoxAttacker, "projectile", p); }
         if (p.distTraveled >= p.maxDist) { Engine.scene.remove(p.mesh); activeProjectiles.splice(i, 1); }
     }
@@ -422,13 +433,12 @@ function performAttack(type) {
     }, 100); 
 }
 
-// --- NETWORK HANDLERS (SEPARADOS: GLOBAL VS PESSOAL) ---
+// --- NETWORK HANDLERS ---
 function receberDadosGlobal(json) {
     let packet; try { packet = JSON.parse(json); } catch(e) { return; }
     lastPacketTime = Date.now();
     const now = performance.now();
 
-    // 1. ITEMS NO CHÃO
     const serverGroundItems = packet.ground || [];
     const seenItems = new Set();
     let closestDist = 999;
@@ -456,7 +466,6 @@ function receberDadosGlobal(json) {
         }
     }
 
-    // 2. OUTROS JOGADORES
     const serverPlayers = packet.others; 
     const receivedIds = new Set();
     for (const id in serverPlayers) {
@@ -467,8 +476,7 @@ function receberDadosGlobal(json) {
         if (!otherPlayers[id]) {
             if(pData.skin) {
                 const newChar = CharFactory.createCharacter(pData.skin, pData.cloth);
-                // MELHORIA CRÍTICA: SETA A POSIÇÃO DIRETO (SEM LERP NA CRIAÇÃO)
-                // Isso resolve o problema de ver o player "viajando" do 0,0,0 até a posição real ao entrar.
+                // --- FIX: INSTANT SNAP NO PRIMEIRO FRAME ---
                 newChar.position.set(pData.x, pData.y, pData.z); 
                 
                 Engine.scene.add(newChar); Engine.collidables.push(newChar);
@@ -477,7 +485,7 @@ function receberDadosGlobal(json) {
                 newChar.userData.lastHead = ""; newChar.userData.lastBody = "";
                 newChar.userData.lastLegs = ""; newChar.userData.lastFeet = ""; newChar.userData.lastItem = "";
                 
-                // startX/targetX agora começam já na posição certa
+                // Inicializa targets já no lugar certo para evitar lerp do zero
                 otherPlayers[id] = { mesh: newChar, label: label, hpFill: label.querySelector('.mini-hp-fill'), startX: pData.x, startY: pData.y, startZ: pData.z, startRot: pData.rot, targetX: pData.x, targetY: pData.y, targetZ: pData.z, targetRot: pData.rot, lastPacketTime: now, lerpDuration: 100, attacking: pData.a, attackType: pData.at, comboStep: pData.cs, resting: pData.rest, fainted: pData.ft, lastItem: "", isNPC: (pData.npc === 1), npcType: pData.type, gender: pData.gen, isRunning: false };
             }
         } else {
@@ -640,6 +648,7 @@ function animateCharacterRig(mesh, state, isMoving, isRunning, isResting, isFain
             let legSpeed = isRunning ? 0.3 : 0.8; 
             let armAmp = isRunning ? 1.2 : 0.6; 
             
+            // MATH UNIFICADO: Todos usam a mesma fórmula baseada em animTime
             limbs.leftLeg.rotation.x = Math.sin(animTime * (isRunning ? 1.5 : 1)) * legSpeed;
             limbs.rightLeg.rotation.x = -Math.sin(animTime * (isRunning ? 1.5 : 1)) * legSpeed;
             limbs.leftShin.rotation.x = (limbs.leftLeg.rotation.x > 0) ? limbs.leftLeg.rotation.x : 0;
@@ -665,12 +674,22 @@ function animateCharacterRig(mesh, state, isMoving, isRunning, isResting, isFain
     }
 }
 
-// --- GAME LOOP ---
+// --- GAME LOOP COM DELTA TIME ---
 function animate() {
     requestAnimationFrame(animate); 
-    animTime += 0.1; 
+    
+    // --- CÁLCULO DE DELTA TIME ---
     const now = performance.now();
-    updateCombatHitboxes(); 
+    const dt = Math.min((now - lastFrameTime), 100); // Max 100ms para evitar saltos gigantes se travar
+    lastFrameTime = now;
+    
+    // Fator de escala: 1.0 = 60 FPS. 2.0 = 30 FPS.
+    const timeScale = dt / OPTIMAL_FRAME_TIME;
+
+    // Atualiza tempo da animação com base no tempo real
+    animTime += 0.1 * timeScale; 
+
+    updateCombatHitboxes(timeScale); // Passa escala para projéteis
     
     // 1. ANIMAR MEU JOGADOR
     if (isCharacterReady) {
@@ -679,10 +698,12 @@ function animate() {
 
         // Lógica de Movimento (Input)
         if(!isResting && !isFainted) {
-            let moveX = 0, moveZ = 0, moving = false; let speed = currentMoveSpeed * (isRunning ? 1.5 : 1); 
+            let moveX = 0, moveZ = 0, moving = false; 
+            // Velocidade Base * timeScale para manter constante por segundo
+            let speed = currentMoveSpeed * (isRunning ? 1.5 : 1) * timeScale; 
+            
             const sin = Math.sin(Input.camAngle); const cos = Math.cos(Input.camAngle);
             
-            // Vetor de Movimento Desejado
             let inputX = 0; let inputZ = 0;
             if(Input.keys.arrowup) { inputX -= sin; inputZ -= cos; moving = true; }
             if(Input.keys.arrowdown) { inputX += sin; inputZ += cos; moving = true; }
@@ -690,7 +711,7 @@ function animate() {
             if(Input.keys.arrowright) { inputX += cos; inputZ -= sin; moving = true; }
 
             if(moving) {
-                // Normaliza para velocidade constante diagonal
+                // Normaliza vetor
                 const len = Math.sqrt(inputX*inputX + inputZ*inputZ);
                 if(len > 0) { inputX /= len; inputZ /= len; }
                 
@@ -700,8 +721,8 @@ function animate() {
                 let nextX = playerGroup.position.x + inputX; 
                 let nextZ = playerGroup.position.z + inputZ;
 
-                // --- MELHORIA: COLISÃO COM DESLIZAMENTO (Wall Sliding) ---
-                // 1. Tenta mover em X
+                // --- WALL SLIDING (Colisão por Eixo) ---
+                // 1. Tenta X
                 let canMoveX = true;
                 if(nextX > MAP_LIMIT || nextX < -MAP_LIMIT || checkCollision(nextX, playerGroup.position.y, playerGroup.position.z) || checkPlayerCollision(nextX, playerGroup.position.z)) {
                     canMoveX = false;
@@ -709,7 +730,7 @@ function animate() {
                     playerGroup.position.x = nextX;
                 }
 
-                // 2. Tenta mover em Z (independentemente de X)
+                // 2. Tenta Z
                 let canMoveZ = true;
                 if(nextZ > MAP_LIMIT || nextZ < -MAP_LIMIT || checkCollision(playerGroup.position.x, playerGroup.position.y, nextZ) || checkPlayerCollision(playerGroup.position.x, nextZ)) {
                     canMoveZ = false;
@@ -718,11 +739,15 @@ function animate() {
                 }
 
                 const targetCharRot = Math.atan2(inputX, inputZ); playerGroup.rotation.y = targetCharRot;
-                if(!Input.keys.arrowdown && !Input.mouseRight) Input.camAngle = lerpAngle(Input.camAngle, targetCharRot + Math.PI, 0.02);
+                if(!Input.keys.arrowdown && !Input.mouseRight) Input.camAngle = lerpAngle(Input.camAngle, targetCharRot + Math.PI, 0.02 * timeScale); // Lerp ajustado levemente
             }
 
             if(Input.keys[" "] && !isJumping && Math.abs(playerGroup.position.y - groundHeight) < 0.1) { verticalVelocity = currentJumpForce; isJumping = true; }
-            playerGroup.position.y += verticalVelocity; verticalVelocity += gravity;
+            
+            // Gravidade com Delta Time
+            playerGroup.position.y += verticalVelocity * timeScale; 
+            verticalVelocity += gravity * timeScale;
+            
             if(playerGroup.position.y < groundHeight) { playerGroup.position.y = groundHeight; isJumping = false; verticalVelocity = 0; }
             
             animateCharacterRig(playerGroup, charState, moving, isRunning, isResting, isFainted, groundHeight);
