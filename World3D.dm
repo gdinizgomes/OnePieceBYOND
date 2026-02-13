@@ -13,7 +13,7 @@ world/New()
 		SSserver = new()
 		spawn(5) SSserver.Heartbeat()
 
-	new /mob/npc/dummy() 
+	new /mob/npc/dummy()
 	new /mob/npc/vendor()
 	new /mob/npc/nurse()
 	new /mob/npc/prop/log()
@@ -29,12 +29,12 @@ datum/game_controller
 			// 1. Coletar dados de TODOS os jogadores e NPCs
 			var/list/all_player_data = list()
 			var/list/active_clients = list()
-			
+
 			for(var/mob/M in global_players_list)
 				if(M.client && M.in_game && M.char_loaded)
 					active_clients += M
 					var/pid = "\ref[M]"
-					
+
 					var/e_hand = ""; var/e_head = ""; var/e_body = ""; var/e_legs = ""; var/e_feet = ""
 					if(M.slot_hand) e_hand = M.slot_hand.id_visual
 					if(M.slot_head) e_head = M.slot_head.id_visual
@@ -66,7 +66,7 @@ datum/game_controller
 					"hp" = N.current_hp, "mhp" = N.max_hp,
 					"gen" = N.char_gender
 				)
-			
+
 			// 2. Coletar Itens do chão
 			var/list/ground_data = list()
 			for(var/obj/item/I in global_ground_items)
@@ -96,7 +96,7 @@ datum/game_controller
 						"loaded" = 1,
 						// POSIÇÃO INICIAL (CRÍTICO PARA O SNAP)
 						"x" = M.R2(M.real_x), "y" = M.R2(M.real_y), "z" = M.R2(M.real_z), "rot" = M.R2(M.real_rot),
-						
+
 						"nick" = M.name, "class" = M.char_class,
 						"lvl" = M.level, "exp" = M.experience, "req_exp" = M.req_experience, "pts" = M.stat_points,
 						"str" = M.strength, "vit" = M.vitality, "agi" = M.agility,  "wis" = M.wisdom,
@@ -112,7 +112,7 @@ datum/game_controller
 					),
 					"evts" = M.pending_visuals
 				)
-				
+
 				if(M.pending_visuals.len > 0) M.pending_visuals = list()
 
 				M << output(global_json, "map3d:receberDadosGlobal")
@@ -131,13 +131,13 @@ var/list/global_ground_items = list()
 // --- ESTRUTURA DE ITENS ---
 obj/item
 	var/id_visual = ""
-	var/slot = "none" 
+	var/slot = "none"
 	var/power = 0
 	var/price = 0
 	var/description = ""
 	var/amount = 1
-	var/max_stack = 5 
-	var/shop_tags = "" 
+	var/max_stack = 5
+	var/shop_tags = ""
 	var/real_x = 0
 	var/real_y = 0
 	var/real_z = 0
@@ -146,8 +146,8 @@ obj/item
 obj/item/weapon
 	slot = "hand"
 	max_stack = 1
-	var/range = 1.0 
-	var/projectile_speed = 0 
+	var/range = 1.0
+	var/projectile_speed = 0
 
 obj/item/weapon/sword_wood
 	name = "Espada de Treino"
@@ -182,8 +182,8 @@ obj/item/weapon/gun_wood
 	description = "Dispara rolhas."
 	power = 12
 	price = 80
-	range = 10.0 
-	projectile_speed = 0.6 
+	range = 10.0
+	projectile_speed = 0.6
 	shop_tags = "armorer"
 
 obj/item/weapon/gun_flintlock
@@ -193,7 +193,7 @@ obj/item/weapon/gun_flintlock
 	power = 25
 	price = 250
 	range = 14.0
-	projectile_speed = 3.6 
+	projectile_speed = 3.6
 	shop_tags = "armorer"
 
 obj/item/weapon/gun_silver
@@ -203,7 +203,7 @@ obj/item/weapon/gun_silver
 	power = 40
 	price = 800
 	range = 22.0
-	projectile_speed = 7.2 
+	projectile_speed = 7.2
 	shop_tags = "armorer"
 
 // -- Roupas e Armaduras --
@@ -216,7 +216,7 @@ obj/item/armor/head_bandana
 	slot = "head"
 	description = "Um pano simples para a cabeça."
 	price = 30
-	power = 0 
+	power = 0
 	shop_tags = "armorer"
 
 obj/item/armor/head_bandana_black
@@ -294,19 +294,19 @@ mob
 	var/real_y = 0
 	var/real_z = 0
 	var/real_rot = 0
-	var/hit_radius = 0.5 
+	var/hit_radius = 0.5
 	var/in_game = 0
 	var/is_attacking = 0
 	var/attack_type = ""
 	var/combo_step = 0
 	var/active_item_visual = ""
-	
+
 	var/obj/item/slot_hand = null
 	var/obj/item/slot_head = null
 	var/obj/item/slot_body = null
 	var/obj/item/slot_legs = null
-	var/obj/item/slot_feet = null 
-	
+	var/obj/item/slot_feet = null
+
 	var/list/pending_visuals = list()
 
 	Login()
@@ -330,10 +330,10 @@ mob
 		for(var/obj/item/I in contents)
 			if(istype(I, /obj/item/weapon/sword_wood)) has_weapon = 1
 			if(istype(I, /obj/item/armor/head_bandana)) has_bandana = 1
-		
+
 		if(!has_weapon && !slot_hand) new /obj/item/weapon/sword_wood(src)
 		if(!has_bandana && !slot_head) new /obj/item/armor/head_bandana(src)
-		
+
 		src << output("Itens iniciais verificados!", "map3d:mostrarNotificacao")
 
 	proc/EquipItem(obj/item/I)
@@ -416,12 +416,12 @@ mob
 		max_hp = 50 + (vitality * 10); max_energy = 30 + (wisdom * 5)
 		if(current_hp > max_hp) current_hp = max_hp
 		if(current_energy > max_energy) current_energy = max_energy
-		
+
 		// CONFIGURAÇÃO DE VELOCIDADE NO SERVIDOR
 		// Antes: 0.08 + (agi * 0.002)
 		// Agora: 0.12 + (agi * 0.004) -> Base mais rápida e Agi mais impactante
 		calc_move_speed = 0.12 + (agility * 0.004)
-		
+
 		calc_jump_power = 0.20 + (strength * 0.002) + (agility * 0.003)
 
 	proc/GainExperience(amount)
@@ -592,7 +592,7 @@ mob
 		if(action == "delete_char") { var/slot = text2num(href_list["slot"]); var/path = "[SAVE_DIR][src.ckey]_slot[slot].sav"; if(fexists(path)) fdel(path); ShowCharacterMenu() }
 		if(action == "select_char") StartGame(text2num(href_list["slot"]))
 		if(action == "create_char") {
-			var/slot = text2num(href_list["slot"]); src.name = href_list["name"]; src.skin_color = href_list["skin"]; src.cloth_color = href_list["cloth"]; src.char_gender = href_list["gender"] 
+			var/slot = text2num(href_list["slot"]); src.name = href_list["name"]; src.skin_color = href_list["skin"]; src.cloth_color = href_list["cloth"]; src.char_gender = href_list["gender"]
 			src.level = 1; src.gold = 10000; src.real_x = 0; src.real_y = 0; src.real_z = 0; current_slot = slot; SaveCharacter(); StartGame(slot) }
 		if(action == "force_save" && in_game) SaveCharacter()
 		if(action == "update_pos" && in_game) {

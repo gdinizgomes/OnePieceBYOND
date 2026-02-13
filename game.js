@@ -1,4 +1,4 @@
-// game.js - Lógica Principal com ANIMAÇÃO EM CAMADAS (Blending) + Correções Visuais
+// game.js - Lógica Principal com CORREÇÃO DE COLISÃO FANTASMA
 
 // --- VARIÁVEIS GLOBAIS ---
 let playerGroup = null; 
@@ -376,7 +376,6 @@ function performAttack(type) {
         lastFistAttackTime = Date.now();
         currentComboStep = fistComboStep;
         windupStance = "FIST_WINDUP"; atkStance = "FIST_COMBO_" + fistComboStep; idleStance = "FIST_IDLE";
-        // REMOVIDO DASH: "pushDist" e movimento forçado deletados
     }
     else if(type === "kick") { 
         if(Date.now() - lastKickAttackTime > 600) kickComboStep = 0;
@@ -421,12 +420,13 @@ function performAttack(type) {
     }, 100); 
 }
 
-// --- NETWORK HANDLERS ---
+// --- NETWORK HANDLERS (SEPARADOS: GLOBAL VS PESSOAL) ---
 function receberDadosGlobal(json) {
     let packet; try { packet = JSON.parse(json); } catch(e) { return; }
     lastPacketTime = Date.now();
     const now = performance.now();
 
+    // 1. ITEMS NO CHÃO
     const serverGroundItems = packet.ground || [];
     const seenItems = new Set();
     let closestDist = 999;
@@ -454,6 +454,7 @@ function receberDadosGlobal(json) {
         }
     }
 
+    // 2. OUTROS JOGADORES
     const serverPlayers = packet.others; 
     const receivedIds = new Set();
     for (const id in serverPlayers) {
@@ -464,6 +465,7 @@ function receberDadosGlobal(json) {
         if (!otherPlayers[id]) {
             if(pData.skin) {
                 const newChar = CharFactory.createCharacter(pData.skin, pData.cloth);
+                // --- FIX: INSTANT SNAP NO PRIMEIRO FRAME ---
                 newChar.position.set(pData.x, pData.y, pData.z); 
                 
                 Engine.scene.add(newChar); Engine.collidables.push(newChar);
@@ -472,7 +474,6 @@ function receberDadosGlobal(json) {
                 newChar.userData.lastHead = ""; newChar.userData.lastBody = "";
                 newChar.userData.lastLegs = ""; newChar.userData.lastFeet = ""; newChar.userData.lastItem = "";
                 
-                // CORREÇÃO: Aumentado lerpDuration para 150ms para suavizar (1.5x o tickrate do server)
                 otherPlayers[id] = { mesh: newChar, label: label, hpFill: label.querySelector('.mini-hp-fill'), startX: pData.x, startY: pData.y, startZ: pData.z, startRot: pData.rot, targetX: pData.x, targetY: pData.y, targetZ: pData.z, targetRot: pData.rot, lastPacketTime: now, lerpDuration: 150, attacking: pData.a, attackType: pData.at, comboStep: pData.cs, resting: pData.rest, fainted: pData.ft, lastItem: "", isNPC: (pData.npc === 1), npcType: pData.type, gender: pData.gen, isRunning: false };
             }
         } else {
@@ -498,7 +499,27 @@ function receberDadosGlobal(json) {
             if (other.attacking && other.attackType === "gun" && !other.hasFiredThisCycle) { fireProjectile({ speed: 0.6, color: 0xFFFF00, ownerID: id }, false); other.hasFiredThisCycle = true; setTimeout(() => { other.hasFiredThisCycle = false; }, 500); }
         }
     }
-    for (const id in otherPlayers) { if (!receivedIds.has(id)) { Engine.scene.remove(otherPlayers[id].mesh); otherPlayers[id].label.remove(); delete otherPlayers[id]; } }
+    
+    // --- CORREÇÃO DE LIMPEZA DE JOGADORES (GHOST COLLISION FIX) ---
+    for (const id in otherPlayers) { 
+        if (!receivedIds.has(id)) { 
+            // 1. Remove da Cena
+            Engine.scene.remove(otherPlayers[id].mesh); 
+            
+            // 2. Remove da Lista de Colisões (CRÍTICO!)
+            // Sem isso, a caixa de colisão continua lá e te prende
+            const colIndex = Engine.collidables.indexOf(otherPlayers[id].mesh);
+            if(colIndex > -1) {
+                Engine.collidables.splice(colIndex, 1);
+            }
+
+            // 3. Remove Interface
+            otherPlayers[id].label.remove(); 
+            
+            // 4. Apaga do objeto
+            delete otherPlayers[id]; 
+        } 
+    }
     
     // Atualiza hint
     const hint = document.getElementById('interaction-hint');
@@ -618,7 +639,7 @@ function animateCharacterRig(mesh, state, isMoving, isRunning, isResting, isFain
     } 
     else if (isResting) {
         mesh.rotation.x = lerp(mesh.rotation.x, 0, 0.1);
-        const yOffset = -0.4; // Ajustado para evitar entrar no chão
+        const yOffset = -0.4; 
         mesh.position.y = lerp(mesh.position.y, groundH + yOffset, 0.1);
         
         const restStance = STANCES.REST_SIMPLE;
@@ -632,15 +653,12 @@ function animateCharacterRig(mesh, state, isMoving, isRunning, isResting, isFain
         }
     } 
     else {
-        // --- ESTADO NORMAL (EM PÉ) ---
         if(mesh !== playerGroup) mesh.position.y = lerp(mesh.position.y, groundH, 0.2); 
         mesh.rotation.x = lerp(mesh.rotation.x, 0, 0.2);
 
         let targetStance = STANCES[state] || STANCES.DEFAULT;
         const def = STANCES.DEFAULT;
 
-        // CAMADA 1: PERNAS (Movement Layer)
-        // Pernas se movem se estiver andando, mesmo atacando
         if(isMoving) {
             let legSpeed = isRunning ? 0.3 : 0.8; 
             
@@ -649,7 +667,6 @@ function animateCharacterRig(mesh, state, isMoving, isRunning, isResting, isFain
             limbs.leftShin.rotation.x = (limbs.leftLeg.rotation.x > 0) ? limbs.leftLeg.rotation.x : 0;
             limbs.rightShin.rotation.x = (limbs.rightLeg.rotation.x > 0) ? limbs.rightLeg.rotation.x : 0;
         } else {
-            // Se parado, pernas assumem a pose do ataque ou default
             const spd = 0.1;
             lerpLimbRotation(limbs.leftLeg, targetStance.leftLeg || def.leftLeg, spd);
             lerpLimbRotation(limbs.rightLeg, targetStance.rightLeg || def.rightLeg, spd);
@@ -657,17 +674,14 @@ function animateCharacterRig(mesh, state, isMoving, isRunning, isResting, isFain
             lerpLimbRotation(limbs.rightShin, targetStance.rightShin || def.rightShin, spd);
         }
 
-        // CAMADA 2: TRONCO E BRAÇOS (Action Layer)
-        // Se estiver atacando, usa a pose de ataque. Se não, usa pose de corrida/idle.
         if (state !== "DEFAULT") {
-            const spd = 0.4; // Ataque é rápido
+            const spd = 0.4; 
             lerpLimbRotation(limbs.torso, targetStance.torso || def.torso, spd);
             lerpLimbRotation(limbs.leftArm, targetStance.leftArm || def.leftArm, spd);
             lerpLimbRotation(limbs.rightArm, targetStance.rightArm || def.rightArm, spd);
             lerpLimbRotation(limbs.leftForeArm, targetStance.leftForeArm || def.leftForeArm, spd);
             lerpLimbRotation(limbs.rightForeArm, targetStance.rightForeArm || def.rightForeArm, spd);
         } else {
-            // Não atacando (Idle ou Correndo)
             if (isMoving) {
                 let armAmp = isRunning ? 1.2 : 0.6; 
                 limbs.leftArm.rotation.x = -Math.sin(animTime * (isRunning ? 1.5 : 1)) * armAmp;
@@ -676,7 +690,6 @@ function animateCharacterRig(mesh, state, isMoving, isRunning, isResting, isFain
                 limbs.rightForeArm.rotation.x = -0.2;
                 lerpLimbRotation(limbs.torso, def.torso, 0.1);
             } else {
-                // Totalmente parado
                 const spd = 0.1;
                 lerpLimbRotation(limbs.torso, def.torso, spd);
                 lerpLimbRotation(limbs.leftArm, def.leftArm, spd);
@@ -692,7 +705,6 @@ function animateCharacterRig(mesh, state, isMoving, isRunning, isResting, isFain
 function animate() {
     requestAnimationFrame(animate); 
     
-    // --- CÁLCULO DE DELTA TIME ---
     const now = performance.now();
     const dt = Math.min((now - lastFrameTime), 100); 
     lastFrameTime = now;
@@ -702,7 +714,6 @@ function animate() {
 
     updateCombatHitboxes(timeScale); 
     
-    // 1. ANIMAR MEU JOGADOR
     if (isCharacterReady) {
         if(!isAttacking && charState !== "DEFAULT") { if(Date.now() - lastCombatActionTime > 3000) charState = "DEFAULT"; }
         const groundHeight = getGroundHeightAt(playerGroup.position.x, playerGroup.position.z);
@@ -753,7 +764,6 @@ function animate() {
         sendPositionUpdate(now);
     }
     
-    // 2. ANIMAR OUTROS JOGADORES
     for(const id in otherPlayers) {
         const other = otherPlayers[id]; 
         const mesh = other.mesh; 
