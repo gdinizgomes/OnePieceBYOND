@@ -1,4 +1,4 @@
-// game.js - Lógica Principal com TARGET SYSTEM APRIMORADO
+// game.js - Lógica Principal com TARGET SYSTEM FIXADO (Sem Micro-Jitter)
 
 // --- VARIÁVEIS GLOBAIS ---
 let playerGroup = null; 
@@ -12,7 +12,7 @@ let blockSync = false;
 let currentTargetID = null; 
 const TARGET_MAX_RANGE = 25; 
 const TARGET_SELECTION_RANGE = 20; 
-let lastActionTime = Date.now(); // NOVO: Timer para inatividade do target
+let lastActionTime = Date.now(); 
 
 // --- DELTA TIME VARS ---
 let lastFrameTime = performance.now();
@@ -251,11 +251,11 @@ function unequipItem(slotName) { if(blockSync) return; blockSync = true; window.
 function dropItem(ref, maxAmount) { if(blockSync) return; hideTooltip(); let qty = 1; if(maxAmount > 1) { let input = prompt(`Quantos? (Máx: ${maxAmount})`, "1"); if(input===null) return; qty = parseInt(input); if(isNaN(qty) || qty <= 0) return; if(qty > maxAmount) qty = maxAmount; } blockSync = true; window.location.href = `byond://?src=${BYOND_REF}&action=drop_item&ref=${ref}&amount=${qty}`; setTimeout(() => { blockSync = false; }, 200); }
 function addStat(statName) { if(blockSync) return; blockSync = true; window.location.href = `byond://?src=${BYOND_REF}&action=add_stat&stat=${statName}`; setTimeout(function() { blockSync = false; }, 200); }
 
-// --- TARGET SYSTEM LOGIC MELHORADA ---
+// --- TARGET SYSTEM LOGIC ESTABILIZADA ---
 function cycleTarget() {
     if (!playerGroup) return;
     
-    lastActionTime = Date.now(); // Atualiza tempo ao targetar
+    lastActionTime = Date.now(); 
 
     const potentialTargets = [];
     for (const id in otherPlayers) {
@@ -272,17 +272,21 @@ function cycleTarget() {
         return;
     }
 
-    // Ordenação mais estável: Se a distância for quase igual, desempata pelo ID
+    // CORREÇÃO CRÍTICA DO MICRO-JITTER:
     potentialTargets.sort((a, b) => {
-        if (Math.abs(a.dist - b.dist) < 0.5) return a.id.localeCompare(b.id);
-        return a.dist - b.dist;
+        const distA = Math.round(a.dist * 10);
+        const distB = Math.round(b.dist * 10);
+        
+        if (distA === distB) {
+            return a.id.localeCompare(b.id);
+        }
+        return distA - distB;
     });
 
     if (!currentTargetID) {
         currentTargetID = potentialTargets[0].id;
     } else {
         const currentIndex = potentialTargets.findIndex(t => t.id === currentTargetID);
-        // Se não achou, ou é o último da lista, volta para o início
         if (currentIndex === -1 || currentIndex === potentialTargets.length - 1) {
             currentTargetID = potentialTargets[0].id;
         } else {
@@ -301,7 +305,10 @@ function updateTargetUI() {
     if (!currentTargetID || !otherPlayers[currentTargetID]) {
         targetWin.style.display = 'none';
         for (const id in otherPlayers) {
-            if(otherPlayers[id].label) otherPlayers[id].label.style.border = "1px solid rgba(255,255,255,0.2)";
+            if(otherPlayers[id].label) {
+                otherPlayers[id].label.style.border = "1px solid rgba(255,255,255,0.2)";
+                otherPlayers[id].label.style.zIndex = "1";
+            }
         }
         return;
     }
@@ -309,13 +316,11 @@ function updateTargetUI() {
     const target = otherPlayers[currentTargetID];
     const dist = playerGroup.position.distanceTo(target.mesh.position);
     
-    // Perde target se sair do alcance
     if (dist > TARGET_MAX_RANGE) {
         deselectTarget();
         return;
     }
 
-    // Perde target por inatividade (15 segundos)
     if (Date.now() - lastActionTime > 15000) {
         deselectTarget();
         return;
@@ -333,7 +338,13 @@ function updateTargetUI() {
 
     for (const id in otherPlayers) {
         if(otherPlayers[id].label) {
-            otherPlayers[id].label.style.border = (id === currentTargetID) ? "2px solid #e74c3c" : "1px solid rgba(255,255,255,0.2)";
+            if (id === currentTargetID) {
+                otherPlayers[id].label.style.border = "2px solid #e74c3c";
+                otherPlayers[id].label.style.zIndex = "100"; // FIX VISUAL: Traz o nome pro topo
+            } else {
+                otherPlayers[id].label.style.border = "1px solid rgba(255,255,255,0.2)";
+                otherPlayers[id].label.style.zIndex = "1";
+            }
         }
     }
 }
@@ -344,9 +355,12 @@ window.addEventListener('keydown', function(e) {
     // TARGET KEYS
     if (k === 'tab') {
         e.preventDefault(); 
+        // CORREÇÃO DE DUPLO DISPARO: Impede que segurar TAB faça ele voar pela lista
+        if (e.repeat) return; 
         cycleTarget();
         return;
     }
+    
     if (e.key === 'Escape') {
         if (isInvWindowOpen) toggleInventory();
         else if (isStatWindowOpen) toggleStats();
@@ -360,10 +374,11 @@ window.addEventListener('keydown', function(e) {
     if(k === 'r' && !blockSync) { blockSync = true; lastActionTime = Date.now(); window.location.href = `byond://?src=${BYOND_REF}&action=toggle_rest`; setTimeout(function() { blockSync = false; }, 500); }
     if(e.key === 'Shift') isRunning = true;
 });
+
 window.addEventListener('keyup', function(e) { if(e.key === 'Shift') isRunning = false; });
 
 function interact() {
-    lastActionTime = Date.now(); // Atualiza inatividade
+    lastActionTime = Date.now(); 
     if (currentTargetID && otherPlayers[currentTargetID]) {
         let dist = playerGroup.position.distanceTo(otherPlayers[currentTargetID].mesh.position);
         if (dist < 3.0) {
@@ -482,7 +497,6 @@ function performAttack(type) {
     if(type === "sword" && !hasSword) { addLog("Sem espada!", "log-miss"); return; }
     if(type === "gun" && !hasGun) { addLog("Sem arma!", "log-miss"); return; }
     
-    // --- AUTO-AIM CORRIGIDO (Gira apenas o corpo, sem forçar a câmera) ---
     if (currentTargetID && otherPlayers[currentTargetID]) {
         const targetMesh = otherPlayers[currentTargetID].mesh;
         const dx = targetMesh.position.x - playerGroup.position.x;
@@ -492,7 +506,7 @@ function performAttack(type) {
 
     isAttacking = true; 
     lastCombatActionTime = Date.now();
-    lastActionTime = Date.now(); // Atualiza inatividade
+    lastActionTime = Date.now(); 
     let windupStance = "SWORD_WINDUP"; let atkStance = "SWORD_ATK_1"; let idleStance = "SWORD_IDLE";
     let currentComboStep = 1;
 
@@ -546,7 +560,7 @@ function performAttack(type) {
     }, 100); 
 }
 
-// --- NETWORK HANDLERS (SEPARADOS: GLOBAL VS PESSOAL) ---
+// --- NETWORK HANDLERS ---
 function receberDadosGlobal(json) {
     let packet; try { packet = JSON.parse(json); } catch(e) { return; }
     lastPacketTime = Date.now();
@@ -864,7 +878,7 @@ function animate() {
             if(Input.keys.arrowright) { inputX += cos; inputZ -= sin; moving = true; }
 
             if(moving) {
-                lastActionTime = Date.now(); // Atualiza inatividade ao andar
+                lastActionTime = Date.now(); 
 
                 const len = Math.sqrt(inputX*inputX + inputZ*inputZ);
                 if(len > 0) { inputX /= len; inputZ /= len; }
@@ -884,7 +898,10 @@ function animate() {
                     playerGroup.rotation.y = targetCharRot;
                 }
                 
-                if(!Input.keys.arrowdown && !Input.mouseRight) Input.camAngle = lerpAngle(Input.camAngle, playerGroup.rotation.y + Math.PI, 0.02 * timeScale); 
+                if(!Input.keys.arrowdown && !Input.mouseRight) {
+                    const desiredMoveAngle = Math.atan2(inputX, inputZ); 
+                    Input.camAngle = lerpAngle(Input.camAngle, desiredMoveAngle + Math.PI, 0.02 * timeScale); 
+                }
             }
 
             if(Input.keys[" "] && !isJumping && Math.abs(playerGroup.position.y - groundHeight) < 0.1) { 
