@@ -50,7 +50,12 @@
             100% { transform: translateY(-50px) scale(1.5); opacity: 0; }
         }
 
-        .char-info { position: absolute; top: 20px; left: 20px; background: rgba(0,0,0,0.6); padding: 15px; border-radius: 8px; color: white; border: 2px solid #d4af37; pointer-events: auto; min-width: 200px; }
+        .char-info { position: absolute; top: 20px; left: 20px; background: rgba(0,0,0,0.6); padding: 15px; border-radius: 8px; color: white; border: 2px solid #d4af37; pointer-events: auto; min-width: 220px; }
+        
+        /* BOTÃO DE LETALIDADE */
+        .lethality-btn { position: absolute; top: 15px; right: 15px; background: #333; border: 2px solid #555; border-radius: 50%; width: 30px; height: 30px; display: flex; justify-content: center; align-items: center; cursor: pointer; transition: 0.3s; font-size: 16px; }
+        .lethality-btn.on { background: #800000; border-color: #ff3333; box-shadow: 0 0 10px red; }
+
         .bar-container { width: 100%; height: 10px; background: #333; margin-top: 2px; overflow: hidden; border: 1px solid #555; }
         .hp-bar { width: 100%; height: 100%; background: #e74c3c; transition: width 0.2s; }
         .en-bar { width: 100%; height: 100%; background: #3498db; transition: width 0.2s; }
@@ -96,6 +101,7 @@
             background: #d4af37; color: black; border: none; border-radius: 4px;
             width: 20px; height: 20px; font-weight: bold; cursor: pointer; font-size: 12px; margin-left: 5px;
         }
+        .kd-row { color: #aaa; font-size: 11px; text-align: center; margin-top: -5px; }
 
         /* --- HABILIDADES WINDOW --- */
         #skills-window {
@@ -114,7 +120,6 @@
         .tab-content { padding: 15px; height: 320px; display: none; overflow-y: auto; }
         .tab-content.active { display: block; }
         
-        /* Custom Scrollbar para as Abas */
         .tab-content::-webkit-scrollbar { width: 8px; }
         .tab-content::-webkit-scrollbar-track { background: rgba(0,0,0,0.3); border-radius: 4px; }
         .tab-content::-webkit-scrollbar-thumb { background: #9b59b6; border-radius: 4px; }
@@ -129,18 +134,22 @@
         .skill-bar-fill { height: 100%; background: #2ecc71; width: 0%; transition: width 0.3s; }
         .skill-lvl { font-weight: bold; font-size: 16px; color: white; width: 50px; text-align: right; margin-left: 10px; }
         
-        /* --- INVENTÁRIO GRID --- */
-        #inventory-window {
+        /* --- INVENTÁRIO & LOOT GRID --- */
+        #inventory-window, #loot-window {
             position: absolute; top: 50%; right: 10%; transform: translateY(-50%); width: 320px; background: rgba(20, 20, 30, 0.95);
             border: 2px solid #3498db; border-radius: 10px; padding: 15px;
             display: none; pointer-events: auto; color: white; z-index: 100; flex-direction: column;
         }
-        #inv-grid { display: grid; grid-template-columns: repeat(4, 1fr); grid-template-rows: repeat(3, 1fr); gap: 8px; margin-top: 10px; }
+        #loot-window { border-color: #e74c3c; right: auto; left: 10%; } /* Fica na esquerda para não encavalar */
+        
+        .grid-container { display: grid; grid-template-columns: repeat(4, 1fr); grid-template-rows: repeat(3, 1fr); gap: 8px; margin-top: 10px; }
         .inv-slot {
             width: 60px; height: 60px; background: rgba(0,0,0,0.5); border: 1px solid #555; border-radius: 4px;
             position: relative; cursor: pointer; transition: border-color 0.2s; display: flex; justify-content: center; align-items: center;
         }
         .inv-slot:hover { border-color: #f1c40f; }
+        .inv-slot.equipped { border-color: #2ecc71; background: rgba(46, 204, 113, 0.1); }
+        
         .inv-icon { max-width: 90%; max-height: 90%; object-fit: contain; image-rendering: pixelated; }
         .inv-qty { position: absolute; bottom: 2px; right: 4px; font-size: 12px; font-weight: bold; color: white; text-shadow: 1px 1px 0 #000; }
         .inv-actions { position: absolute; top: 100%; left: 0; width: 100%; background: #222; border: 1px solid #555; z-index: 10; display: none; flex-direction: column; }
@@ -169,7 +178,7 @@
         #tooltip strong { color: #f1c40f; display: block; margin-bottom: 3px; }
         #combat-log { position: absolute; bottom: 20px; right: 20px; width: 300px; height: 150px; background: rgba(0,0,0,0.5); color: #fff; font-size: 12px; overflow-y: auto; padding: 10px; border-radius: 5px; font-family: monospace; pointer-events: auto; }
         .log-hit { color: #e74c3c; font-weight: bold; } 
-        #notif-area { position: absolute; bottom: 100px; left: 50%; transform: translateX(-50%); text-align: center; }
+        #notif-area { position: absolute; bottom: 100px; left: 50%; transform: translateX(-50%); text-align: center; pointer-events: none;}
         
         #faint-overlay {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(50, 0, 0, 0.6);
@@ -179,6 +188,16 @@
             position: absolute; top: 40%; left: 50%; transform: translate(-50%, -50%); background: rgba(0,0,0,0.7); color: #f1c40f; padding: 10px 20px; border-radius: 20px;
             font-weight: bold; display: none; pointer-events: none; border: 1px solid #f1c40f;
         }
+
+        /* MODAL KILL CONFIRM */
+        #kill-modal {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(50, 0, 0, 0.95);
+            border: 2px solid #ff3333; border-radius: 10px; padding: 20px; display: none; pointer-events: auto; color: white; z-index: 3000; text-align: center;
+        }
+        .modal-btn { background: #333; color: white; border: 1px solid #555; padding: 10px 20px; margin: 10px; cursor: pointer; border-radius: 5px; font-weight: bold;}
+        .modal-btn.yes { background: #c0392b; border-color: #e74c3c; }
+        .modal-btn.yes:hover { background: #e74c3c; }
+        .modal-btn.no:hover { background: #555; }
     </style>
 </head>
 <body>
@@ -186,6 +205,13 @@
         <div id="faint-overlay">
             <div style="font-size: 30px; color: #ff5555; font-weight: bold;">VOCÊ ESTÁ DESMAIADO</div>
             <div id="faint-timer" style="font-size: 60px; color: white;">15</div>
+        </div>
+
+        <div id="kill-modal">
+            <h2 style="margin-top:0; color:#ff3333;">EXECUTAR ALVO?</h2>
+            <p>O jogador está desmaiado. Deseja aplicar o golpe fatal?</p>
+            <button class="modal-btn yes" onclick="confirmKill(true)">MATAR</button>
+            <button class="modal-btn no" onclick="confirmKill(false)">CANCELAR</button>
         </div>
 
         <div id="interaction-hint">[X] Interagir</div>
@@ -200,7 +226,9 @@
         </div>
 
         <div class="char-info">
-            <div id="name-display" style="font-size: 18px; font-weight: bold;">Loading...</div>
+            <div class="lethality-btn" id="lethality-toggle" onclick="toggleLethal()" title="Modo Letalidade: OFF (Matar jogadores)">💀</div>
+
+            <div id="name-display" style="font-size: 18px; font-weight: bold; width: 80%;">Loading...</div>
             <div style="font-size: 12px; color: #aaa;">Lvl <span id="lvl-display">0</span></div>
             <div style="font-size:10px;">HP <span id="hp-text"></span></div> <div class="bar-container"><div id="hp-bar-fill" class="hp-bar"></div></div>
             <div style="font-size:10px;">Energy <span id="en-text"></span></div> <div class="bar-container"><div id="en-bar-fill" class="en-bar"></div></div>
@@ -228,6 +256,12 @@
                     <div style="font-size: 10px;">NÍVEL</div>
                 </div>
             </div>
+
+            <div class="kd-row">
+                Kills: <span id="stat-kills" style="color:#e74c3c; font-weight:bold;">0</span> | 
+                Deaths: <span id="stat-deaths" style="color:#e74c3c; font-weight:bold;">0</span>
+            </div>
+            <br>
 
             <div style="display: flex; gap: 20px;">
                 <div class="stat-col">
@@ -327,7 +361,7 @@
                 LOJA DO ARMEIRO
             </div>
             <div id="shop-list" style="overflow-y: auto; max-height: 300px; margin-top: 10px;">
-                </div>
+            </div>
             <div style="text-align: center; margin-top: 15px;">
                 <button onclick="toggleShop()" style="padding: 5px 15px; cursor: pointer;">Sair</button>
             </div>
@@ -337,9 +371,28 @@
             <div style="text-align: center; border-bottom: 1px solid #3498db; padding-bottom: 5px; font-weight: bold;">
                 MOCHILA (12 Slots)
             </div>
-            <div id="inv-grid"></div>
+            <div id="inv-grid" class="grid-container"></div>
             <div style="text-align: center; margin-top: 15px;">
                 <button onclick="toggleInventory()" style="padding: 5px 15px; cursor: pointer;">Fechar</button>
+            </div>
+        </div>
+
+        <div id="loot-window">
+            <div style="text-align: center; border-bottom: 1px solid #e74c3c; padding-bottom: 5px; font-weight: bold; color: #e74c3c;">
+                SAQUEANDO: <span id="loot-target-name">Alvo</span>
+            </div>
+            
+            <div style="margin-top:10px; text-align:center;">
+                <button onclick="robGold()" style="width: 100%; padding: 8px; background: #f1c40f; color: black; border:none; font-weight:bold; cursor:pointer; border-radius:4px;">
+                    Roubar 💰 <span id="loot-gold">0</span> Berries
+                </button>
+            </div>
+
+            <div style="font-size: 11px; color:#aaa; margin-top:10px; text-align:center;">Itens (Clique para jogar no chão)</div>
+            <div id="loot-grid" class="grid-container"></div>
+            
+            <div style="text-align: center; margin-top: 15px;">
+                <button onclick="closeLoot()" style="padding: 5px 15px; cursor: pointer;">Fechar Saque</button>
             </div>
         </div>
 

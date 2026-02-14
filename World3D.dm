@@ -128,7 +128,8 @@ datum/game_controller
 						"mspd" = M.calc_move_speed, "jmp" = M.calc_jump_power,
 						"rest" = M.is_resting, "ft" = M.is_fainted, "rem" = faint_rem,
 						"skin" = M.skin_color, "cloth" = M.cloth_color, "gen" = M.char_gender,
-						"it" = my_hand, "eq_h" = my_head, "eq_b" = my_body, "eq_l" = my_legs, "eq_f" = my_feet
+						"it" = my_hand, "eq_h" = my_head, "eq_b" = my_body, "eq_l" = my_legs, "eq_f" = my_feet,
+						"kills" = M.kills, "deaths" = M.deaths, "lethal" = M.lethality_mode 
 					),
 					"evts" = M.pending_visuals
 				)
@@ -294,12 +295,17 @@ mob
 	var/stat_points = 0
 	var/gold = 0
 
+	// --- PVP E LETALIDADE ---
+	var/kills = 0
+	var/deaths = 0
+	var/lethality_mode = 0 // 0 = Desmaia, 1 = Mata
+
 	// --- ATRIBUTOS PRIMÁRIOS (RO STYLE) ---
 	var/strength = 5
 	var/agility = 5
 	var/vitality = 5
 	var/dexterity = 5
-	var/willpower = 5 // Antiga Sabedoria
+	var/willpower = 5 
 	var/luck = 5
 
 	// --- ATRIBUTOS SECUNDÁRIOS CALCULADOS ---
@@ -511,6 +517,22 @@ mob
 		var/list/stat_data = list("nick" = src.name, "class" = char_class, "title" = char_title, "lvl" = src.level, "equip" = eq_data)
 		src << output(json_encode(stat_data), "map3d:updateStatusMenu")
 
+	proc/SendLootWindow(mob/robber)
+		var/list/inv_data = list()
+		for(var/obj/item/I in contents)
+			if(!I) continue
+			inv_data += list(list("name"=I.name, "ref"="\ref[I]", "amount"=I.amount, "id"=I.id_visual, "equipped"=0))
+		
+		var/list/eq_data = list()
+		if(slot_hand) eq_data += list(list("name"=slot_hand.name, "ref"="\ref[slot_hand]", "amount"=1, "id"=slot_hand.id_visual, "equipped"=1))
+		if(slot_head) eq_data += list(list("name"=slot_head.name, "ref"="\ref[slot_head]", "amount"=1, "id"=slot_head.id_visual, "equipped"=1))
+		if(slot_body) eq_data += list(list("name"=slot_body.name, "ref"="\ref[slot_body]", "amount"=1, "id"=slot_body.id_visual, "equipped"=1))
+		if(slot_legs) eq_data += list(list("name"=slot_legs.name, "ref"="\ref[slot_legs]", "amount"=1, "id"=slot_legs.id_visual, "equipped"=1))
+		if(slot_feet) eq_data += list(list("name"=slot_feet.name, "ref"="\ref[slot_feet]", "amount"=1, "id"=slot_feet.id_visual, "equipped"=1))
+		
+		var/list/loot_payload = list("target_name" = src.name, "target_ref" = "\ref[src]", "gold" = src.gold, "inventory" = inv_data, "equipped" = eq_data)
+		robber << output(json_encode(loot_payload), "map3d:openLootWindow")
+
 	proc/RecalculateStats()
 		max_hp = 50 + (level * 15) + (vitality * 12)
 		max_energy = 30 + (level * 5) + (willpower * 8)
@@ -586,15 +608,46 @@ mob
 		if(current_energy <= 0) { current_energy = 0; GoFaint() }
 		return 1
 
+	// --- SISTEMA DE DESMAIO E MORTE ---
 	proc/GoFaint()
 		if(is_fainted) return
 		is_fainted = 1; is_resting = 1; faint_end_time = world.time + 150
-		src << output("<span class='log-hit' style='color:red;font-size:16px;'>VOCÊ DESMAIOU DE EXAUSTÃO!</span>", "map3d:addLog")
+		src << output("<span class='log-hit' style='color:red;font-size:16px;'>VOCÊ DESMAIOU!</span>", "map3d:addLog")
 		spawn(150) if(src) WakeUp()
 
 	proc/WakeUp()
+		if(!is_fainted) return
 		is_fainted = 0; is_resting = 0; faint_end_time = 0; current_energy = max_energy * 0.10
+		if(current_hp <= 0) current_hp = max_hp * 0.10
 		src << output("Você acordou.", "map3d:mostrarNotificacao")
+		UpdateVisuals()
+
+	proc/Die(mob/killer)
+		if(killer && killer != src)
+			killer.kills++
+			src << output("<span class='log-hit' style='color:red'>Você foi assassinado por [killer.name]!</span>", "map3d:addLog")
+			killer << output("<span class='log-hit' style='color:red'>Você assassinou [src.name]!</span>", "map3d:addLog")
+		
+		deaths++
+		is_fainted = 0
+		is_resting = 0
+		faint_end_time = 0
+		current_hp = max_hp
+		current_energy = max_energy
+		
+		// Respawn em frente à Enfermeira (Ela está em 8, 8, então colocamos o Z no 5)
+		real_x = 8
+		real_z = 5 
+		real_y = 0
+		
+		// FORÇA O JAVASCRIPT A PUXAR O BONECO PRA CÁ IMEDIATAMENTE (Limpa Desync!)
+		src.pending_visuals += list(list("type"="teleport", "x"=real_x, "y"=real_y, "z"=real_z))
+		
+		src << output("Você morreu e foi revivido pela Enfermeira.", "map3d:mostrarNotificacao")
+		
+		UpdateVisuals()
+		SaveCharacter()
+		if(killer) killer.SaveCharacter()
 
 	proc/ToggleRest()
 		if(is_attacking || is_fainted) return
@@ -626,7 +679,8 @@ mob
 			GiveStarterItems() 
 		else
 			real_x = 0; real_y = 0; real_z = 0
-			level = 1; experience = 0; req_experience = 100; stat_points = 0
+			level = 1; experience = 0; req_experience = 100; stat_points = 0; gold = 0
+			kills = 0; deaths = 0; lethality_mode = 0
 			strength = 5; vitality = 5; agility = 5; dexterity = 5; willpower = 5; luck = 5
 			prof_punch_lvl=1; prof_kick_lvl=1; prof_sword_lvl=1; prof_gun_lvl=1
 			RecalculateStats()
@@ -681,6 +735,7 @@ mob
 		F["slot_head"] << src.slot_head; F["slot_body"] << src.slot_body
 		F["slot_legs"] << src.slot_legs; F["slot_feet"] << src.slot_feet
 		F["gender"] << src.char_gender
+		F["kills"] << src.kills; F["deaths"] << src.deaths
 		src << output("Salvo!", "map3d:mostrarNotificacao")
 
 	proc/LoadCharacter(slot)
@@ -712,6 +767,8 @@ mob
 		if(F["slot_legs"]) F["slot_legs"] >> src.slot_legs
 		if(F["slot_feet"]) F["slot_feet"] >> src.slot_feet
 		if(F["gender"]) F["gender"] >> src.char_gender; else src.char_gender = "Male"
+		if(F["kills"]) F["kills"] >> src.kills; else src.kills = 0
+		if(F["deaths"]) F["deaths"] >> src.deaths; else src.deaths = 0
 
 		if(!src.req_experience || src.req_experience <= 0)
 			src.req_experience = 100 * (1.5 ** (src.level - 1))
@@ -720,6 +777,7 @@ mob
 		active_item_visual = ""
 		if(slot_hand) active_item_visual = slot_hand.id_visual
 		RecalculateStats()
+		lethality_mode = 0 
 		return 1
 
 	proc/R2(n) return round(n * 100) / 100
@@ -765,6 +823,10 @@ mob
 			StartGame(slot)
 
 		if(action == "force_save" && in_game) SaveCharacter()
+
+		if(action == "toggle_lethal" && in_game)
+			if(lethality_mode == 0) { lethality_mode = 1; src << output("Modo Letalidade ON", "map3d:mostrarNotificacao") }
+			else { lethality_mode = 0; src << output("Modo Letalidade OFF", "map3d:mostrarNotificacao") }
 
 		if(action == "update_pos" && in_game)
 			if(!is_fainted)
@@ -813,10 +875,11 @@ mob
 
 		if(action == "interact_npc" && in_game)
 			var/ref_id = href_list["ref"]
-			var/mob/npc/N = locate(ref_id)
-			if(N && get_dist_euclid(src.real_x, src.real_z, N.real_x, N.real_z) < 3.0)
-				if(istype(N, /mob/npc/vendor))
-					var/mob/npc/vendor/V = N
+			var/mob/M = locate(ref_id)
+			if(M && get_dist_euclid(src.real_x, src.real_z, M.real_x, M.real_z) < 3.0)
+				// NPCs Lojas
+				if(istype(M, /mob/npc/vendor))
+					var/mob/npc/vendor/V = M
 					var/list/shop_items = list()
 					for(var/path in V.stock)
 						var/obj/item/tmpI = new path()
@@ -824,12 +887,48 @@ mob
 						del(tmpI) 
 					src << output(json_encode(shop_items), "map3d:openShop")
 					RequestInventoryUpdate()
-				else if(istype(N, /mob/npc/nurse))
+				else if(istype(M, /mob/npc/nurse))
 					src.current_hp = src.max_hp
 					src.current_energy = src.max_energy
 					src.is_fainted = 0
 					src.faint_end_time = 0
 					src << output("Enfermeira: Você foi curado!", "map3d:mostrarNotificacao")
+				
+				// --- INTERAÇÃO COM PLAYER DESMAIADO (ROUBO) ---
+				else if(M.client && M.is_fainted)
+					M.SendLootWindow(src)
+
+		// --- AÇÕES DE ROUBO ---
+		if(action == "rob_item" && in_game)
+			var/mob/target = locate(href_list["target"])
+			var/obj/item/I = locate(href_list["ref"])
+			if(target && target.client && target.is_fainted && get_dist_euclid(src.real_x, src.real_z, target.real_x, target.real_z) < 3.0)
+				if(I)
+					if(I == target.slot_hand) target.UnequipItem("hand")
+					else if(I == target.slot_head) target.UnequipItem("head")
+					else if(I == target.slot_body) target.UnequipItem("body")
+					else if(I == target.slot_legs) target.UnequipItem("legs")
+					else if(I == target.slot_feet) target.UnequipItem("feet")
+					
+					if(I in target.contents)
+						target.DropItem(I, I.amount)
+						src << output("Você roubou/dropou [I.name].", "map3d:mostrarNotificacao")
+						target.SendLootWindow(src) 
+
+		if(action == "rob_gold" && in_game)
+			var/mob/target = locate(href_list["target"])
+			if(target && target.client && target.is_fainted && get_dist_euclid(src.real_x, src.real_z, target.real_x, target.real_z) < 3.0)
+				if(target.gold > 0)
+					src.gold += target.gold
+					src << output("Você roubou [target.gold] Berries!", "map3d:mostrarNotificacao")
+					target.gold = 0
+					target.SendLootWindow(src)
+
+		// --- CONFIRMAÇÃO DE EXECUÇÃO ---
+		if(action == "confirm_kill" && in_game)
+			var/mob/target = locate(href_list["target"])
+			if(target && target.client && target.is_fainted && get_dist_euclid(src.real_x, src.real_z, target.real_x, target.real_z) < 4.0)
+				target.Die(src)
 
 		if(action == "buy_item" && in_game)
 			var/typepath = text2path(href_list["type"])
@@ -878,12 +977,22 @@ mob
 			if(hit_type == "projectile") { if(world.time > projectile_window) return }
 			else { if(world.time > attack_window) return }
 			
-			var/obj/target = locate(target_ref)
+			// FIX DE TIPAGEM: Define especificamente que o alvo é da classe MOB para acessar is_fainted e Die()
+			var/mob/target = locate(target_ref)
 			if(!target) return
 
 			if(istype(target, /mob/npc))
 				var/mob/npc/N = target
 				if(N.npc_type == "vendor" || N.npc_type == "nurse") return 
+
+			// --- LÓGICA DE PVP: EXECUTAR ALVO DESMAIADO ---
+			if(target.client && target.is_fainted)
+				if(get_dist_euclid(src.real_x, src.real_z, target.real_x, target.real_z) < 4.0)
+					if(src.lethality_mode == 1)
+						target.Die(src) // Morte instântanea
+					else
+						src << output("\ref[target]", "map3d:askKillConfirm")
+				return 
 
 			if(target in hit_targets_this_swing) return 
 			if(hit_targets_this_swing.len >= max_targets_per_swing) return 
@@ -900,10 +1009,9 @@ mob
 				else if(attack_type == "kick") { max_dist = 3.5; skill_exp_type = "kick" }
 				else { max_dist = 2.5; skill_exp_type = "fist" }
 			
-			var/dist = get_dist_euclid(src.real_x, src.real_z, target:real_x, target:real_z)
+			var/dist = get_dist_euclid(src.real_x, src.real_z, target.real_x, target.real_z)
 			if(dist > max_dist) return
 
-			// --- SISTEMA DE HIT VS FLEE E DEFESA MATEMÁTICA ---
 			var/target_flee = 0
 			var/target_def = 0
 			if(istype(target, /mob/npc))
@@ -979,9 +1087,14 @@ mob
 				src << output("<span class='log-hit'>HIT em [T.name]! Dano: [damage][crit_txt]</span>", "map3d:addLog")
 				T << output("<span class='log-hit' style='color:red'>Você recebeu [damage] de dano de [src.name]![crit_txt]</span>", "map3d:addLog")
 				T.current_hp -= damage
+				
 				if(T.current_hp <= 0)
-					src << output("<span class='log-hit' style='color:red'>Você derrotou [T.name]!</span>", "map3d:addLog")
-					T.GoFaint()
+					if(src.lethality_mode == 1)
+						T.Die(src)
+					else
+						src << output("<span class='log-hit' style='color:orange'>Você derrotou [T.name]! Ele está desmaiado.</span>", "map3d:addLog")
+						T.GoFaint()
+				
 				GainExperience(10)
 				if(skill_exp_type) GainWeaponExp(skill_exp_type, 5)
 				T.UpdateVisuals()
@@ -1011,7 +1124,6 @@ mob/npc
 	char_loaded = 1
 	var/npc_type = "base"
 	var/wanders = 1 
-	// Removido "var/level = 1" para evitar erro de duplicata. Herda de mob direto.
 	char_gender = "Female"
 	New()
 		..()

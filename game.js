@@ -1,4 +1,4 @@
-// game.js - Lógica Principal com TRAJETÓRIA DE PROJÉTIL + PLANO ZERO + SISTEMA RAGNAROK + LIVRO DE HABILIDADES (Scroll e EXP Corrigidos)
+// game.js - Lógica Principal com TRAJETÓRIA DE PROJÉTIL + PLANO ZERO + SISTEMA RAGNAROK + LIVRO DE HABILIDADES + LETHALITY/PVP
 
 // --- VARIÁVEIS GLOBAIS ---
 let playerGroup = null; 
@@ -48,13 +48,18 @@ let isStatWindowOpen = false;
 let isInvWindowOpen = false; 
 let isShopOpen = false; 
 let isSkillsWindowOpen = false;
+let isLootWindowOpen = false;
 
-// Cache UI Expandido para TODAS as Proficiências (pp = Punch, pk = Kick, ps = Sword, pg = Gun)
+let lethalityMode = false;
+let killTargetRef = null; 
+let lootTargetRef = null; 
+
+// Cache UI
 let cachedHP = -1; let cachedMaxHP = -1; 
 let cachedEn = -1; let cachedMaxEn = -1;
 let cachedGold = -1; let cachedLvl = -1; let cachedName = "";
 let cachedExp = -1; let cachedReqExp = -1; let cachedPts = -1;
-let cachedStats = { str: -1, agi: -1, vit: -1, dex: -1, von: -1, sor: -1, atk: -1, ratk: -1, def: -1, hit: -1, flee: -1, crit: -1 };
+let cachedStats = { str: -1, agi: -1, vit: -1, dex: -1, von: -1, sor: -1, atk: -1, ratk: -1, def: -1, hit: -1, flee: -1, crit: -1, kills: -1, deaths: -1 };
 let cachedProfs = { pp: -1, pp_x: -1, pk: -1, pk_x: -1, ps: -1, ps_x: -1, pg: -1, pg_x: -1 };
 
 const POSITION_SYNC_INTERVAL = 100;
@@ -93,7 +98,7 @@ function round2(num) { return Math.round((num + Number.EPSILON) * 100) / 100; }
 
 // --- CONTROLE DA INTERFACE ---
 function toggleStats() {
-    if(isShopOpen) return; 
+    if(isShopOpen || isLootWindowOpen) return; 
     isStatWindowOpen = !isStatWindowOpen;
     document.getElementById('stat-window').style.display = isStatWindowOpen ? 'block' : 'none';
     if(isStatWindowOpen) {
@@ -106,6 +111,8 @@ function toggleStats() {
 function toggleInventory() {
     if(blockSync) return;
     if(isShopOpen) { toggleShop(); return; }
+    if(isLootWindowOpen) { closeLoot(); return; }
+
     isInvWindowOpen = !isInvWindowOpen;
     document.getElementById('inventory-window').style.display = isInvWindowOpen ? 'flex' : 'none';
     if(isInvWindowOpen) {
@@ -116,7 +123,7 @@ function toggleInventory() {
 }
 
 function toggleSkills() {
-    if(isShopOpen) return;
+    if(isShopOpen || isLootWindowOpen) return;
     isSkillsWindowOpen = !isSkillsWindowOpen;
     document.getElementById('skills-window').style.display = isSkillsWindowOpen ? 'flex' : 'none';
     if(isSkillsWindowOpen) {
@@ -139,6 +146,119 @@ function switchTab(tabId, btnElement) {
     document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
     btnElement.classList.add('active');
 }
+
+// --- PVP: LETHALITY & EXECUTION ---
+function toggleLethal() {
+    if(blockSync) return;
+    blockSync = true;
+    lethalityMode = !lethalityMode;
+    const btn = document.getElementById('lethality-toggle');
+    if(lethalityMode) {
+        btn.classList.add('on');
+        btn.title = "Modo Letalidade: ON (Matar jogadores)";
+    } else {
+        btn.classList.remove('on');
+        btn.title = "Modo Letalidade: OFF (Desmaiar jogadores)";
+    }
+    window.location.href = `byond://?src=${BYOND_REF}&action=toggle_lethal`;
+    setTimeout(() => { blockSync = false; }, 300);
+}
+
+function askKillConfirm(targetRef) {
+    killTargetRef = targetRef;
+    document.getElementById('kill-modal').style.display = 'block';
+}
+
+function confirmKill(choice) {
+    document.getElementById('kill-modal').style.display = 'none';
+    if(choice && killTargetRef) {
+        window.location.href = `byond://?src=${BYOND_REF}&action=confirm_kill&target=${killTargetRef}`;
+    }
+    killTargetRef = null;
+}
+
+// --- PVP: SAQUE (LOOT) ---
+function openLootWindow(json) {
+    let payload; try { payload = JSON.parse(json); } catch(e) { return; }
+    
+    lootTargetRef = payload.target_ref;
+    isLootWindowOpen = true;
+    document.getElementById('loot-window').style.display = 'flex';
+    document.getElementById('loot-target-name').innerText = payload.target_name;
+    document.getElementById('loot-gold').innerText = payload.gold;
+
+    isStatWindowOpen = false; document.getElementById('stat-window').style.display = 'none';
+    isSkillsWindowOpen = false; document.getElementById('skills-window').style.display = 'none';
+    isShopOpen = false; document.getElementById('shop-window').style.display = 'none';
+
+    hideTooltip(); 
+    const grid = document.getElementById('loot-grid');
+    grid.innerHTML = "";
+    
+    const allItems = payload.equipped.concat(payload.inventory);
+
+    for(let i = 0; i < 16; i++) { 
+        const slotDiv = document.createElement('div');
+        slotDiv.className = 'inv-slot';
+        if (i < allItems.length) {
+            const item = allItems[i];
+            
+            if(item.equipped === 1) slotDiv.classList.add("equipped");
+
+            const img = document.createElement('img');
+            img.className = 'inv-icon';
+            img.src = item.id + "_img.png"; 
+            img.onerror = function() {
+                if(this && this.style) this.style.display = 'none';
+                if(this && this.parentElement) {
+                    this.parentElement.style.backgroundColor = '#444';
+                    this.parentElement.innerText = "?";
+                    this.parentElement.style.display = "flex"; 
+                }
+            };
+            slotDiv.appendChild(img);
+            
+            if(item.amount > 1) {
+                const qtyDiv = document.createElement('div'); qtyDiv.className = 'inv-qty'; qtyDiv.innerText = "x" + item.amount; slotDiv.appendChild(qtyDiv);
+            }
+            
+            slotDiv.onmousemove = function(e) {
+                const tip = document.getElementById('tooltip');
+                tip.style.display = 'block'; tip.style.left = (e.pageX + 10) + 'px'; tip.style.top = (e.pageY + 10) + 'px';
+                let eqText = item.equipped ? "<br><span style='color:#2ecc71'>(Equipado)</span>" : "";
+                tip.innerHTML = `<strong>${item.name}</strong>Clique para roubar${eqText}`;
+            };
+            slotDiv.onmouseout = function() { hideTooltip(); };
+            
+            slotDiv.onclick = function() { robItem(item.ref); };
+            
+        } else slotDiv.style.opacity = "0.3";
+        grid.appendChild(slotDiv);
+    }
+}
+
+function closeLoot() {
+    isLootWindowOpen = false;
+    lootTargetRef = null;
+    document.getElementById('loot-window').style.display = 'none';
+    hideTooltip();
+}
+
+function robItem(itemRef) {
+    if(blockSync || !lootTargetRef) return;
+    blockSync = true;
+    window.location.href = `byond://?src=${BYOND_REF}&action=rob_item&target=${lootTargetRef}&ref=${itemRef}`;
+    setTimeout(() => { blockSync = false; }, 300);
+}
+
+function robGold() {
+    if(blockSync || !lootTargetRef) return;
+    blockSync = true;
+    window.location.href = `byond://?src=${BYOND_REF}&action=rob_gold&target=${lootTargetRef}`;
+    setTimeout(() => { blockSync = false; }, 300);
+}
+
+// --- LOJA E INVENTÁRIO COMUM ---
 
 function openShop(json) {
     if(!isShopOpen) toggleShop();
@@ -375,7 +495,11 @@ window.addEventListener('keydown', function(e) {
         else if (isStatWindowOpen) toggleStats();
         else if (isSkillsWindowOpen) toggleSkills();
         else if (isShopOpen) toggleShop();
-        else deselectTarget();
+        else if (isLootWindowOpen) closeLoot();
+        else {
+            deselectTarget();
+            if(document.getElementById('kill-modal').style.display === 'block') confirmKill(false);
+        }
         return;
     }
 
@@ -448,7 +572,6 @@ function getGroundHeightAt(x, y, z) {
         }
 
         if (isInsideXZ) {
-            // Mantling: Tolera subir em coisas que batem até a altura do joelho sem bloquear o pulo
             if (tempBoxObstacle.max.y <= y + 0.6) {
                 if (tempBoxObstacle.max.y > maxY) maxY = tempBoxObstacle.max.y; 
             }
@@ -469,7 +592,6 @@ function checkCollision(x, y, z) {
         
         tempBoxObstacle.setFromObject(obj);
         
-        // 1. Checagem RIGOROSA do Eixo Y (Altura)
         let objMinY = tempBoxObstacle.min.y;
         let objMaxY = tempBoxObstacle.max.y;
         
@@ -477,7 +599,6 @@ function checkCollision(x, y, z) {
         if (pMaxY <= objMinY) continue; 
         if (pMinY >= objMaxY) continue; 
         
-        // 2. Checagem de Geometria Exata no Eixo XZ
         let collideXZ = false;
         let phys = obj.userData.physics;
 
@@ -504,12 +625,11 @@ function checkCollision(x, y, z) {
             }
         }
 
-        if (collideXZ) return true; // Bateu na parede de fato!
+        if (collideXZ) return true; 
     }
     return false; 
 }
 
-// Checagem refinada para NPCs
 function checkPlayerCollision(nextX, nextY, nextZ) {
     const futureBox = new THREE.Box3();
     const center = new THREE.Vector3(nextX, nextY + 0.9, nextZ); 
@@ -536,7 +656,6 @@ window.addEventListener('game-action', function(e) {
     else if(k === 'p' && !blockSync) { blockSync = true; window.location.href = "byond://?src=" + BYOND_REF + "&action=force_save"; addLog("Salvando...", "log-miss"); setTimeout(function() { blockSync = false; }, 500); }
 });
 
-// --- LÓGICA DE PROJÉTEIS (ATUALIZADA PARA 3D VECTOR Y-AXIS) ---
 function fireProjectile(projectileDef, isMine) {
     const geo = new THREE.BoxGeometry(1, 1, 1); 
     const mat = new THREE.MeshBasicMaterial({ color: projectileDef.color }); 
@@ -551,39 +670,32 @@ function fireProjectile(projectileDef, isMine) {
     const sin = Math.sin(bodyRot); 
     const cos = Math.cos(bodyRot);
     
-    // Posiciona a bala na ponta da arma/mão
     bullet.position.copy(origin.position); 
-    bullet.position.y += 1.3; // Altura do peito/braço
+    bullet.position.y += 1.3; 
     bullet.position.x += sin * 0.5 - cos * 0.4; 
     bullet.position.z += cos * 0.5 + sin * 0.4; 
     
-    // Vetores de direção padrão (Tiro reto horizontal sem alvo)
     let dX = sin; 
     let dY = 0; 
     let dZ = cos;
     
-    // LÓGICA 3D: Se o jogador estiver atirando e tiver um alvo travado, atira em direção a ele
     if (isMine && currentTargetID && otherPlayers[currentTargetID] && otherPlayers[currentTargetID].mesh) {
         const targetMesh = otherPlayers[currentTargetID].mesh;
-        
-        // Pega o centro do alvo (Posição XYZ do alvo ajustada pro peito dele)
         const targetPos = new THREE.Vector3(targetMesh.position.x, targetMesh.position.y + 0.9, targetMesh.position.z);
         const bulletPos = bullet.position.clone();
         
-        // Cria um vetor normalizado da bala até o alvo
         const dirVec = new THREE.Vector3().subVectors(targetPos, bulletPos).normalize();
         dX = dirVec.x; 
         dY = dirVec.y; 
         dZ = dirVec.z;
         
-        bullet.lookAt(targetPos); // Gira o modelo visual da bala para apontar pro alvo
+        bullet.lookAt(targetPos); 
     } else {
-        bullet.rotation.y = bodyRot; // Mantém a rotação reta se não houver alvo
+        bullet.rotation.y = bodyRot; 
     }
 
     Engine.scene.add(bullet);
     
-    // Adiciona dirY para que a física atualize nos 3 eixos
     activeProjectiles.push({ 
         mesh: bullet, 
         dirX: dX, 
@@ -615,9 +727,8 @@ function updateCombatHitboxes(timeScale) {
         const p = activeProjectiles[i]; 
         const moveStep = p.speed * timeScale;
         
-        // Movimentação em 3 Eixos
         p.mesh.position.x += p.dirX * moveStep; 
-        p.mesh.position.y += (p.dirY || 0) * moveStep; // Sobe ou desce caso haja um alvo
+        p.mesh.position.y += (p.dirY || 0) * moveStep; 
         p.mesh.position.z += p.dirZ * moveStep; 
         p.distTraveled += moveStep;
         
@@ -633,7 +744,8 @@ function updateCombatHitboxes(timeScale) {
 
 function checkCollisions(attackerBox, type, objRef) {
     for (let id in otherPlayers) {
-        const target = otherPlayers[id]; if(target.fainted) continue;
+        const target = otherPlayers[id]; 
+        
         if(type === "melee" && objRef.hasHit.includes(id)) continue;
         tempBoxTarget.setFromObject(target.mesh);
         if (attackerBox.intersectsBox(tempBoxTarget)) {
@@ -736,7 +848,6 @@ function receberDadosGlobal(json) {
             seenItems.add(itemData.ref);
             if(!groundItemsMeshes[itemData.ref]) {
                 const mesh = CharFactory.createFromDef(itemData.id);
-                // CHÃO UNIFICADO: Itens são renderizados cirurgicamente próximos ao Y=0
                 mesh.position.set(itemData.x, 0.05, itemData.z); 
                 Engine.scene.add(mesh);
                 groundItemsMeshes[itemData.ref] = mesh;
@@ -775,10 +886,9 @@ function receberDadosGlobal(json) {
                 let newChar;
                 let isProp = (pData.npc === 1 && pData.type === "prop");
                 
-                // CRIAÇÃO E CLASSIFICAÇÃO DE PROPS PELO SERVIDOR
                 if(isProp) {
                     newChar = CharFactory.createFromDef(pData.prop_id || "prop_tree_log");
-                    Engine.collidables.push(newChar); // Colisão apenas para o ambiente
+                    Engine.collidables.push(newChar); 
                 } else {
                     newChar = CharFactory.createCharacter(pData.skin, pData.cloth);
                 }
@@ -818,7 +928,15 @@ function receberDadosGlobal(json) {
             other.targetX = pData.x; other.targetY = pData.y; other.targetZ = pData.z; other.targetRot = pData.rot; other.lastPacketTime = now;
             other.attacking = pData.a; other.attackType = pData.at; 
             other.comboStep = pData.cs; 
-            other.resting = pData.rest; other.fainted = pData.ft;
+            other.resting = pData.rest; 
+            
+            // --- FECHADOR DE LOOT (Alvo acordou) ---
+            if(isLootWindowOpen && lootTargetRef === id && pData.ft === 0) {
+                closeLoot();
+                addLog("<span style='color:orange'>O alvo acordou! Saque interrompido.</span>", "log-miss");
+            }
+
+            other.fainted = pData.ft;
             if(pData.rn !== undefined) other.isRunning = pData.rn;
 
             if(pData.mhp !== undefined) other.maxHp = pData.mhp;
@@ -856,7 +974,7 @@ function receberDadosGlobal(json) {
     const hint = document.getElementById('interaction-hint');
     let npcNear = false;
     for(let id in otherPlayers) {
-        if(otherPlayers[id].isNPC) { 
+        if(otherPlayers[id].isNPC || (otherPlayers[id].fainted && !otherPlayers[id].isNPC)) { 
              let d = playerGroup ? playerGroup.position.distanceTo(otherPlayers[id].mesh.position) : 999;
              if(d < 3.0) npcNear = true;
         }
@@ -930,16 +1048,15 @@ function receberDadosPessoal(json) {
             cachedExp = me.exp; cachedReqExp = me.req_exp;
         }
 
-        // --- VERIFICAÇÃO EXPANDIDA DO CACHE DE HABILIDADES ---
         if(me.pts !== cachedPts || me.str !== cachedStats.str || me.atk !== cachedStats.atk || 
            me.pp !== cachedProfs.pp || me.pp_x !== cachedProfs.pp_x ||
            me.pk !== cachedProfs.pk || me.pk_x !== cachedProfs.pk_x ||
            me.ps !== cachedProfs.ps || me.ps_x !== cachedProfs.ps_x ||
-           me.pg !== cachedProfs.pg || me.pg_x !== cachedProfs.pg_x) {
+           me.pg !== cachedProfs.pg || me.pg_x !== cachedProfs.pg_x ||
+           me.kills !== cachedStats.kills || me.deaths !== cachedStats.deaths) {
             
             document.getElementById('stat-points').innerText = me.pts;
             
-            // Atributos Primários
             document.getElementById('val-str').innerText = me.str;
             document.getElementById('val-agi').innerText = me.agi;
             document.getElementById('val-vit').innerText = me.vit;
@@ -947,7 +1064,6 @@ function receberDadosPessoal(json) {
             document.getElementById('val-von').innerText = me.von;
             document.getElementById('val-sor').innerText = me.sor;
 
-            // Atributos Secundários
             document.getElementById('val-atk').innerText = me.atk;
             document.getElementById('val-ratk').innerText = me.ratk;
             document.getElementById('val-def').innerText = me.def;
@@ -955,7 +1071,9 @@ function receberDadosPessoal(json) {
             document.getElementById('val-flee').innerText = me.flee;
             document.getElementById('val-crit').innerText = me.crit + "%";
 
-            // Atualização dos Níveis de Habilidades (Janela [K])
+            document.getElementById('stat-kills').innerText = me.kills;
+            document.getElementById('stat-deaths').innerText = me.deaths;
+
             document.getElementById('prof-punch').innerText = me.pp;
             document.getElementById('bar-punch').style.width = Math.min(100, (me.pp_x / me.pp_r) * 100) + "%";
             
@@ -971,13 +1089,33 @@ function receberDadosPessoal(json) {
             const btns = document.getElementsByClassName('stat-btn');
             for(let i = 0; i < btns.length; i++) btns[i].disabled = (me.pts <= 0);
             
-            // Atualiza o cache completo
             cachedPts = me.pts;
-            cachedStats = { str: me.str, agi: me.agi, vit: me.vit, dex: me.dex, von: me.von, sor: me.sor, atk: me.atk, ratk: me.ratk, def: me.def, hit: me.hit, flee: me.flee, crit: me.crit };
+            cachedStats = { str: me.str, agi: me.agi, vit: me.vit, dex: me.dex, von: me.von, sor: me.sor, atk: me.atk, ratk: me.ratk, def: me.def, hit: me.hit, flee: me.flee, crit: me.crit, kills: me.kills, deaths: me.deaths };
             cachedProfs = { pp: me.pp, pp_x: me.pp_x, pk: me.pk, pk_x: me.pk_x, ps: me.ps, ps_x: me.ps_x, pg: me.pg, pg_x: me.pg_x };
         }
         
-        if(packet.evts) packet.evts.forEach(evt => { if(evt.type === "dmg") spawnDamageNumber(evt.tid, evt.val); });
+        if(me.lethal !== undefined && lethalityMode !== (me.lethal === 1)) {
+            lethalityMode = (me.lethal === 1);
+            const btn = document.getElementById('lethality-toggle');
+            if(lethalityMode) {
+                btn.classList.add('on');
+                btn.title = "Modo Letalidade: ON (Matar jogadores)";
+            } else {
+                btn.classList.remove('on');
+                btn.title = "Modo Letalidade: OFF (Desmaiar jogadores)";
+            }
+        }
+
+        // --- ATUALIZAÇÃO FORÇADA DE COORDENADAS E DANO ---
+        if(packet.evts) packet.evts.forEach(evt => { 
+            if(evt.type === "dmg") spawnDamageNumber(evt.tid, evt.val); 
+            if(evt.type === "teleport") {
+                if(playerGroup) {
+                    playerGroup.position.set(evt.x, evt.y, evt.z);
+                    lastSentX = evt.x; lastSentY = evt.y; lastSentZ = evt.z;
+                }
+            }
+        });
     }
 }
 
