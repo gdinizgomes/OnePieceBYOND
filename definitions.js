@@ -168,35 +168,26 @@ const GameDefinitions = {
         attachment: { bone: "torso", pos: [0, 0.10, 0], rot: [0, 0, 0] }
     },
 
-    // --- CORREÇÃO DA CALÇA (AGORA COBRE AS PERNAS) ---
     "armor_legs_pants": {
         id: "armor_legs_pants",
         name: "Calça de Linho",
         type: "equipment",
         tags: ["legs"],
-        // Visual base (não usado nos anexos customizados, mas bom ter referência)
         visual: { model: "box", color: 0x8B4513, scale: [0.36, 0.20, 0.22] },
         
         attachments: [
-            // 1. CINTURA (Torso)
             { bone: "torso", pos: [0, -0.25, 0], rot: [0, 0, 0],
               visual: { model: "box", color: 0x8B4513, scale: [0.36, 0.20, 0.22] } 
             },
-            
-            // 2. COXA ESQUERDA (Upper Leg)
             { bone: "leftLeg", pos: [0, 0, 0], rot: [0, 0, 0], 
               visual: { model: "box", color: 0x8B4513, scale: [0.16, 0.35, 0.16] } 
             },
-            // 3. CANELA ESQUERDA (Lower Leg)
             { bone: "leftShin", pos: [0, 0, 0], rot: [0, 0, 0], 
               visual: { model: "box", color: 0x8B4513, scale: [0.14, 0.35, 0.14] } 
             },
-
-            // 4. COXA DIREITA (Upper Leg)
             { bone: "rightLeg", pos: [0, 0, 0], rot: [0, 0, 0],
               visual: { model: "box", color: 0x8B4513, scale: [0.16, 0.35, 0.16] } 
             },
-            // 5. CANELA DIREITA (Lower Leg)
             { bone: "rightShin", pos: [0, 0, 0], rot: [0, 0, 0],
               visual: { model: "box", color: 0x8B4513, scale: [0.14, 0.35, 0.14] } 
             }
@@ -220,6 +211,7 @@ const GameDefinitions = {
         name: "Tronco de Treino",
         type: "prop",
         visual: { model: "cylinder", color: 0x8B4513, scale: [0.4, 1.8, 0.4] },
-        physics: { solid: true, standable: true, mass: 50 } 
+        // FÍSICA GEOMÉTRICA EXATA ADICIONADA AQUI
+        physics: { solid: true, standable: true, mass: 50, shape: "cylinder", radius: 0.2 } 
     }
 };

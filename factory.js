@@ -47,11 +47,14 @@ const CharFactory = {
                 group.add(mesh);
             });
             group.userData = { id: def.id, type: def.type, tags: def.data?.tags || [] };
+            if (def.physics) group.userData.physics = def.physics;
             return group;
         } 
 
         const mesh = this.createMesh(def.visual, overrides);
         mesh.userData = { id: def.id, type: def.type, tags: def.data?.tags || [] };
+        // TRANSFERE DADOS GEOMÉTRICOS PARA A ENGINE DE FÍSICA
+        if (def.physics) mesh.userData.physics = def.physics;
         return mesh;
     },
 
@@ -140,11 +143,10 @@ const CharFactory = {
         return root;
     },
 
-    // --- EQUIPAMENTO INTELIGENTE v3 (Suporte a Visual Customizado por Anexo) ---
+    // --- EQUIPAMENTO INTELIGENTE v3 ---
     equipItem: function(characterGroup, itemId, oldItemId) {
         if(!characterGroup || !characterGroup.userData.limbs) return;
         
-        // 1. REMOVER ITEM ANTIGO (Se houver)
         if(oldItemId && oldItemId !== "") {
             const oldDef = GameDefinitions[oldItemId];
             if(oldDef && oldDef.type === 'equipment') {
@@ -164,7 +166,6 @@ const CharFactory = {
             }
         }
 
-        // 2. ADICIONAR NOVO ITEM
         if(!itemId || itemId === "none" || itemId === "") return;
         
         const def = GameDefinitions[itemId];
@@ -178,8 +179,6 @@ const CharFactory = {
             if(targetBone) {
                 let itemObj;
 
-                // MELHORIA CRÍTICA: Se o anexo tiver 'visual', cria o mesh específico
-                // Caso contrário, usa a definição padrão do item.
                 if (att.visual) {
                     itemObj = this.createMesh(att.visual);
                     itemObj.userData = { id: itemId, type: 'equipment' };

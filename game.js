@@ -1,4 +1,4 @@
-// game.js - Lógica Principal com TARGET SYSTEM FIXADO (Sem Micro-Jitter) + CORREÇÃO MULTIPLAYER REST + DELTA SYNC OTIMIZADO
+// game.js - Lógica Principal com TARGET SYSTEM FIXADO + CORREÇÃO MULTIPLAYER + COLISÃO 3D PRECISA (Y-Axis)
 
 // --- VARIÁVEIS GLOBAIS ---
 let playerGroup = null; 
@@ -388,33 +388,128 @@ function interact() {
     if(targetRef !== "") window.location.href = `byond://?src=${BYOND_REF}&action=interact_npc&ref=${targetRef}`;
 }
 
-const tempBoxPlayer = new THREE.Box3(); const tempBoxObstacle = new THREE.Box3(); const playerSize = new THREE.Vector3(0.5, 1.8, 0.5); 
-function getGroundHeightAt(x, z) {
-    let maxY = 0; if(!Engine.collidables) return maxY;
+// --- SISTEMA DE COLISÃO DO AMBIENTE (FÍSICA GEOMÉTRICA EXATA) ---
+const tempBoxObstacle = new THREE.Box3(); 
+
+const playerRadius = 0.15; 
+const playerHeight = 1.6;  
+
+function getGroundHeightAt(x, y, z) {
+    let maxY = 0; 
+    if(!Engine.collidables) return maxY;
+    
     for (let i = 0; i < Engine.collidables.length; i++) {
-        let obj = Engine.collidables[i]; if(!obj) continue;
-        if(obj.userData.standable) { tempBoxObstacle.setFromObject(obj); if(x >= tempBoxObstacle.min.x && x <= tempBoxObstacle.max.x && z >= tempBoxObstacle.min.z && z <= tempBoxObstacle.max.z) { if(tempBoxObstacle.max.y > maxY) maxY = tempBoxObstacle.max.y; } }
+        let obj = Engine.collidables[i]; 
+        if(!obj || !obj.userData.standable) continue;
+
+        tempBoxObstacle.setFromObject(obj); // Sempre calcula a altura para referência
+
+        let isInsideXZ = false;
+        let phys = obj.userData.physics;
+
+        if (phys && phys.shape === "cylinder") {
+            let objPos = new THREE.Vector3();
+            obj.getWorldPosition(objPos);
+            
+            let closestX = Math.max(x - playerRadius, Math.min(objPos.x, x + playerRadius));
+            let closestZ = Math.max(z - playerRadius, Math.min(objPos.z, z + playerRadius));
+            
+            let dx = objPos.x - closestX;
+            let dz = objPos.z - closestZ;
+            
+            if ((dx*dx + dz*dz) <= (phys.radius * phys.radius)) {
+                isInsideXZ = true;
+            }
+        } else {
+            // Adicionado tolerância de 15cm para o pé não escorregar fácil da borda de caixas
+            let pMinX = x - playerRadius; let pMaxX = x + playerRadius;
+            let pMinZ = z - playerRadius; let pMaxZ = z + playerRadius;
+            
+            if (pMinX <= tempBoxObstacle.max.x && pMaxX >= tempBoxObstacle.min.x &&
+                pMinZ <= tempBoxObstacle.max.z && pMaxZ >= tempBoxObstacle.min.z) {
+                isInsideXZ = true;
+            }
+        }
+
+        if (isInsideXZ) {
+            // Se o topo for mais alto que o seu joelho/cintura, você precisa pular
+            if (tempBoxObstacle.max.y <= y + 0.6) {
+                if (tempBoxObstacle.max.y > maxY) maxY = tempBoxObstacle.max.y; 
+            }
+        }
     }
     return maxY;
 }
+
 function checkCollision(x, y, z) {
-    if(!Engine.collidables) return false; tempBoxPlayer.setFromCenterAndSize(new THREE.Vector3(x, y + 0.9, z), playerSize);
+    if(!Engine.collidables) return false; 
+    
+    const pMinY = y;
+    const pMaxY = y + playerHeight;
+
     for (let i = 0; i < Engine.collidables.length; i++) {
-        let obj = Engine.collidables[i]; if(!obj) continue;
-        tempBoxObstacle.setFromObject(obj); if (tempBoxPlayer.intersectsBox(tempBoxObstacle)) { if(obj.userData.standable && y >= tempBoxObstacle.max.y - 0.1) continue; return true; }
+        let obj = Engine.collidables[i]; 
+        if(!obj) continue;
+        
+        tempBoxObstacle.setFromObject(obj);
+        
+        // 1. Checagem do Eixo Y (Altura)
+        let objMinY = tempBoxObstacle.min.y;
+        let objMaxY = tempBoxObstacle.max.y;
+        
+        if (pMinY >= objMaxY - 0.05 && obj.userData.standable) continue; 
+        if (pMaxY <= objMinY) continue; 
+        if (pMinY >= objMaxY) continue; 
+        
+        // 2. Checagem de Geometria Exata no Eixo XZ
+        let collideXZ = false;
+        let phys = obj.userData.physics;
+
+        if (phys && phys.shape === "cylinder") {
+            let objPos = new THREE.Vector3();
+            obj.getWorldPosition(objPos);
+            
+            let closestX = Math.max(x - playerRadius, Math.min(objPos.x, x + playerRadius));
+            let closestZ = Math.max(z - playerRadius, Math.min(objPos.z, z + playerRadius));
+            
+            let dx = objPos.x - closestX;
+            let dz = objPos.z - closestZ;
+            
+            if ((dx*dx + dz*dz) < (phys.radius * phys.radius)) {
+                collideXZ = true;
+            }
+        } else {
+            let pMinX = x - playerRadius; let pMaxX = x + playerRadius;
+            let pMinZ = z - playerRadius; let pMaxZ = z + playerRadius;
+            
+            if (pMinX <= tempBoxObstacle.max.x && pMaxX >= tempBoxObstacle.min.x &&
+                pMinZ <= tempBoxObstacle.max.z && pMaxZ >= tempBoxObstacle.min.z) {
+                collideXZ = true;
+            }
+        }
+
+        if (collideXZ) return true; // Bateu na parede do objeto!
     }
     return false; 
 }
-function checkPlayerCollision(nextX, nextZ) {
+
+// NOVIDADE: Adicionado nextY para que a hitbox de jogadores não seja infinita
+function checkPlayerCollision(nextX, nextY, nextZ) {
     const futureBox = new THREE.Box3();
-    const center = new THREE.Vector3(nextX, 1, nextZ); 
-    const size = new THREE.Vector3(0.6, 1.8, 0.6); 
+    const center = new THREE.Vector3(nextX, nextY + 0.9, nextZ); 
+    const size = new THREE.Vector3(0.4, 1.8, 0.4); 
     futureBox.setFromCenterAndSize(center, size);
+    
     for (let id in otherPlayers) {
         const other = otherPlayers[id];
         if (!other.mesh) continue;
+        
+        // Ignora a checagem dupla para props invisíveis da rede, a física estática já cuidou deles
+        if (other.isNPC && other.npcType === "prop") continue;
+
         const otherBox = new THREE.Box3().setFromObject(other.mesh);
-        otherBox.expandByScalar(-0.1); 
+        otherBox.expandByScalar(-0.15); 
+        
         if (futureBox.intersectsBox(otherBox)) { return true; }
     }
     return false;
@@ -557,7 +652,7 @@ function performAttack(type) {
     }, 100); 
 }
 
-// --- NETWORK HANDLERS (Otimizado com Delta-Sync) ---
+// --- NETWORK HANDLERS ---
 function receberDadosGlobal(json) {
     let packet; try { packet = JSON.parse(json); } catch(e) { return; }
     lastPacketTime = Date.now();
@@ -565,7 +660,6 @@ function receberDadosGlobal(json) {
 
     let closestDist = 999;
 
-    // 1. SYNC DE CHÃO (Só executa se o servidor mandou os dados neste tick)
     if (packet.ground !== undefined) {
         const serverGroundItems = packet.ground;
         const seenItems = new Set();
@@ -591,7 +685,6 @@ function receberDadosGlobal(json) {
         }
     }
 
-    // Calcular distância (Sempre calcula independente do delta para não sumir o botão de interação)
     if(playerGroup) {
         for(let ref in groundItemsMeshes) {
             const d = playerGroup.position.distanceTo(groundItemsMeshes[ref].position);
@@ -609,12 +702,23 @@ function receberDadosGlobal(json) {
         const pData = serverPlayers[id];
         
         if (!otherPlayers[id]) {
-            // Lazy Load: Só cria o jogador quando o pulso do servidor contiver informações visuais!
             if(pData.skin !== undefined) {
-                const newChar = CharFactory.createCharacter(pData.skin, pData.cloth);
+                let newChar;
+                let isProp = (pData.npc === 1 && pData.type === "prop");
+                
+                // NOVIDADE: Não desenhamos mais um boneco humanoid para props como o tronco!
+                if(isProp) {
+                    newChar = CharFactory.createFromDef("prop_tree_log");
+                    newChar.visible = false; // Deixamos invisível, pois o mapa (Engine) já desenhou a versão estática!
+                } else {
+                    newChar = CharFactory.createCharacter(pData.skin, pData.cloth);
+                }
+                
                 newChar.position.set(pData.x, pData.y, pData.z); 
                 
-                Engine.scene.add(newChar); Engine.collidables.push(newChar);
+                Engine.scene.add(newChar); 
+                if(!isProp) Engine.collidables.push(newChar);
+
                 const label = document.createElement('div'); label.className = 'name-label'; 
                 label.innerHTML = `<div class="name-text">${pData.name||"?"}</div><div class="mini-hp-bg"><div class="mini-hp-fill"></div></div>`; 
                 document.getElementById('labels-container').appendChild(label);
@@ -642,7 +746,6 @@ function receberDadosGlobal(json) {
             const other = otherPlayers[id];
             const mesh = other.mesh;
             
-            // Dados Rápidos (Sempre presentes no pacote de movimento)
             other.currentHp = pData.hp;
             other.startX = mesh.position.x; other.startY = mesh.position.y; other.startZ = mesh.position.z; other.startRot = mesh.rotation.y;
             other.targetX = pData.x; other.targetY = pData.y; other.targetZ = pData.z; other.targetRot = pData.rot; other.lastPacketTime = now;
@@ -651,7 +754,6 @@ function receberDadosGlobal(json) {
             other.resting = pData.rest; other.fainted = pData.ft;
             if(pData.rn !== undefined) other.isRunning = pData.rn;
 
-            // Dados Pesados (Apenas processados se o servidor mandou - Delta Sync)
             if(pData.mhp !== undefined) other.maxHp = pData.mhp;
             if(pData.name !== undefined) { 
                 other.name = pData.name; 
@@ -671,7 +773,6 @@ function receberDadosGlobal(json) {
         }
     }
     
-    // Deleta os que sumiram da visão do servidor
     for (const id in otherPlayers) { 
         if (!receivedIds.has(id)) { 
             Engine.scene.remove(otherPlayers[id].mesh); 
@@ -882,7 +983,8 @@ function animate() {
     
     if (isCharacterReady) {
         if(!isAttacking && charState !== "DEFAULT") { if(Date.now() - lastCombatActionTime > 3000) charState = "DEFAULT"; }
-        const groundHeight = getGroundHeightAt(playerGroup.position.x, playerGroup.position.z);
+        
+        const groundHeight = getGroundHeightAt(playerGroup.position.x, playerGroup.position.y, playerGroup.position.z);
 
         if(!isResting && !isFainted) {
             let moveX = 0, moveZ = 0, moving = false; 
@@ -906,10 +1008,15 @@ function animate() {
                 let nextZ = playerGroup.position.z + inputZ;
 
                 let canMoveX = true;
-                if(nextX > MAP_LIMIT || nextX < -MAP_LIMIT || checkCollision(nextX, playerGroup.position.y, playerGroup.position.z) || checkPlayerCollision(nextX, playerGroup.position.z)) { canMoveX = false; } else { playerGroup.position.x = nextX; }
+                // NOVIDADE: As chamadas de colisão agora recebem a ALTURA atual (Y)
+                if(nextX > MAP_LIMIT || nextX < -MAP_LIMIT || 
+                   checkCollision(nextX, playerGroup.position.y, playerGroup.position.z) || 
+                   checkPlayerCollision(nextX, playerGroup.position.y, playerGroup.position.z)) { canMoveX = false; } else { playerGroup.position.x = nextX; }
 
                 let canMoveZ = true;
-                if(nextZ > MAP_LIMIT || nextZ < -MAP_LIMIT || checkCollision(playerGroup.position.x, playerGroup.position.y, nextZ) || checkPlayerCollision(playerGroup.position.x, nextZ)) { canMoveZ = false; } else { playerGroup.position.z = nextZ; }
+                if(nextZ > MAP_LIMIT || nextZ < -MAP_LIMIT || 
+                   checkCollision(playerGroup.position.x, playerGroup.position.y, nextZ) || 
+                   checkPlayerCollision(playerGroup.position.x, playerGroup.position.y, nextZ)) { canMoveZ = false; } else { playerGroup.position.z = nextZ; }
 
                 if (!isAttacking) {
                     const targetCharRot = Math.atan2(inputX, inputZ); 
