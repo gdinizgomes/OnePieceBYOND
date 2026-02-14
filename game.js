@@ -1,4 +1,4 @@
-// game.js - Lógica Principal com TRAJETÓRIA DE PROJÉTIL 3D (Eixo Y) + PLANO ZERO + TECLAS RESTAURADAS
+// game.js - Lógica Principal com TRAJETÓRIA DE PROJÉTIL + PLANO ZERO + SISTEMA RAGNAROK
 
 // --- VARIÁVEIS GLOBAIS ---
 let playerGroup = null; 
@@ -48,12 +48,12 @@ let isStatWindowOpen = false;
 let isInvWindowOpen = false; 
 let isShopOpen = false; 
 
-// Cache UI
+// Cache UI (ATUALIZADO PARA STATS SECUNDÁRIOS)
 let cachedHP = -1; let cachedMaxHP = -1; 
 let cachedEn = -1; let cachedMaxEn = -1;
 let cachedGold = -1; let cachedLvl = -1; let cachedName = "";
 let cachedExp = -1; let cachedReqExp = -1; let cachedPts = -1;
-let cachedStats = { str: -1, vit: -1, agi: -1, wis: -1 };
+let cachedStats = { str: -1, agi: -1, vit: -1, dex: -1, von: -1, sor: -1, atk: -1, ratk: -1, def: -1, hit: -1, flee: -1, crit: -1 };
 let cachedProfs = { pp: -1, pk: -1, ps: -1, pg: -1, bars: "" };
 
 const POSITION_SYNC_INTERVAL = 100;
@@ -197,7 +197,7 @@ function loadInventory(json) {
                 const tip = document.getElementById('tooltip');
                 tip.style.display = 'block'; tip.style.left = (e.pageX + 10) + 'px'; tip.style.top = (e.pageY + 10) + 'px';
                 let priceTxt = isShopOpen ? `<br><span style='color:#2ecc71'>Venda: ${Math.round(item.price/10)}</span>` : "";
-                tip.innerHTML = `<strong>${item.name}</strong>${item.desc}<br><span style='color:#aaa'>Dano/Def: ${item.power}</span>${priceTxt}`;
+                tip.innerHTML = `<strong>${item.name}</strong>${item.desc}<br><span style='color:#aaa'>Status: ${item.power}</span>${priceTxt}`;
             };
             slotDiv.onmouseout = function() { hideTooltip(); };
             const actionsDiv = document.createElement('div'); actionsDiv.className = 'inv-actions';
@@ -214,12 +214,6 @@ function updateStatusMenu(json) {
     let data; try { data = JSON.parse(json); } catch(e) { return; }
     document.getElementById('stat-name').innerText = data.nick; document.getElementById('stat-class').innerText = data.class; document.getElementById('stat-title').innerText = data.title;
     if(data.lvl) document.getElementById('stat-lvl').innerText = data.lvl;
-    if(data.pp !== undefined) {
-        document.getElementById('prof-punch').innerText = data.pp; document.getElementById('bar-punch').style.width = Math.min(100, (data.pp_x / data.pp_r) * 100) + "%";
-        document.getElementById('prof-kick').innerText = data.pk; document.getElementById('bar-kick').style.width = Math.min(100, (data.pk_x / data.pk_r) * 100) + "%";
-        document.getElementById('prof-sword').innerText = data.ps; document.getElementById('bar-sword').style.width = Math.min(100, (data.ps_x / data.ps_r) * 100) + "%";
-        document.getElementById('prof-gun').innerText = data.pg; document.getElementById('bar-gun').style.width = Math.min(100, (data.pg_x / data.pg_r) * 100) + "%";
-    }
     
     function updateSlot(slotName, itemData) {
         const div = document.getElementById('slot-' + slotName); 
@@ -914,12 +908,25 @@ function receberDadosPessoal(json) {
         }
 
         if(me.pts !== undefined) {
-            if(me.pts !== cachedPts || me.str !== cachedStats.str || me.pp !== cachedProfs.pp) {
+            if(me.pts !== cachedPts || me.str !== cachedStats.str || me.atk !== cachedStats.atk || me.pp !== cachedProfs.pp) {
                 document.getElementById('stat-points').innerText = me.pts;
+                
+                // Atributos Primários
                 document.getElementById('val-str').innerText = me.str;
-                document.getElementById('val-vit').innerText = me.vit;
                 document.getElementById('val-agi').innerText = me.agi;
-                document.getElementById('val-wis').innerText = me.wis;
+                document.getElementById('val-vit').innerText = me.vit;
+                document.getElementById('val-dex').innerText = me.dex;
+                document.getElementById('val-von').innerText = me.von;
+                document.getElementById('val-sor').innerText = me.sor;
+
+                // Atributos Secundários
+                document.getElementById('val-atk').innerText = me.atk;
+                document.getElementById('val-ratk').innerText = me.ratk;
+                document.getElementById('val-def').innerText = me.def;
+                document.getElementById('val-hit').innerText = me.hit;
+                document.getElementById('val-flee').innerText = me.flee;
+                document.getElementById('val-crit').innerText = me.crit + "%";
+
                 document.getElementById('prof-punch').innerText = me.pp;
                 document.getElementById('bar-punch').style.width = Math.min(100, (me.pp_x / me.pp_r) * 100) + "%";
                 document.getElementById('prof-kick').innerText = me.pk;
@@ -928,10 +935,12 @@ function receberDadosPessoal(json) {
                 document.getElementById('bar-sword').style.width = Math.min(100, (me.ps_x / me.ps_r) * 100) + "%";
                 document.getElementById('prof-gun').innerText = me.pg;
                 document.getElementById('bar-gun').style.width = Math.min(100, (me.pg_x / me.pg_r) * 100) + "%";
+                
                 const btns = document.getElementsByClassName('stat-btn');
                 for(let i = 0; i < btns.length; i++) btns[i].disabled = (me.pts <= 0);
+                
                 cachedPts = me.pts;
-                cachedStats = { str: me.str, vit: me.vit, agi: me.agi, wis: me.wis };
+                cachedStats = { str: me.str, agi: me.agi, vit: me.vit, dex: me.dex, von: me.von, sor: me.sor, atk: me.atk, ratk: me.ratk, def: me.def, hit: me.hit, flee: me.flee, crit: me.crit };
                 cachedProfs = { pp: me.pp, pk: me.pk, ps: me.ps, pg: me.pg };
             }
         }
@@ -1108,7 +1117,6 @@ function animate() {
         mesh.position.x = lerp(other.startX, other.targetX, t); 
         mesh.position.z = lerp(other.startZ, other.targetZ, t); 
         
-        // NPC SE AJUSTA À ALTURA DO SERVIDOR
         const currentGroundH = other.targetY; 
         
         mesh.rotation.y = lerpAngle(other.startRot, other.targetRot, t);
