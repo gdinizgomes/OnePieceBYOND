@@ -759,10 +759,29 @@ mob
 
 		if(action == "update_pos" && in_game)
 			if(!is_fainted)
-				real_x = text2num(href_list["x"])
-				real_y = text2num(href_list["y"])
-				real_z = text2num(href_list["z"])
-				real_rot = text2num(href_list["rot"])
+				var/new_x = text2num(href_list["x"])
+				var/new_y = text2num(href_list["y"])
+				var/new_z = text2num(href_list["z"])
+				var/new_rot = text2num(href_list["rot"])
+
+				// --- VALIDAÇÃO DE MOVIMENTO DINÂMICA (Anti-Speedhack/Teleport) ---
+				var/dist = get_dist_euclid(src.real_x, src.real_z, new_x, new_z)
+				
+				// Calcula a tolerância máxima baseada na velocidade *real* deste jogador
+				// Multiplicado por 1.5 (se ele estiver correndo) e por 30 (~meio segundo de margem de lag)
+				var/max_allowed = (calc_move_speed * 1.5) * 30
+				
+				// Garantimos um piso mínimo para não travar jogadores com Agilidade muito baixa
+				if(max_allowed < 3.0) max_allowed = 3.0 
+				
+				// Se ele se moveu além do que a física permite, ignoramos e forçamos o rubberband
+				if(dist > max_allowed)
+					return 
+				
+				real_x = new_x
+				real_y = new_y
+				real_z = new_z
+				real_rot = new_rot
 				
 				if(real_x > 29) real_x = 29
 				if(real_x < -29) real_x = -29
