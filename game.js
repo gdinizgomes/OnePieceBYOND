@@ -1,4 +1,4 @@
-// game.js - Lógica Principal com TRAJETÓRIA DE PROJÉTIL + PLANO ZERO + SISTEMA RAGNAROK
+// game.js - Lógica Principal com TRAJETÓRIA DE PROJÉTIL + PLANO ZERO + SISTEMA RAGNAROK + LIVRO DE HABILIDADES
 
 // --- VARIÁVEIS GLOBAIS ---
 let playerGroup = null; 
@@ -47,8 +47,9 @@ const gravity = -0.015;
 let isStatWindowOpen = false;
 let isInvWindowOpen = false; 
 let isShopOpen = false; 
+let isSkillsWindowOpen = false;
 
-// Cache UI (ATUALIZADO PARA STATS SECUNDÁRIOS)
+// Cache UI 
 let cachedHP = -1; let cachedMaxHP = -1; 
 let cachedEn = -1; let cachedMaxEn = -1;
 let cachedGold = -1; let cachedLvl = -1; let cachedName = "";
@@ -96,8 +97,8 @@ function toggleStats() {
     isStatWindowOpen = !isStatWindowOpen;
     document.getElementById('stat-window').style.display = isStatWindowOpen ? 'block' : 'none';
     if(isStatWindowOpen) {
-        isInvWindowOpen = false; 
-        document.getElementById('inventory-window').style.display = 'none';
+        isInvWindowOpen = false; document.getElementById('inventory-window').style.display = 'none';
+        isSkillsWindowOpen = false; document.getElementById('skills-window').style.display = 'none';
         window.location.href = `byond://?src=${BYOND_REF}&action=request_status`;
     }
 }
@@ -108,9 +109,20 @@ function toggleInventory() {
     isInvWindowOpen = !isInvWindowOpen;
     document.getElementById('inventory-window').style.display = isInvWindowOpen ? 'flex' : 'none';
     if(isInvWindowOpen) {
-        isStatWindowOpen = false;
-        document.getElementById('stat-window').style.display = 'none';
+        isStatWindowOpen = false; document.getElementById('stat-window').style.display = 'none';
+        isSkillsWindowOpen = false; document.getElementById('skills-window').style.display = 'none';
         window.location.href = `byond://?src=${BYOND_REF}&action=request_inventory`;
+    }
+}
+
+function toggleSkills() {
+    if(isShopOpen) return;
+    isSkillsWindowOpen = !isSkillsWindowOpen;
+    document.getElementById('skills-window').style.display = isSkillsWindowOpen ? 'flex' : 'none';
+    if(isSkillsWindowOpen) {
+        isStatWindowOpen = false; document.getElementById('stat-window').style.display = 'none';
+        isInvWindowOpen = false; document.getElementById('inventory-window').style.display = 'none';
+        // Opcional: Podíamos pedir request_status para forçar sync, mas o Heartbeat já atualiza a UI.
     }
 }
 
@@ -120,6 +132,13 @@ function toggleShop() {
     isInvWindowOpen = isShopOpen;
     document.getElementById('inventory-window').style.display = isInvWindowOpen ? 'flex' : 'none';
     if(!isShopOpen) document.getElementById('shop-list').innerHTML = "";
+}
+
+function switchTab(tabId, btnElement) {
+    document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+    document.getElementById(tabId).classList.add('active');
+    document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+    btnElement.classList.add('active');
 }
 
 function openShop(json) {
@@ -355,12 +374,17 @@ window.addEventListener('keydown', function(e) {
     if (e.key === 'Escape') {
         if (isInvWindowOpen) toggleInventory();
         else if (isStatWindowOpen) toggleStats();
+        else if (isSkillsWindowOpen) toggleSkills();
         else if (isShopOpen) toggleShop();
         else deselectTarget();
         return;
     }
 
-    if(k === 'c') toggleStats(); if(k === 'i') toggleInventory(); if(k === 'x') interact();
+    if(k === 'c') toggleStats(); 
+    if(k === 'i') toggleInventory(); 
+    if(k === 'k') toggleSkills();
+    if(k === 'x') interact();
+    
     if(k === 'e' && !blockSync) { blockSync = true; lastActionTime = Date.now(); window.location.href = `byond://?src=${BYOND_REF}&action=pick_up`; setTimeout(function() { blockSync = false; }, 300); }
     if(k === 'r' && !blockSync) { blockSync = true; lastActionTime = Date.now(); window.location.href = `byond://?src=${BYOND_REF}&action=toggle_rest`; setTimeout(function() { blockSync = false; }, 500); }
     if(e.key === 'Shift') isRunning = true;
@@ -907,8 +931,9 @@ function receberDadosPessoal(json) {
             cachedExp = me.exp; cachedReqExp = me.req_exp;
         }
 
+        // Atualização da Janela de Status e Habilidades
         if(me.pts !== undefined) {
-            if(me.pts !== cachedPts || me.str !== cachedStats.str || me.atk !== cachedStats.atk || me.pp !== cachedProfs.pp) {
+            if(me.pts !== cachedPts || me.str !== cachedStats.str || me.atk !== cachedStats.atk || me.pp !== cachedProfs.pp || me.pp_x !== cachedProfs.pp_x) {
                 document.getElementById('stat-points').innerText = me.pts;
                 
                 // Atributos Primários
@@ -927,6 +952,7 @@ function receberDadosPessoal(json) {
                 document.getElementById('val-flee').innerText = me.flee;
                 document.getElementById('val-crit').innerText = me.crit + "%";
 
+                // Atualização dos Níveis de Habilidades (Janela [K])
                 document.getElementById('prof-punch').innerText = me.pp;
                 document.getElementById('bar-punch').style.width = Math.min(100, (me.pp_x / me.pp_r) * 100) + "%";
                 document.getElementById('prof-kick').innerText = me.pk;
@@ -941,7 +967,7 @@ function receberDadosPessoal(json) {
                 
                 cachedPts = me.pts;
                 cachedStats = { str: me.str, agi: me.agi, vit: me.vit, dex: me.dex, von: me.von, sor: me.sor, atk: me.atk, ratk: me.ratk, def: me.def, hit: me.hit, flee: me.flee, crit: me.crit };
-                cachedProfs = { pp: me.pp, pk: me.pk, ps: me.ps, pg: me.pg };
+                cachedProfs = { pp: me.pp, pp_x: me.pp_x, pk: me.pk, ps: me.ps, pg: me.pg };
             }
         }
         if(packet.evts) packet.evts.forEach(evt => { if(evt.type === "dmg") spawnDamageNumber(evt.tid, evt.val); });

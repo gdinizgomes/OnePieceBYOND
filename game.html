@@ -55,8 +55,6 @@
         .hp-bar { width: 100%; height: 100%; background: #e74c3c; transition: width 0.2s; }
         .en-bar { width: 100%; height: 100%; background: #3498db; transition: width 0.2s; }
         .xp-bar { width: 0%; height: 100%; background: #9b59b6; transition: width 0.2s; } 
-        .prof-bar-bg { width: 100px; height: 4px; background: #333; display: inline-block; margin-left: 10px; vertical-align: middle; }
-        .prof-bar-fill { width: 0%; height: 100%; background: #2ecc71; transition: width 0.5s; }
 
         #target-window {
             position: absolute; top: 20px; left: 50%; transform: translateX(-50%);
@@ -71,10 +69,10 @@
 
         #controls-help {
             position: absolute; bottom: 20px; left: 20px; background: rgba(0,0,0,0.5); color: #ccc;
-            padding: 10px; border-radius: 5px; font-size: 11px; font-family: monospace;
+            padding: 10px; border-radius: 5px; font-size: 11px; font-family: monospace; pointer-events: auto;
         }
 
-        /* --- STATUS WINDOW EXPANDIDA --- */
+        /* --- STATUS WINDOW --- */
         #stat-window {
             position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
             width: 480px; background: rgba(20, 20, 30, 0.95); color: white;
@@ -98,6 +96,31 @@
             background: #d4af37; color: black; border: none; border-radius: 4px;
             width: 20px; height: 20px; font-weight: bold; cursor: pointer; font-size: 12px; margin-left: 5px;
         }
+
+        /* --- HABILIDADES WINDOW --- */
+        #skills-window {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            width: 500px; background: rgba(20, 20, 30, 0.95); color: white;
+            border: 2px solid #9b59b6; border-radius: 10px; padding: 0;
+            display: none; pointer-events: auto; z-index: 110; box-shadow: 0 0 20px rgba(0,0,0,0.8);
+            flex-direction: column;
+        }
+        .skills-header { padding: 15px; border-bottom: 1px solid #555; text-align: center; font-weight: bold; color: #9b59b6; letter-spacing: 1px; }
+        .tabs-header { display: flex; background: rgba(0,0,0,0.3); }
+        .tab-btn { flex: 1; padding: 12px 0; background: none; border: none; border-bottom: 2px solid transparent; color: #aaa; cursor: pointer; font-size: 13px; font-weight: bold; transition: 0.2s; }
+        .tab-btn.active { color: #9b59b6; border-bottom: 2px solid #9b59b6; background: rgba(155, 89, 182, 0.1); }
+        .tab-btn:disabled { color: #444; cursor: not-allowed; }
+        .tab-content { padding: 15px; min-height: 280px; display: none; overflow-y: auto; max-height: 400px; }
+        .tab-content.active { display: block; }
+        
+        .skill-card { background: rgba(255,255,255,0.05); padding: 12px; margin-bottom: 10px; border-radius: 6px; display: flex; align-items: center; border: 1px solid #444; }
+        .skill-icon { width: 44px; height: 44px; background: #222; border-radius: 5px; display: flex; justify-content: center; align-items: center; font-size: 24px; margin-right: 15px; border: 1px solid #555; box-shadow: inset 0 0 10px #000; }
+        .skill-info { flex: 1; }
+        .skill-name { font-weight: bold; font-size: 15px; margin-bottom: 2px; color: #f1c40f; }
+        .skill-desc { font-size: 11px; color: #ccc; margin-bottom: 8px; line-height: 1.2; }
+        .skill-bar-bg { width: 100%; height: 8px; background: #111; border-radius: 4px; overflow: hidden; border: 1px solid #333; }
+        .skill-bar-fill { height: 100%; background: #2ecc71; width: 0%; transition: width 0.3s; }
+        .skill-lvl { font-weight: bold; font-size: 16px; color: white; width: 50px; text-align: right; margin-left: 10px; }
         
         /* --- INVENTÁRIO GRID --- */
         #inventory-window {
@@ -176,14 +199,14 @@
             <div style="font-size:10px;">Energy <span id="en-text"></span></div> <div class="bar-container"><div id="en-bar-fill" class="en-bar"></div></div>
             <div style="font-size:10px;">EXP</div> <div class="bar-container" style="height: 4px;"><div id="xp-bar-fill" class="xp-bar"></div></div>
             <div style="margin-top:5px; color:#f1c40f">💰 <span id="gold-display">0</span> Berries</div>
-            <div style="margin-top:5px; font-size: 10px; color: #ccc;">[C] Status | [I] Mochila | [TAB] Alvo</div>
+            <div style="margin-top:5px; font-size: 10px; color: #ccc;">[C] Status | [I] Mochila | [K] Habilidades | [TAB] Alvo</div>
         </div>
 
         <div id="controls-help">
             <strong>CONTROLES:</strong><br>
             [W,A,S,D] Mover<br>[SHIFT] Correr<br>[Espaço] Pular<br>
             [A] Soco &nbsp; [S] Chute<br>[D] Espada [F] Arma<br>
-            [R] Descansar<br>[C] Stats [I] Itens [TAB] Alvo
+            [R] Descansar<br>[C] Stats [I] Itens [K] Habilidades<br>[TAB] Alvo
         </div>
 
         <div id="stat-window">
@@ -233,6 +256,62 @@
 
             <div style="text-align: center; margin-top: 15px;">
                 <button onclick="toggleStats()" style="padding: 5px 20px;">Fechar</button>
+            </div>
+        </div>
+
+        <div id="skills-window">
+            <div class="skills-header">LIVRO DE HABILIDADES</div>
+            <div class="tabs-header">
+                <button class="tab-btn active" onclick="switchTab('tab-combate', this)">Combate</button>
+                <button class="tab-btn" disabled title="Habilidades baseadas em Haki (Indisponível no momento)">Vontade</button>
+                <button class="tab-btn" disabled title="Akuma no Mi e Conquistas (Indisponível no momento)">Especial</button>
+                <button class="tab-btn" disabled title="Árvores de Classe: Marinha, Pirata... (Indisponível no momento)">Classes</button>
+            </div>
+            
+            <div id="tab-combate" class="tab-content active">
+                <div class="skill-card">
+                    <div class="skill-icon">👊</div>
+                    <div class="skill-info">
+                        <div class="skill-name">Combate Corpo-a-Corpo</div>
+                        <div class="skill-desc">Melhora os danos e combos usando os punhos.</div>
+                        <div class="skill-bar-bg"><div class="skill-bar-fill" id="bar-punch"></div></div>
+                    </div>
+                    <div class="skill-lvl">Lv.<span id="prof-punch">1</span></div>
+                </div>
+
+                <div class="skill-card">
+                    <div class="skill-icon">🦵</div>
+                    <div class="skill-info">
+                        <div class="skill-name">Artes Marciais (Chute)</div>
+                        <div class="skill-desc">Refina os movimentos e impactos com os pés.</div>
+                        <div class="skill-bar-bg"><div class="skill-bar-fill" id="bar-kick"></div></div>
+                    </div>
+                    <div class="skill-lvl">Lv.<span id="prof-kick">1</span></div>
+                </div>
+
+                <div class="skill-card">
+                    <div class="skill-icon">⚔️</div>
+                    <div class="skill-info">
+                        <div class="skill-name">Esgrima</div>
+                        <div class="skill-desc">Proficiência em ataques cortantes e combos com espadas.</div>
+                        <div class="skill-bar-bg"><div class="skill-bar-fill" id="bar-sword"></div></div>
+                    </div>
+                    <div class="skill-lvl">Lv.<span id="prof-sword">1</span></div>
+                </div>
+
+                <div class="skill-card">
+                    <div class="skill-icon">🔫</div>
+                    <div class="skill-info">
+                        <div class="skill-name">Artilharia</div>
+                        <div class="skill-desc">Manuseio avançado, aumentando danos com armas de fogo.</div>
+                        <div class="skill-bar-bg"><div class="skill-bar-fill" id="bar-gun"></div></div>
+                    </div>
+                    <div class="skill-lvl">Lv.<span id="prof-gun">1</span></div>
+                </div>
+            </div>
+
+            <div style="text-align: center; padding: 15px; border-top: 1px solid #444; background: rgba(0,0,0,0.2);">
+                <button onclick="toggleSkills()" style="padding: 5px 20px; cursor: pointer;">Fechar</button>
             </div>
         </div>
 
