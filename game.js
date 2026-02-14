@@ -1,4 +1,4 @@
-// game.js - Lógica Principal com PLANO ZERO ABSOLUTO + COLISÃO Y-AXIS OTIMIZADA
+// game.js - Lógica Principal com TRAJETÓRIA DE PROJÉTIL 3D (Eixo Y) + PLANO ZERO + TECLAS RESTAURADAS
 
 // --- VARIÁVEIS GLOBAIS ---
 let playerGroup = null; 
@@ -452,7 +452,7 @@ function checkCollision(x, y, z) {
         
         tempBoxObstacle.setFromObject(obj);
         
-        // 1. Checagem RIGOROSA do Eixo Y (Altura) - Agora reconhece quando passamos da cabeça!
+        // 1. Checagem RIGOROSA do Eixo Y (Altura)
         let objMinY = tempBoxObstacle.min.y;
         let objMaxY = tempBoxObstacle.max.y;
         
@@ -492,7 +492,7 @@ function checkCollision(x, y, z) {
     return false; 
 }
 
-// Checagem refinada para NPCs (Ignorando se o pulo já passou da cabeça deles)
+// Checagem refinada para NPCs
 function checkPlayerCollision(nextX, nextY, nextZ) {
     const futureBox = new THREE.Box3();
     const center = new THREE.Vector3(nextX, nextY + 0.9, nextZ); 
@@ -503,7 +503,6 @@ function checkPlayerCollision(nextX, nextY, nextZ) {
         const other = otherPlayers[id];
         if (!other.mesh) continue;
         
-        // Ignora a checagem dupla para props invisíveis da rede, a física estática já cuidou deles
         if (other.isNPC && other.npcType === "prop") continue;
 
         const otherBox = new THREE.Box3().setFromObject(other.mesh);
@@ -520,16 +519,64 @@ window.addEventListener('game-action', function(e) {
     else if(k === 'p' && !blockSync) { blockSync = true; window.location.href = "byond://?src=" + BYOND_REF + "&action=force_save"; addLog("Salvando...", "log-miss"); setTimeout(function() { blockSync = false; }, 500); }
 });
 
+// --- LÓGICA DE PROJÉTEIS (ATUALIZADA PARA 3D VECTOR Y-AXIS) ---
 function fireProjectile(projectileDef, isMine) {
-    const geo = new THREE.BoxGeometry(1, 1, 1); const mat = new THREE.MeshBasicMaterial({ color: projectileDef.color }); const bullet = new THREE.Mesh(geo, mat);
-    const s = projectileDef.scale || [0.1, 0.1, 0.1]; bullet.scale.set(s[0], s[1], s[2]);
+    const geo = new THREE.BoxGeometry(1, 1, 1); 
+    const mat = new THREE.MeshBasicMaterial({ color: projectileDef.color }); 
+    const bullet = new THREE.Mesh(geo, mat);
+    const s = projectileDef.scale || [0.1, 0.1, 0.1]; 
+    bullet.scale.set(s[0], s[1], s[2]);
+    
     const origin = isMine ? playerGroup : (otherPlayers[projectileDef.ownerID] ? otherPlayers[projectileDef.ownerID].mesh : null);
     if(!origin) return; 
-    const bodyRot = origin.rotation.y; const sin = Math.sin(bodyRot); const cos = Math.cos(bodyRot);
-    bullet.position.copy(origin.position); bullet.position.y += 1.3; 
-    bullet.position.x += sin * 0.5 - cos * 0.4; bullet.position.z += cos * 0.5 + sin * 0.4; 
-    bullet.rotation.y = bodyRot; Engine.scene.add(bullet);
-    activeProjectiles.push({ mesh: bullet, dirX: sin, dirZ: cos, speed: projectileDef.speed, distTraveled: 0, maxDist: projectileDef.range || 10, isMine: isMine });
+    
+    const bodyRot = origin.rotation.y; 
+    const sin = Math.sin(bodyRot); 
+    const cos = Math.cos(bodyRot);
+    
+    // Posiciona a bala na ponta da arma/mão
+    bullet.position.copy(origin.position); 
+    bullet.position.y += 1.3; // Altura do peito/braço
+    bullet.position.x += sin * 0.5 - cos * 0.4; 
+    bullet.position.z += cos * 0.5 + sin * 0.4; 
+    
+    // Vetores de direção padrão (Tiro reto horizontal sem alvo)
+    let dX = sin; 
+    let dY = 0; 
+    let dZ = cos;
+    
+    // LÓGICA 3D: Se o jogador estiver atirando e tiver um alvo travado, atira em direção a ele
+    if (isMine && currentTargetID && otherPlayers[currentTargetID] && otherPlayers[currentTargetID].mesh) {
+        const targetMesh = otherPlayers[currentTargetID].mesh;
+        
+        // Pega o centro do alvo (Posição XYZ do alvo ajustada pro peito dele)
+        const targetPos = new THREE.Vector3(targetMesh.position.x, targetMesh.position.y + 0.9, targetMesh.position.z);
+        const bulletPos = bullet.position.clone();
+        
+        // Cria um vetor normalizado da bala até o alvo
+        const dirVec = new THREE.Vector3().subVectors(targetPos, bulletPos).normalize();
+        dX = dirVec.x; 
+        dY = dirVec.y; 
+        dZ = dirVec.z;
+        
+        bullet.lookAt(targetPos); // Gira o modelo visual da bala para apontar pro alvo
+    } else {
+        bullet.rotation.y = bodyRot; // Mantém a rotação reta se não houver alvo
+    }
+
+    Engine.scene.add(bullet);
+    
+    // Adiciona dirY para que a física atualize nos 3 eixos
+    activeProjectiles.push({ 
+        mesh: bullet, 
+        dirX: dX, 
+        dirY: dY, 
+        dirZ: dZ, 
+        speed: projectileDef.speed, 
+        distTraveled: 0, 
+        maxDist: projectileDef.range || 10, 
+        isMine: isMine 
+    });
 }
 
 function spawnHitbox(size, forwardOffset, lifetime, customData, yOffset) {
@@ -545,11 +592,15 @@ function spawnHitbox(size, forwardOffset, lifetime, customData, yOffset) {
 }
 
 const tempBoxAttacker = new THREE.Box3(); const tempBoxTarget = new THREE.Box3();
+
 function updateCombatHitboxes(timeScale) { 
     for (let i = activeProjectiles.length - 1; i >= 0; i--) {
         const p = activeProjectiles[i]; 
         const moveStep = p.speed * timeScale;
+        
+        // Movimentação em 3 Eixos
         p.mesh.position.x += p.dirX * moveStep; 
+        p.mesh.position.y += (p.dirY || 0) * moveStep; // Sobe ou desce caso haja um alvo
         p.mesh.position.z += p.dirZ * moveStep; 
         p.distTraveled += moveStep;
         
