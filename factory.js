@@ -47,14 +47,23 @@ const CharFactory = {
                 group.add(mesh);
             });
             group.userData = { id: def.id, type: def.type, tags: def.data?.tags || [] };
-            if (def.physics) group.userData.physics = def.physics;
+            
+            // TRANSFUSÃO AUTOMÁTICA DE FÍSICA PARA GROUPS
+            if (def.physics) {
+                group.userData.physics = def.physics;
+                if (def.physics.standable) group.userData.standable = true;
+            }
             return group;
         } 
 
         const mesh = this.createMesh(def.visual, overrides);
         mesh.userData = { id: def.id, type: def.type, tags: def.data?.tags || [] };
-        // TRANSFERE DADOS GEOMÉTRICOS PARA A ENGINE DE FÍSICA
-        if (def.physics) mesh.userData.physics = def.physics;
+        
+        // TRANSFUSÃO AUTOMÁTICA DE FÍSICA PARA MESHES
+        if (def.physics) {
+            mesh.userData.physics = def.physics;
+            if (def.physics.standable) mesh.userData.standable = true;
+        }
         return mesh;
     },
 
@@ -64,8 +73,8 @@ const CharFactory = {
 
         // 1. TORSO (Base)
         const torsoGroup = new THREE.Group();
-        // AJUSTE DE ALTURA: 0.90 para pés no chão
-        torsoGroup.position.y = 0.90; 
+        // AJUSTE DE ALTURA PERFEITO: Subindo para 1.20, a ponta inferior do pé fica matematicamente em 0.0.
+        torsoGroup.position.y = 1.20; 
         root.add(torsoGroup);
 
         const torsoMesh = this.createFromDef("char_torso", { color: clothColor });

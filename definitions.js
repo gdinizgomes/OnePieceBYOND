@@ -210,8 +210,11 @@ const GameDefinitions = {
         id: "prop_tree_log",
         name: "Tronco de Treino",
         type: "prop",
-        visual: { model: "cylinder", color: 0x8B4513, scale: [0.4, 1.8, 0.4] },
-        // FÍSICA GEOMÉTRICA EXATA ADICIONADA AQUI
+        // MODELO GROUP: Para que a origem XYZ dele seja exatamente na base (0.0), e não no meio da altura
+        visual: { 
+            model: "group", 
+            parts: [ { model: "cylinder", color: 0x8B4513, scale: [0.4, 1.8, 0.4], pos: [0, 0.9, 0] } ] 
+        },
         physics: { solid: true, standable: true, mass: 50, shape: "cylinder", radius: 0.2 } 
     }
 };

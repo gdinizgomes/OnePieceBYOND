@@ -1,6 +1,6 @@
-// engine.js - Core do Cliente (Input, Math, Graphics)
+// engine.js - Core do Cliente (Input, Math, Graphics) - PLANO ZERO + TECLAS RESTAURADAS
 
-const RENDER_HEIGHT = 720; // CONFIGURAÇÃO: Tente 360, 480 ou 720. Quanto menor, mais rápido.
+const RENDER_HEIGHT = 720; 
 
 function lerp(start, end, t) { return start * (1 - t) + end * t; }
 function mod(n, m) { return ((n % m) + m) % m; }
@@ -19,7 +19,6 @@ function lerpLimbRotation(limb, targetRot, speed) {
 
 const RAD = Math.PI / 180;
 
-// POSES ARTICULADAS
 const STANCES = {
     DEFAULT: { 
         rightArm: { x: 0, y: 0, z: 0 }, rightForeArm: { x: 0, y: 0, z: 0 },
@@ -209,6 +208,7 @@ const Input = {
     onKeyDown: function(e) {
         const k = e.key.toLowerCase();
         if(this.keys.hasOwnProperty(k)) this.keys[k] = true;
+        // Restaurado para A, S, D, F, P
         if(['a', 's', 'd', 'f', 'p'].includes(k)) {
             window.dispatchEvent(new CustomEvent('game-action', { detail: k }));
         }
@@ -220,7 +220,7 @@ const Input = {
 };
 
 const Engine = {
-    scene: null, camera: null, renderer: null, dummyTarget: null, collidables: [], 
+    scene: null, camera: null, renderer: null, collidables: [], 
     init: function() {
         Input.init();
         this.scene = new THREE.Scene();
@@ -245,7 +245,6 @@ const Engine = {
         this.scene.add(dirLight);
         
         this.createGround();
-        this.spawnProps();
 
         const onResize = () => {
             const aspect = window.innerWidth / window.innerHeight;
@@ -264,32 +263,15 @@ const Engine = {
         const MAP_SIZE = 60; 
         const road = new THREE.Mesh(new THREE.PlaneGeometry(MAP_SIZE, MAP_SIZE), new THREE.MeshPhongMaterial({ color: 0x333333 }));
         road.rotation.x = -Math.PI / 2; 
-        road.position.y = -0.18; // FIX VISUAL: Abaixa o chão visualmente para compensar as pernas
+        
+        // PLANO ZERO ABSOLUTO APLICADO AQUI
+        road.position.y = 0; 
         road.receiveShadow = true;
         this.scene.add(road); 
         
         const grid = new THREE.GridHelper(MAP_SIZE, MAP_SIZE);
-        grid.position.y = -0.17; // Acompanha o chão (levemente acima para evitar z-fighting)
+        grid.position.y = 0.01; // Evita textura piscando no chão
         this.scene.add(grid);
-    },
-    spawnProps: function() {
-        const dummyGroup = new THREE.Group();
-        dummyGroup.position.set(5, -0.18, 5); // FIX VISUAL: Ajusta a base do tronco ao chão rebaixado
-        
-        const logDef = GameDefinitions["prop_tree_log"];
-        if(logDef) {
-            const logMesh = CharFactory.createFromDef("prop_tree_log");
-            logMesh.position.y = logDef.visual.scale[1] / 2;
-            dummyGroup.add(logMesh);
-            const isSolid = !logDef.physics || logDef.physics.solid !== false;
-            if(isSolid) {
-                if(logDef.physics && logDef.physics.standable) logMesh.userData.standable = true;
-                this.collidables.push(logMesh);
-            }
-            const target = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.42, 0.2, 12), new THREE.MeshBasicMaterial({ color: 0xFF0000 }));
-            target.position.y = 1.3; dummyGroup.add(target); dummyGroup.userData.hitZone = target;
-        }
-        this.scene.add(dummyGroup); this.dummyTarget = dummyGroup; dummyGroup.updateMatrixWorld(true);
     }
 };
 Engine.init();

@@ -1,4 +1,4 @@
-// game.js - Lógica Principal com TARGET SYSTEM FIXADO + CORREÇÃO MULTIPLAYER + COLISÃO 3D PRECISA (Y-Axis)
+// game.js - Lógica Principal com PLANO ZERO ABSOLUTO + COLISÃO Y-AXIS OTIMIZADA
 
 // --- VARIÁVEIS GLOBAIS ---
 let playerGroup = null; 
@@ -388,7 +388,7 @@ function interact() {
     if(targetRef !== "") window.location.href = `byond://?src=${BYOND_REF}&action=interact_npc&ref=${targetRef}`;
 }
 
-// --- SISTEMA DE COLISÃO DO AMBIENTE (FÍSICA GEOMÉTRICA EXATA) ---
+// --- SISTEMA DE COLISÃO DO AMBIENTE (FÍSICA GEOMÉTRICA EXATA + PLANO ZERO) ---
 const tempBoxObstacle = new THREE.Box3(); 
 
 const playerRadius = 0.15; 
@@ -402,7 +402,7 @@ function getGroundHeightAt(x, y, z) {
         let obj = Engine.collidables[i]; 
         if(!obj || !obj.userData.standable) continue;
 
-        tempBoxObstacle.setFromObject(obj); // Sempre calcula a altura para referência
+        tempBoxObstacle.setFromObject(obj);
 
         let isInsideXZ = false;
         let phys = obj.userData.physics;
@@ -421,7 +421,6 @@ function getGroundHeightAt(x, y, z) {
                 isInsideXZ = true;
             }
         } else {
-            // Adicionado tolerância de 15cm para o pé não escorregar fácil da borda de caixas
             let pMinX = x - playerRadius; let pMaxX = x + playerRadius;
             let pMinZ = z - playerRadius; let pMaxZ = z + playerRadius;
             
@@ -432,7 +431,7 @@ function getGroundHeightAt(x, y, z) {
         }
 
         if (isInsideXZ) {
-            // Se o topo for mais alto que o seu joelho/cintura, você precisa pular
+            // Mantling: Tolera subir em coisas que batem até a altura do joelho sem bloquear o pulo
             if (tempBoxObstacle.max.y <= y + 0.6) {
                 if (tempBoxObstacle.max.y > maxY) maxY = tempBoxObstacle.max.y; 
             }
@@ -453,7 +452,7 @@ function checkCollision(x, y, z) {
         
         tempBoxObstacle.setFromObject(obj);
         
-        // 1. Checagem do Eixo Y (Altura)
+        // 1. Checagem RIGOROSA do Eixo Y (Altura) - Agora reconhece quando passamos da cabeça!
         let objMinY = tempBoxObstacle.min.y;
         let objMaxY = tempBoxObstacle.max.y;
         
@@ -488,12 +487,12 @@ function checkCollision(x, y, z) {
             }
         }
 
-        if (collideXZ) return true; // Bateu na parede do objeto!
+        if (collideXZ) return true; // Bateu na parede de fato!
     }
     return false; 
 }
 
-// NOVIDADE: Adicionado nextY para que a hitbox de jogadores não seja infinita
+// Checagem refinada para NPCs (Ignorando se o pulo já passou da cabeça deles)
 function checkPlayerCollision(nextX, nextY, nextZ) {
     const futureBox = new THREE.Box3();
     const center = new THREE.Vector3(nextX, nextY + 0.9, nextZ); 
@@ -660,6 +659,7 @@ function receberDadosGlobal(json) {
 
     let closestDist = 999;
 
+    // 1. SYNC DE CHÃO 
     if (packet.ground !== undefined) {
         const serverGroundItems = packet.ground;
         const seenItems = new Set();
@@ -668,7 +668,8 @@ function receberDadosGlobal(json) {
             seenItems.add(itemData.ref);
             if(!groundItemsMeshes[itemData.ref]) {
                 const mesh = CharFactory.createFromDef(itemData.id);
-                mesh.position.set(itemData.x, 0.1, itemData.z); 
+                // CHÃO UNIFICADO: Itens são renderizados cirurgicamente próximos ao Y=0
+                mesh.position.set(itemData.x, 0.05, itemData.z); 
                 Engine.scene.add(mesh);
                 groundItemsMeshes[itemData.ref] = mesh;
             } else {
@@ -706,18 +707,16 @@ function receberDadosGlobal(json) {
                 let newChar;
                 let isProp = (pData.npc === 1 && pData.type === "prop");
                 
-                // NOVIDADE: Não desenhamos mais um boneco humanoid para props como o tronco!
+                // CRIAÇÃO E CLASSIFICAÇÃO DE PROPS PELO SERVIDOR
                 if(isProp) {
-                    newChar = CharFactory.createFromDef("prop_tree_log");
-                    newChar.visible = false; // Deixamos invisível, pois o mapa (Engine) já desenhou a versão estática!
+                    newChar = CharFactory.createFromDef(pData.prop_id || "prop_tree_log");
+                    Engine.collidables.push(newChar); // Colisão apenas para o ambiente
                 } else {
                     newChar = CharFactory.createCharacter(pData.skin, pData.cloth);
                 }
                 
                 newChar.position.set(pData.x, pData.y, pData.z); 
-                
                 Engine.scene.add(newChar); 
-                if(!isProp) Engine.collidables.push(newChar);
 
                 const label = document.createElement('div'); label.className = 'name-label'; 
                 label.innerHTML = `<div class="name-text">${pData.name||"?"}</div><div class="mini-hp-bg"><div class="mini-hp-fill"></div></div>`; 
@@ -1008,7 +1007,6 @@ function animate() {
                 let nextZ = playerGroup.position.z + inputZ;
 
                 let canMoveX = true;
-                // NOVIDADE: As chamadas de colisão agora recebem a ALTURA atual (Y)
                 if(nextX > MAP_LIMIT || nextX < -MAP_LIMIT || 
                    checkCollision(nextX, playerGroup.position.y, playerGroup.position.z) || 
                    checkPlayerCollision(nextX, playerGroup.position.y, playerGroup.position.z)) { canMoveX = false; } else { playerGroup.position.x = nextX; }
@@ -1058,6 +1056,8 @@ function animate() {
         
         mesh.position.x = lerp(other.startX, other.targetX, t); 
         mesh.position.z = lerp(other.startZ, other.targetZ, t); 
+        
+        // NPC SE AJUSTA À ALTURA DO SERVIDOR
         const currentGroundH = other.targetY; 
         
         mesh.rotation.y = lerpAngle(other.startRot, other.targetRot, t);
@@ -1077,7 +1077,9 @@ function animate() {
         animateCharacterRig(mesh, remoteState, isMoving, other.isRunning, other.resting, other.fainted, currentGroundH);
 
         const tempV = new THREE.Vector3(mesh.position.x, mesh.position.y + 2, mesh.position.z); tempV.project(Engine.camera);
-        other.label.style.display = (Math.abs(tempV.z) > 1) ? 'none' : 'block'; other.label.style.left = (tempV.x * .5 + .5) * window.innerWidth + 'px'; other.label.style.top = (-(tempV.y * .5) + .5) * window.innerHeight + 'px';
+        other.label.style.display = (Math.abs(tempV.z) > 1) ? 'none' : 'block'; 
+        other.label.style.left = (tempV.x * .5 + .5) * window.innerWidth + 'px'; 
+        other.label.style.top = (-(tempV.y * .5) + .5) * window.innerHeight + 'px';
     }
     Engine.renderer.render(Engine.scene, Engine.camera);
 }
