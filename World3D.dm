@@ -22,10 +22,16 @@ world/New()
 datum/game_controller
 	var/tick_rate = 1 // 10 ticks por segundo
 	var/running = 1
+	var/server_tick = 0
+	var/ground_dirty_tick = 0 // Track para itens no chão
 
 	proc/Heartbeat()
 		set background = 1
 		while(running)
+			server_tick++
+			// PULSO: A cada 20 ticks (2 segundos), forçamos envio completo para curar desyncs e carregar novos players
+			var/full_sync = (server_tick % 20 == 0) 
+			
 			// 1. Coletar dados de TODOS os jogadores e NPCs
 			var/list/all_player_data = list()
 			var/list/active_clients = list()
@@ -35,48 +41,64 @@ datum/game_controller
 					active_clients += M
 					var/pid = "\ref[M]"
 					
-					var/e_hand = ""; var/e_head = ""; var/e_body = ""; var/e_legs = ""; var/e_feet = ""
-					if(M.slot_hand) e_hand = M.slot_hand.id_visual
-					if(M.slot_head) e_head = M.slot_head.id_visual
-					if(M.slot_body) e_body = M.slot_body.id_visual
-					if(M.slot_legs) e_legs = M.slot_legs.id_visual
-					if(M.slot_feet) e_feet = M.slot_feet.id_visual
-
-					all_player_data[pid] = list(
+					// DADOS DINÂMICOS (Enviados Sempre)
+					var/list/pData = list(
 						"x" = M.R2(M.real_x), "y" = M.R2(M.real_y), "z" = M.R2(M.real_z), "rot" = M.R2(M.real_rot),
 						"a" = M.is_attacking, "at" = M.attack_type, "cs" = M.combo_step,
-						"rn" = M.is_running,
-						"it" = e_hand,
-						"eq_h" = e_head, "eq_b" = e_body, "eq_l" = e_legs, "eq_f" = e_feet,
-						"rest" = M.is_resting, "ft" = M.is_fainted,
-						"name" = M.name, "skin" = M.skin_color, "cloth" = M.cloth_color,
-						"npc" = 0,
-						"hp" = M.current_hp, "mhp" = M.max_hp,
-						"gen" = M.char_gender
+						"rn" = M.is_running, "rest" = M.is_resting, "ft" = M.is_fainted,
+						"hp" = M.current_hp, "npc" = 0
 					)
+
+					// DADOS ESTÁTICOS (Enviados apenas se houve mudança ou no pulso de 2s)
+					// A janela de -5 ticks garante que perdas de pacote não quebrem o carregamento
+					var/send_visuals = full_sync || (M.last_visual_update >= server_tick - 5)
+					if(send_visuals)
+						var/e_hand = ""; var/e_head = ""; var/e_body = ""; var/e_legs = ""; var/e_feet = ""
+						if(M.slot_hand) e_hand = M.slot_hand.id_visual
+						if(M.slot_head) e_head = M.slot_head.id_visual
+						if(M.slot_body) e_body = M.slot_body.id_visual
+						if(M.slot_legs) e_legs = M.slot_legs.id_visual
+						if(M.slot_feet) e_feet = M.slot_feet.id_visual
+
+						pData["it"] = e_hand; pData["eq_h"] = e_head; pData["eq_b"] = e_body; pData["eq_l"] = e_legs; pData["eq_f"] = e_feet
+						pData["name"] = M.name; pData["skin"] = M.skin_color; pData["cloth"] = M.cloth_color
+						pData["mhp"] = M.max_hp; pData["gen"] = M.char_gender
+
+					all_player_data[pid] = pData
 
 			for(var/mob/npc/N in global_npcs)
 				var/nid = "\ref[N]"
-				all_player_data[nid] = list(
+				
+				var/list/nData = list(
 					"x" = N.R2(N.real_x), "y" = N.R2(N.real_y), "z" = N.R2(N.real_z), "rot" = N.R2(N.real_rot),
-					"a" = 0, "at" = "", "cs" = 0, "it" = "", "rest" = 0, "ft" = 0,
-					"rn" = 0,
-					"name" = N.name, "skin" = N.skin_color, "cloth" = N.cloth_color,
-					"npc" = 1, "type" = N.npc_type,
-					"hp" = N.current_hp, "mhp" = N.max_hp,
-					"gen" = N.char_gender
+					"a" = 0, "at" = "", "cs" = 0, "rn" = 0, "rest" = 0, "ft" = 0,
+					"hp" = N.current_hp, "npc" = 1
 				)
+
+				var/send_visuals = full_sync || (N.last_visual_update >= server_tick - 5)
+				if(send_visuals)
+					nData["type"] = N.npc_type
+					nData["name"] = N.name; nData["skin"] = N.skin_color; nData["cloth"] = N.cloth_color
+					nData["mhp"] = N.max_hp; nData["gen"] = N.char_gender
+
+				all_player_data[nid] = nData
 			
-			// 2. Coletar Itens do chão
-			var/list/ground_data = list()
-			for(var/obj/item/I in global_ground_items)
-				if(isturf(I.loc))
-					ground_data += list(list("ref" = "\ref[I]", "id" = I.id_visual, "x" = I.real_x, "y" = I.real_y, "z" = I.real_z))
-				else
-					global_ground_items -= I
+			// 2. Coletar Itens do chão (Apenas se alguém jogou/pegou item recentemente ou pulso)
+			var/send_ground = full_sync || (ground_dirty_tick >= server_tick - 5)
+			
+			var/list/global_json_list = list("others" = all_player_data, "t" = world.time)
+			
+			if(send_ground)
+				var/list/ground_data = list()
+				for(var/obj/item/I in global_ground_items)
+					if(isturf(I.loc))
+						ground_data += list(list("ref" = "\ref[I]", "id" = I.id_visual, "x" = I.real_x, "y" = I.real_y, "z" = I.real_z))
+					else
+						global_ground_items -= I
+				global_json_list["ground"] = ground_data // Adiciona o chão no pacote
 
 			// JSON Global
-			var/global_json = json_encode(list("others" = all_player_data, "ground" = ground_data, "t" = world.time))
+			var/global_json = json_encode(global_json_list)
 
 			// 3. Enviar Pacotes Individuais
 			for(var/mob/M in active_clients)
@@ -303,6 +325,9 @@ mob
 	var/combo_step = 0
 	var/active_item_visual = ""
 	
+	// Flag para controle do Delta-Sync de rede
+	var/last_visual_update = 0
+
 	// Slots de Equipamento
 	var/obj/item/slot_hand = null
 	var/obj/item/slot_head = null
@@ -312,6 +337,10 @@ mob
 	
 	// LISTA DE EVENTOS VISUAIS
 	var/list/pending_visuals = list()
+
+	// Função para marcar o personagem como "Sujo" (precisa enviar dados estáticos)
+	proc/UpdateVisuals()
+		if(SSserver) last_visual_update = SSserver.server_tick
 
 	Login()
 		..()
@@ -370,6 +399,7 @@ mob
 		if(success)
 			contents -= I
 			src << output("Equipou [I.name].", "map3d:mostrarNotificacao")
+			UpdateVisuals()
 			RequestInventoryUpdate()
 			RequestStatusUpdate()
 
@@ -387,7 +417,6 @@ mob
 				src << output("Mochila cheia!", "map3d:mostrarNotificacao")
 				return
 			
-			// Remove do slot
 			if(slot_name == "hand") { slot_hand = null; active_item_visual = ""; }
 			else if(slot_name == "head") slot_head = null
 			else if(slot_name == "body") slot_body = null
@@ -396,6 +425,7 @@ mob
 			
 			contents += I
 			src << output("Desequipou [I.name].", "map3d:mostrarNotificacao")
+			UpdateVisuals()
 			RequestInventoryUpdate()
 			RequestStatusUpdate()
 
@@ -411,6 +441,7 @@ mob
 			I.real_z = src.real_z
 			I.real_y = 0
 			global_ground_items |= I
+			if(SSserver) SSserver.ground_dirty_tick = SSserver.server_tick
 			src << output("Largou tudo de [I.name]", "map3d:mostrarNotificacao")
 		else
 			I.amount -= amount_to_drop
@@ -420,6 +451,7 @@ mob
 			NewI.real_z = src.real_z
 			NewI.real_y = 0
 			global_ground_items |= NewI
+			if(SSserver) SSserver.ground_dirty_tick = SSserver.server_tick
 			src << output("Largou [amount_to_drop] x [I.name]", "map3d:mostrarNotificacao")
 		RequestInventoryUpdate()
 
@@ -434,7 +466,6 @@ mob
 	proc/PickUpNearestItem()
 		var/obj/item/target = null
 		var/min_dist = 2.0
-		// OTIMIZAÇÃO: Itera apenas itens no chão
 		for(var/obj/item/I in global_ground_items)
 			if(I.loc == null || !isturf(I.loc)) 
 				global_ground_items -= I
@@ -453,6 +484,7 @@ mob
 					if(target.amount <= space)
 						invItem.amount += target.amount
 						global_ground_items -= target
+						if(SSserver) SSserver.ground_dirty_tick = SSserver.server_tick
 						del(target)
 						stacked = 1
 						break
@@ -461,6 +493,7 @@ mob
 					src << output("Mochila cheia (12/12)!", "map3d:mostrarNotificacao")
 					return
 				global_ground_items -= target
+				if(SSserver) SSserver.ground_dirty_tick = SSserver.server_tick
 				target.loc = src
 				src << output("Pegou item!", "map3d:mostrarNotificacao")
 			RequestInventoryUpdate()
@@ -534,6 +567,7 @@ mob
 		RecalculateStats()
 		current_hp = max_hp
 		current_energy = max_energy
+		UpdateVisuals()
 		src << output("<span class='log-hit' style='font-size:14px;color:#ffff00'>LEVEL UP! Nível [level]</span>", "map3d:addLog")
 		SaveCharacter()
 
@@ -646,6 +680,8 @@ mob
 		char_loaded = 1
 		in_game = 1
 		is_resting = 0; is_fainted = 0; is_running = 0
+		UpdateVisuals()
+		
 		var/page = file2text('game.html')
 		page = replacetext(page, "{{BYOND_REF}}", "\ref[src]")
 		src << browse(page, "window=map3d")
@@ -712,7 +748,6 @@ mob
 		RecalculateStats()
 		return 1
 
-	// OTIMIZAÇÃO: Arredondamento
 	proc/R2(n) return round(n * 100) / 100
 
 	proc/AutoSaveLoop()
@@ -764,19 +799,10 @@ mob
 				var/new_z = text2num(href_list["z"])
 				var/new_rot = text2num(href_list["rot"])
 
-				// --- VALIDAÇÃO DE MOVIMENTO DINÂMICA (Anti-Speedhack/Teleport) ---
 				var/dist = get_dist_euclid(src.real_x, src.real_z, new_x, new_z)
-				
-				// Calcula a tolerância máxima baseada na velocidade *real* deste jogador
-				// Multiplicado por 1.5 (se ele estiver correndo) e por 30 (~meio segundo de margem de lag)
 				var/max_allowed = (calc_move_speed * 1.5) * 30
-				
-				// Garantimos um piso mínimo para não travar jogadores com Agilidade muito baixa
 				if(max_allowed < 3.0) max_allowed = 3.0 
-				
-				// Se ele se moveu além do que a física permite, ignoramos e forçamos o rubberband
-				if(dist > max_allowed)
-					return 
+				if(dist > max_allowed) return 
 				
 				real_x = new_x
 				real_y = new_y
@@ -920,7 +946,6 @@ mob
 			else if(skill_exp_type == "kick") prof_bonus = prof_kick_lvl * 2
 			else prof_bonus = prof_punch_lvl * 2
 
-			// --- LÓGICA DE DANO COMBO ---
 			var/damage_mult = 1.0
 			var/c_step = text2num(href_list["combo"])
 			if(c_step == 3) damage_mult = 1.2

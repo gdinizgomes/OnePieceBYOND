@@ -1,4 +1,4 @@
-// game.js - Lógica Principal com TARGET SYSTEM FIXADO (Sem Micro-Jitter) + CORREÇÃO MULTIPLAYER REST
+// game.js - Lógica Principal com TARGET SYSTEM FIXADO (Sem Micro-Jitter) + CORREÇÃO MULTIPLAYER REST + DELTA SYNC OTIMIZADO
 
 // --- VARIÁVEIS GLOBAIS ---
 let playerGroup = null; 
@@ -557,54 +557,67 @@ function performAttack(type) {
     }, 100); 
 }
 
-// --- NETWORK HANDLERS ---
+// --- NETWORK HANDLERS (Otimizado com Delta-Sync) ---
 function receberDadosGlobal(json) {
     let packet; try { packet = JSON.parse(json); } catch(e) { return; }
     lastPacketTime = Date.now();
     const now = performance.now();
 
-    const serverGroundItems = packet.ground || [];
-    const seenItems = new Set();
     let closestDist = 999;
-    serverGroundItems.forEach(itemData => {
-        seenItems.add(itemData.ref);
-        if(!groundItemsMeshes[itemData.ref]) {
-            const mesh = CharFactory.createFromDef(itemData.id);
-            // FIX: Abaixa os itens também para não flutuarem
-            mesh.position.set(itemData.x, 0.1, itemData.z); 
-            Engine.scene.add(mesh);
-            groundItemsMeshes[itemData.ref] = mesh;
-        } else {
-            const mesh = groundItemsMeshes[itemData.ref];
-            mesh.position.x = lerp(mesh.position.x, itemData.x, 0.2);
-            mesh.position.z = lerp(mesh.position.z, itemData.z, 0.2);
-        }
-        if(playerGroup) {
-            const d = playerGroup.position.distanceTo(groundItemsMeshes[itemData.ref].position);
-            if(d < closestDist) closestDist = d;
-        }
-    });
-    for(let ref in groundItemsMeshes) {
-        if(!seenItems.has(ref)) {
-            Engine.scene.remove(groundItemsMeshes[ref]);
-            delete groundItemsMeshes[ref];
+
+    // 1. SYNC DE CHÃO (Só executa se o servidor mandou os dados neste tick)
+    if (packet.ground !== undefined) {
+        const serverGroundItems = packet.ground;
+        const seenItems = new Set();
+        
+        serverGroundItems.forEach(itemData => {
+            seenItems.add(itemData.ref);
+            if(!groundItemsMeshes[itemData.ref]) {
+                const mesh = CharFactory.createFromDef(itemData.id);
+                mesh.position.set(itemData.x, 0.1, itemData.z); 
+                Engine.scene.add(mesh);
+                groundItemsMeshes[itemData.ref] = mesh;
+            } else {
+                const mesh = groundItemsMeshes[itemData.ref];
+                mesh.position.x = lerp(mesh.position.x, itemData.x, 0.2);
+                mesh.position.z = lerp(mesh.position.z, itemData.z, 0.2);
+            }
+        });
+        for(let ref in groundItemsMeshes) {
+            if(!seenItems.has(ref)) {
+                Engine.scene.remove(groundItemsMeshes[ref]);
+                delete groundItemsMeshes[ref];
+            }
         }
     }
 
+    // Calcular distância (Sempre calcula independente do delta para não sumir o botão de interação)
+    if(playerGroup) {
+        for(let ref in groundItemsMeshes) {
+            const d = playerGroup.position.distanceTo(groundItemsMeshes[ref].position);
+            if(d < closestDist) closestDist = d;
+        }
+    }
+
+    // 2. SYNC DE PLAYERS & NPCS
     const serverPlayers = packet.others; 
     const receivedIds = new Set();
+    
     for (const id in serverPlayers) {
         if (id === myID) continue; 
         receivedIds.add(id); 
         const pData = serverPlayers[id];
         
         if (!otherPlayers[id]) {
-            if(pData.skin) {
+            // Lazy Load: Só cria o jogador quando o pulso do servidor contiver informações visuais!
+            if(pData.skin !== undefined) {
                 const newChar = CharFactory.createCharacter(pData.skin, pData.cloth);
                 newChar.position.set(pData.x, pData.y, pData.z); 
                 
                 Engine.scene.add(newChar); Engine.collidables.push(newChar);
-                const label = document.createElement('div'); label.className = 'name-label'; label.innerHTML = `<div class="name-text">${pData.name||"?"}</div><div class="mini-hp-bg"><div class="mini-hp-fill"></div></div>`; document.getElementById('labels-container').appendChild(label);
+                const label = document.createElement('div'); label.className = 'name-label'; 
+                label.innerHTML = `<div class="name-text">${pData.name||"?"}</div><div class="mini-hp-bg"><div class="mini-hp-fill"></div></div>`; 
+                document.getElementById('labels-container').appendChild(label);
                 
                 newChar.userData.lastHead = ""; newChar.userData.lastBody = "";
                 newChar.userData.lastLegs = ""; newChar.userData.lastFeet = ""; newChar.userData.lastItem = "";
@@ -629,31 +642,36 @@ function receberDadosGlobal(json) {
             const other = otherPlayers[id];
             const mesh = other.mesh;
             
+            // Dados Rápidos (Sempre presentes no pacote de movimento)
             other.currentHp = pData.hp;
-            other.maxHp = pData.mhp;
-            other.name = pData.name; 
-
             other.startX = mesh.position.x; other.startY = mesh.position.y; other.startZ = mesh.position.z; other.startRot = mesh.rotation.y;
             other.targetX = pData.x; other.targetY = pData.y; other.targetZ = pData.z; other.targetRot = pData.rot; other.lastPacketTime = now;
             other.attacking = pData.a; other.attackType = pData.at; 
             other.comboStep = pData.cs; 
             other.resting = pData.rest; other.fainted = pData.ft;
-            if(pData.gen) other.gender = pData.gen;
             if(pData.rn !== undefined) other.isRunning = pData.rn;
 
-            if(mesh.userData.lastItem !== pData.it) { CharFactory.equipItem(mesh, pData.it, mesh.userData.lastItem); mesh.userData.lastItem = pData.it; }
-            if(mesh.userData.lastHead !== pData.eq_h) { CharFactory.equipItem(mesh, pData.eq_h, mesh.userData.lastHead); mesh.userData.lastHead = pData.eq_h; }
-            if(mesh.userData.lastBody !== pData.eq_b) { CharFactory.equipItem(mesh, pData.eq_b, mesh.userData.lastBody); mesh.userData.lastBody = pData.eq_b; }
-            if(mesh.userData.lastLegs !== pData.eq_l) { CharFactory.equipItem(mesh, pData.eq_l, mesh.userData.lastLegs); mesh.userData.lastLegs = pData.eq_l; }
-            if(mesh.userData.lastFeet !== pData.eq_f) { CharFactory.equipItem(mesh, pData.eq_f, mesh.userData.lastFeet); mesh.userData.lastFeet = pData.eq_f; }
+            // Dados Pesados (Apenas processados se o servidor mandou - Delta Sync)
+            if(pData.mhp !== undefined) other.maxHp = pData.mhp;
+            if(pData.name !== undefined) { 
+                other.name = pData.name; 
+                if(other.label.querySelector('.name-text').innerText !== pData.name) other.label.querySelector('.name-text').innerText = pData.name; 
+            }
+            if(pData.gen !== undefined) other.gender = pData.gen;
 
-            if(pData.name && other.label.querySelector('.name-text').innerText !== pData.name) { other.label.querySelector('.name-text').innerText = pData.name; }
+            if(pData.it !== undefined && mesh.userData.lastItem !== pData.it) { CharFactory.equipItem(mesh, pData.it, mesh.userData.lastItem); mesh.userData.lastItem = pData.it; }
+            if(pData.eq_h !== undefined && mesh.userData.lastHead !== pData.eq_h) { CharFactory.equipItem(mesh, pData.eq_h, mesh.userData.lastHead); mesh.userData.lastHead = pData.eq_h; }
+            if(pData.eq_b !== undefined && mesh.userData.lastBody !== pData.eq_b) { CharFactory.equipItem(mesh, pData.eq_b, mesh.userData.lastBody); mesh.userData.lastBody = pData.eq_b; }
+            if(pData.eq_l !== undefined && mesh.userData.lastLegs !== pData.eq_l) { CharFactory.equipItem(mesh, pData.eq_l, mesh.userData.lastLegs); mesh.userData.lastLegs = pData.eq_l; }
+            if(pData.eq_f !== undefined && mesh.userData.lastFeet !== pData.eq_f) { CharFactory.equipItem(mesh, pData.eq_f, mesh.userData.lastFeet); mesh.userData.lastFeet = pData.eq_f; }
             
-            if(pData.hp !== undefined && other.hpFill) other.hpFill.style.width = Math.max(0, Math.min(100, (pData.hp / pData.mhp) * 100)) + "%";
+            if(other.hpFill && other.maxHp > 0) other.hpFill.style.width = Math.max(0, Math.min(100, (other.currentHp / other.maxHp) * 100)) + "%";
+            
             if (other.attacking && other.attackType === "gun" && !other.hasFiredThisCycle) { fireProjectile({ speed: 0.6, color: 0xFFFF00, ownerID: id }, false); other.hasFiredThisCycle = true; setTimeout(() => { other.hasFiredThisCycle = false; }, 500); }
         }
     }
     
+    // Deleta os que sumiram da visão do servidor
     for (const id in otherPlayers) { 
         if (!receivedIds.has(id)) { 
             Engine.scene.remove(otherPlayers[id].mesh); 
@@ -780,14 +798,12 @@ function animateCharacterRig(mesh, state, isMoving, isRunning, isResting, isFain
 
     if (isFainted) {
         mesh.rotation.x = lerp(mesh.rotation.x, -Math.PI/2, 0.1); 
-        // CORREÇÃO: Aplica offset apenas no player local. Remotos já recebem o Y com offset da rede.
         if(mesh === playerGroup) mesh.position.y = lerp(mesh.position.y, groundH + 0.2, 0.1);
         else mesh.position.y = lerp(mesh.position.y, groundH, 0.1);
     } 
     else if (isResting) {
         mesh.rotation.x = lerp(mesh.rotation.x, 0, 0.1);
         const yOffset = -0.4; 
-        // CORREÇÃO: Multiplayer Rest Fix (Evita afundar 2x)
         if(mesh === playerGroup) mesh.position.y = lerp(mesh.position.y, groundH + yOffset, 0.1);
         else mesh.position.y = lerp(mesh.position.y, groundH, 0.1);
         
