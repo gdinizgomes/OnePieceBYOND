@@ -1,4 +1,4 @@
-// game.js - Lógica Principal com TRAJETÓRIA DE PROJÉTIL + PLANO ZERO + SISTEMA RAGNAROK + LIVRO DE HABILIDADES
+// game.js - Lógica Principal com TRAJETÓRIA DE PROJÉTIL + PLANO ZERO + SISTEMA RAGNAROK + LIVRO DE HABILIDADES (Scroll e EXP Corrigidos)
 
 // --- VARIÁVEIS GLOBAIS ---
 let playerGroup = null; 
@@ -49,13 +49,13 @@ let isInvWindowOpen = false;
 let isShopOpen = false; 
 let isSkillsWindowOpen = false;
 
-// Cache UI 
+// Cache UI Expandido para TODAS as Proficiências (pp = Punch, pk = Kick, ps = Sword, pg = Gun)
 let cachedHP = -1; let cachedMaxHP = -1; 
 let cachedEn = -1; let cachedMaxEn = -1;
 let cachedGold = -1; let cachedLvl = -1; let cachedName = "";
 let cachedExp = -1; let cachedReqExp = -1; let cachedPts = -1;
 let cachedStats = { str: -1, agi: -1, vit: -1, dex: -1, von: -1, sor: -1, atk: -1, ratk: -1, def: -1, hit: -1, flee: -1, crit: -1 };
-let cachedProfs = { pp: -1, pk: -1, ps: -1, pg: -1, bars: "" };
+let cachedProfs = { pp: -1, pp_x: -1, pk: -1, pk_x: -1, ps: -1, ps_x: -1, pg: -1, pg_x: -1 };
 
 const POSITION_SYNC_INTERVAL = 100;
 const POSITION_EPSILON = 0.01;
@@ -122,7 +122,6 @@ function toggleSkills() {
     if(isSkillsWindowOpen) {
         isStatWindowOpen = false; document.getElementById('stat-window').style.display = 'none';
         isInvWindowOpen = false; document.getElementById('inventory-window').style.display = 'none';
-        // Opcional: Podíamos pedir request_status para forçar sync, mas o Heartbeat já atualiza a UI.
     }
 }
 
@@ -931,45 +930,53 @@ function receberDadosPessoal(json) {
             cachedExp = me.exp; cachedReqExp = me.req_exp;
         }
 
-        // Atualização da Janela de Status e Habilidades
-        if(me.pts !== undefined) {
-            if(me.pts !== cachedPts || me.str !== cachedStats.str || me.atk !== cachedStats.atk || me.pp !== cachedProfs.pp || me.pp_x !== cachedProfs.pp_x) {
-                document.getElementById('stat-points').innerText = me.pts;
-                
-                // Atributos Primários
-                document.getElementById('val-str').innerText = me.str;
-                document.getElementById('val-agi').innerText = me.agi;
-                document.getElementById('val-vit').innerText = me.vit;
-                document.getElementById('val-dex').innerText = me.dex;
-                document.getElementById('val-von').innerText = me.von;
-                document.getElementById('val-sor').innerText = me.sor;
+        // --- VERIFICAÇÃO EXPANDIDA DO CACHE DE HABILIDADES ---
+        if(me.pts !== cachedPts || me.str !== cachedStats.str || me.atk !== cachedStats.atk || 
+           me.pp !== cachedProfs.pp || me.pp_x !== cachedProfs.pp_x ||
+           me.pk !== cachedProfs.pk || me.pk_x !== cachedProfs.pk_x ||
+           me.ps !== cachedProfs.ps || me.ps_x !== cachedProfs.ps_x ||
+           me.pg !== cachedProfs.pg || me.pg_x !== cachedProfs.pg_x) {
+            
+            document.getElementById('stat-points').innerText = me.pts;
+            
+            // Atributos Primários
+            document.getElementById('val-str').innerText = me.str;
+            document.getElementById('val-agi').innerText = me.agi;
+            document.getElementById('val-vit').innerText = me.vit;
+            document.getElementById('val-dex').innerText = me.dex;
+            document.getElementById('val-von').innerText = me.von;
+            document.getElementById('val-sor').innerText = me.sor;
 
-                // Atributos Secundários
-                document.getElementById('val-atk').innerText = me.atk;
-                document.getElementById('val-ratk').innerText = me.ratk;
-                document.getElementById('val-def').innerText = me.def;
-                document.getElementById('val-hit').innerText = me.hit;
-                document.getElementById('val-flee').innerText = me.flee;
-                document.getElementById('val-crit').innerText = me.crit + "%";
+            // Atributos Secundários
+            document.getElementById('val-atk').innerText = me.atk;
+            document.getElementById('val-ratk').innerText = me.ratk;
+            document.getElementById('val-def').innerText = me.def;
+            document.getElementById('val-hit').innerText = me.hit;
+            document.getElementById('val-flee').innerText = me.flee;
+            document.getElementById('val-crit').innerText = me.crit + "%";
 
-                // Atualização dos Níveis de Habilidades (Janela [K])
-                document.getElementById('prof-punch').innerText = me.pp;
-                document.getElementById('bar-punch').style.width = Math.min(100, (me.pp_x / me.pp_r) * 100) + "%";
-                document.getElementById('prof-kick').innerText = me.pk;
-                document.getElementById('bar-kick').style.width = Math.min(100, (me.pk_x / me.pk_r) * 100) + "%";
-                document.getElementById('prof-sword').innerText = me.ps;
-                document.getElementById('bar-sword').style.width = Math.min(100, (me.ps_x / me.ps_r) * 100) + "%";
-                document.getElementById('prof-gun').innerText = me.pg;
-                document.getElementById('bar-gun').style.width = Math.min(100, (me.pg_x / me.pg_r) * 100) + "%";
-                
-                const btns = document.getElementsByClassName('stat-btn');
-                for(let i = 0; i < btns.length; i++) btns[i].disabled = (me.pts <= 0);
-                
-                cachedPts = me.pts;
-                cachedStats = { str: me.str, agi: me.agi, vit: me.vit, dex: me.dex, von: me.von, sor: me.sor, atk: me.atk, ratk: me.ratk, def: me.def, hit: me.hit, flee: me.flee, crit: me.crit };
-                cachedProfs = { pp: me.pp, pp_x: me.pp_x, pk: me.pk, ps: me.ps, pg: me.pg };
-            }
+            // Atualização dos Níveis de Habilidades (Janela [K])
+            document.getElementById('prof-punch').innerText = me.pp;
+            document.getElementById('bar-punch').style.width = Math.min(100, (me.pp_x / me.pp_r) * 100) + "%";
+            
+            document.getElementById('prof-kick').innerText = me.pk;
+            document.getElementById('bar-kick').style.width = Math.min(100, (me.pk_x / me.pk_r) * 100) + "%";
+            
+            document.getElementById('prof-sword').innerText = me.ps;
+            document.getElementById('bar-sword').style.width = Math.min(100, (me.ps_x / me.ps_r) * 100) + "%";
+            
+            document.getElementById('prof-gun').innerText = me.pg;
+            document.getElementById('bar-gun').style.width = Math.min(100, (me.pg_x / me.pg_r) * 100) + "%";
+            
+            const btns = document.getElementsByClassName('stat-btn');
+            for(let i = 0; i < btns.length; i++) btns[i].disabled = (me.pts <= 0);
+            
+            // Atualiza o cache completo
+            cachedPts = me.pts;
+            cachedStats = { str: me.str, agi: me.agi, vit: me.vit, dex: me.dex, von: me.von, sor: me.sor, atk: me.atk, ratk: me.ratk, def: me.def, hit: me.hit, flee: me.flee, crit: me.crit };
+            cachedProfs = { pp: me.pp, pp_x: me.pp_x, pk: me.pk, pk_x: me.pk_x, ps: me.ps, ps_x: me.ps_x, pg: me.pg, pg_x: me.pg_x };
         }
+        
         if(packet.evts) packet.evts.forEach(evt => { if(evt.type === "dmg") spawnDamageNumber(evt.tid, evt.val); });
     }
 }
