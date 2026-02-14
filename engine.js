@@ -95,7 +95,6 @@ const STANCES = {
         leftArm:  { x: 0, y: 0, z: -10 * RAD }, 
         leftForeArm: { x: 0, y: 0, z: 0 },
 
-        // Pernas em base relaxada
         rightLeg: { x: 5 * RAD, y: 0, z: 0 }, 
         rightShin:{ x: -5 * RAD, y: 0, z: 0 },
 
@@ -111,14 +110,12 @@ const STANCES = {
         leftArm:  { x: 35 * RAD, y: -10 * RAD, z: 10 * RAD },
         leftForeArm: { x: 0, y: 0, z: 0 },
 
-        // Peso vai para perna direita
         rightLeg: { x: -15 * RAD, y: 0, z: 0 },
         rightShin:{ x: 20 * RAD, y: 0, z: 0 },
 
         leftLeg:  { x: 10 * RAD, y: 0, z: 0 },
         leftShin: { x: -10 * RAD, y: 0, z: 0 }
     },
-    // HIT 1: CORTE DIAGONAL (Direita -> Esquerda)
     SWORD_COMBO_1: {
         torso: { x: 0, y: -25 * RAD, z: 12 * RAD },
 
@@ -128,14 +125,12 @@ const STANCES = {
         leftArm:  { x: 25 * RAD, y: 20 * RAD, z: 25 * RAD },
         leftForeArm: { x: 0, y: 0, z: 0 },
 
-        // Base abre, impacto sólido
         rightLeg: { x: 10 * RAD, y: 0, z: 0 },
         rightShin:{ x: -15 * RAD, y: 0, z: 0 },
 
         leftLeg:  { x: -20 * RAD, y: 0, z: 0 },
         leftShin: { x: 25 * RAD, y: 0, z: 0 }
     },
-    // HIT 2: CORTE HORIZONTAL ABERTO (Esquerda -> Direita)
     SWORD_COMBO_2: {
         torso: { x: 0, y: 40 * RAD, z: -10 * RAD },
 
@@ -145,14 +140,12 @@ const STANCES = {
         leftArm:  { x: -30 * RAD, y: -30 * RAD, z: 15 * RAD },
         leftForeArm: { x: -20 * RAD, y: 0, z: 0 },
 
-        // Rotação passa pelas pernas
         rightLeg: { x: -5 * RAD, y: 0, z: 0 },
         rightShin:{ x: 10 * RAD, y: 0, z: 0 },
 
         leftLeg:  { x: -25 * RAD, y: 0, z: 0 },
         leftShin: { x: 30 * RAD, y: 0, z: 0 }
     },
-    // HIT 3: CORTE FINALIZADOR (CIMA -> BAIXO)
     SWORD_COMBO_3: {
         torso: { x: 0, y: -25 * RAD, z: 12 * RAD },
 
@@ -162,14 +155,12 @@ const STANCES = {
         leftArm:  { x: 25 * RAD, y: 20 * RAD, z: 25 * RAD },
         leftForeArm: { x: 0, y: 0, z: 0 },
 
-        // Base abre, impacto sólido
         rightLeg: { x: 10 * RAD, y: 0, z: 0 },
         rightShin:{ x: -15 * RAD, y: 0, z: 0 },
 
         leftLeg:  { x: -20 * RAD, y: 0, z: 0 },
         leftShin: { x: 25 * RAD, y: 0, z: 0 }
     },
-
 
     GUN_IDLE: {
         rightArm: { x: -70 * RAD, y: 0, z: 0 }, rightForeArm: { x: -20 * RAD, y: 0, z: 0 },
@@ -237,17 +228,13 @@ const Engine = {
         this.scene.fog = new THREE.Fog(0x87CEEB, 15, 60);
         this.camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
         
-        // --- PERFORMANCE FIX: RESOLUÇÃO TRAVADA (SCALING) ---
-        // Desligamos antialias para performance e usamos setSize para definir o buffer interno
         this.renderer = new THREE.WebGLRenderer({ antialias: false }); 
         
         document.body.appendChild(this.renderer.domElement);
         
-        // Estilo CSS força o canvas a ocupar 100% da tela, esticando a imagem de baixa resolução
         this.renderer.domElement.style.width = "100%";
         this.renderer.domElement.style.height = "100%";
         this.renderer.domElement.style.display = "block";
-        // Garante visual "pixel art" nítido em vez de borrado
         this.renderer.domElement.style.imageRendering = "pixelated"; 
         
         const ambientLight = new THREE.AmbientLight(0xFFFFFF, 0.7);
@@ -256,36 +243,39 @@ const Engine = {
         dirLight.position.set(20, 50, 20);
         dirLight.castShadow = true;
         this.scene.add(dirLight);
+        
         this.createGround();
         this.spawnProps();
 
-        // Lógica de Resize Inteligente
         const onResize = () => {
             const aspect = window.innerWidth / window.innerHeight;
-            
-            // Calcula a largura necessária para manter a proporção correta com a altura fixa
             const renderWidth = Math.floor(RENDER_HEIGHT * aspect);
             
             this.camera.aspect = aspect;
             this.camera.updateProjectionMatrix();
 
-            // O terceiro argumento 'false' impede que o Three.js altere o estilo CSS do canvas.
-            // Isso mantém o canvas esticado na tela toda (CSS), enquanto o render ocorre em baixa resolução.
             this.renderer.setSize(renderWidth, RENDER_HEIGHT, false);
         };
 
         window.addEventListener('resize', onResize);
-        onResize(); // Ajuste inicial
+        onResize(); 
     },
     createGround: function() {
         const MAP_SIZE = 60; 
         const road = new THREE.Mesh(new THREE.PlaneGeometry(MAP_SIZE, MAP_SIZE), new THREE.MeshPhongMaterial({ color: 0x333333 }));
-        road.rotation.x = -Math.PI / 2; road.receiveShadow = true;
-        this.scene.add(road); this.scene.add(new THREE.GridHelper(MAP_SIZE, MAP_SIZE));
+        road.rotation.x = -Math.PI / 2; 
+        road.position.y = -0.18; // FIX VISUAL: Abaixa o chão visualmente para compensar as pernas
+        road.receiveShadow = true;
+        this.scene.add(road); 
+        
+        const grid = new THREE.GridHelper(MAP_SIZE, MAP_SIZE);
+        grid.position.y = -0.17; // Acompanha o chão (levemente acima para evitar z-fighting)
+        this.scene.add(grid);
     },
     spawnProps: function() {
         const dummyGroup = new THREE.Group();
-        dummyGroup.position.set(5, 0, 5);
+        dummyGroup.position.set(5, -0.18, 5); // FIX VISUAL: Ajusta a base do tronco ao chão rebaixado
+        
         const logDef = GameDefinitions["prop_tree_log"];
         if(logDef) {
             const logMesh = CharFactory.createFromDef("prop_tree_log");

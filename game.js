@@ -1,4 +1,4 @@
-// game.js - Lógica Principal com TARGET SYSTEM FIXADO (Sem Micro-Jitter)
+// game.js - Lógica Principal com TARGET SYSTEM FIXADO (Sem Micro-Jitter) + CORREÇÃO MULTIPLAYER REST
 
 // --- VARIÁVEIS GLOBAIS ---
 let playerGroup = null; 
@@ -272,7 +272,6 @@ function cycleTarget() {
         return;
     }
 
-    // CORREÇÃO CRÍTICA DO MICRO-JITTER:
     potentialTargets.sort((a, b) => {
         const distA = Math.round(a.dist * 10);
         const distB = Math.round(b.dist * 10);
@@ -340,7 +339,7 @@ function updateTargetUI() {
         if(otherPlayers[id].label) {
             if (id === currentTargetID) {
                 otherPlayers[id].label.style.border = "2px solid #e74c3c";
-                otherPlayers[id].label.style.zIndex = "100"; // FIX VISUAL: Traz o nome pro topo
+                otherPlayers[id].label.style.zIndex = "100"; 
             } else {
                 otherPlayers[id].label.style.border = "1px solid rgba(255,255,255,0.2)";
                 otherPlayers[id].label.style.zIndex = "1";
@@ -352,10 +351,8 @@ function updateTargetUI() {
 window.addEventListener('keydown', function(e) {
     const k = e.key.toLowerCase();
     
-    // TARGET KEYS
     if (k === 'tab') {
         e.preventDefault(); 
-        // CORREÇÃO DE DUPLO DISPARO: Impede que segurar TAB faça ele voar pela lista
         if (e.repeat) return; 
         cycleTarget();
         return;
@@ -573,7 +570,8 @@ function receberDadosGlobal(json) {
         seenItems.add(itemData.ref);
         if(!groundItemsMeshes[itemData.ref]) {
             const mesh = CharFactory.createFromDef(itemData.id);
-            mesh.position.set(itemData.x, 0.5, itemData.z); 
+            // FIX: Abaixa os itens também para não flutuarem
+            mesh.position.set(itemData.x, 0.1, itemData.z); 
             Engine.scene.add(mesh);
             groundItemsMeshes[itemData.ref] = mesh;
         } else {
@@ -782,12 +780,16 @@ function animateCharacterRig(mesh, state, isMoving, isRunning, isResting, isFain
 
     if (isFainted) {
         mesh.rotation.x = lerp(mesh.rotation.x, -Math.PI/2, 0.1); 
-        mesh.position.y = lerp(mesh.position.y, groundH + 0.2, 0.1);
+        // CORREÇÃO: Aplica offset apenas no player local. Remotos já recebem o Y com offset da rede.
+        if(mesh === playerGroup) mesh.position.y = lerp(mesh.position.y, groundH + 0.2, 0.1);
+        else mesh.position.y = lerp(mesh.position.y, groundH, 0.1);
     } 
     else if (isResting) {
         mesh.rotation.x = lerp(mesh.rotation.x, 0, 0.1);
         const yOffset = -0.4; 
-        mesh.position.y = lerp(mesh.position.y, groundH + yOffset, 0.1);
+        // CORREÇÃO: Multiplayer Rest Fix (Evita afundar 2x)
+        if(mesh === playerGroup) mesh.position.y = lerp(mesh.position.y, groundH + yOffset, 0.1);
+        else mesh.position.y = lerp(mesh.position.y, groundH, 0.1);
         
         const restStance = STANCES.REST_SIMPLE;
         if(restStance) {
