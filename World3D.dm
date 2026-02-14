@@ -328,6 +328,12 @@ mob
 	// Flag para controle do Delta-Sync de rede
 	var/last_visual_update = 0
 
+	// --- VARIÁVEIS DE VALIDAÇÃO DE HIT (SERVER AUTHORITY) ---
+	var/list/hit_targets_this_swing = list()
+	var/max_targets_per_swing = 1
+	var/attack_window = 0
+	var/projectile_window = 0
+
 	// Slots de Equipamento
 	var/obj/item/slot_hand = null
 	var/obj/item/slot_head = null
@@ -895,7 +901,7 @@ mob
 					RequestInventoryUpdate()
 
 		if(action == "attack" && in_game)
-			if(is_resting) return
+			if(is_resting || is_fainted) return
 			var/base_cost = max_energy * 0.03
 			if(ConsumeEnergy(base_cost))
 				is_attacking = 1
@@ -903,18 +909,39 @@ mob
 				combo_step = text2num(href_list["step"]) 
 				if(!combo_step) combo_step = 1
 				
+				// --- AUTORIDADE HÍBRIDA: SETUP DE AUDITORIA ---
+				hit_targets_this_swing = list() // Limpa quem já apanhou neste ataque
+				
+				if(attack_type == "gun")
+					max_targets_per_swing = 1
+					projectile_window = world.time + 30 // Projétil tem 3 segundos de tempo limite
+				else
+					if(attack_type == "sword") max_targets_per_swing = 3 
+					else max_targets_per_swing = 1 
+					attack_window = world.time + 10 // Ataque Melee tem 1 segundo de tempo limite
+				
 				spawn(3) is_attacking = 0
 
 		if(action == "register_hit" && in_game)
 			var/target_ref = href_list["target_ref"]
 			var/hit_type = href_list["hit_type"]
-			var/obj/target = locate(target_ref)
 			
+			// --- AUTORIDADE HÍBRIDA: AUDITORIA DE TEMPO (Anti-Delay Hack) ---
+			if(hit_type == "projectile")
+				if(world.time > projectile_window) return // Pacote chegou muito tarde (Spam/Hack)
+			else
+				if(world.time > attack_window) return // Pacote chegou muito tarde (Spam/Hack)
+			
+			var/obj/target = locate(target_ref)
 			if(!target) return
 
 			if(istype(target, /mob/npc))
 				var/mob/npc/N = target
 				if(N.npc_type == "vendor" || N.npc_type == "nurse") return 
+
+			// --- AUTORIDADE HÍBRIDA: AUDITORIA DE ALVOS (Anti-AoE Hack e Multi-Hit) ---
+			if(target in hit_targets_this_swing) return // Este alvo já tomou dano deste golpe exato
+			if(hit_targets_this_swing.len >= max_targets_per_swing) return // Já bateu no limite de pessoas por golpe
 
 			var/max_dist = 3.0 
 			var/bonus_dmg = 0
@@ -937,8 +964,12 @@ mob
 				else 
 					max_dist = 2.5; skill_exp_type = "fist"
 			
+			// Validação de Distância do JS com dupla-checagem no backend
 			var/dist = get_dist_euclid(src.real_x, src.real_z, target:real_x, target:real_z)
 			if(dist > max_dist) return
+			
+			// Se chegou aqui, passou em todas as auditorias. Registramos o hit!
+			hit_targets_this_swing += target
 
 			var/prof_bonus = 0
 			if(skill_exp_type == "sword") prof_bonus = prof_sword_lvl * 2
@@ -972,6 +1003,18 @@ mob
 						N.real_z = rand(-10, 10)
 					GainExperience(10)
 					if(skill_exp_type) GainWeaponExp(skill_exp_type, 5)
+			else 
+				// Lógica PvP Autorizada
+				var/mob/T = target
+				src << output("<span class='log-hit'>HIT em [T.name]! Dano: [damage]</span>", "map3d:addLog")
+				T << output("<span class='log-hit' style='color:red'>Você recebeu [damage] de dano de [src.name]!</span>", "map3d:addLog")
+				T.current_hp -= damage
+				if(T.current_hp <= 0)
+					src << output("<span class='log-hit' style='color:red'>Você derrotou [T.name]!</span>", "map3d:addLog")
+					T.GoFaint()
+				GainExperience(10)
+				if(skill_exp_type) GainWeaponExp(skill_exp_type, 5)
+				T.UpdateVisuals()
 
 		if(action == "add_stat" && in_game)
 			if(stat_points > 0)
