@@ -74,6 +74,19 @@
         .prof-bar-bg { width: 100px; height: 4px; background: #333; display: inline-block; margin-left: 10px; vertical-align: middle; }
         .prof-bar-fill { width: 0%; height: 100%; background: #2ecc71; transition: width 0.5s; }
 
+        /* --- TARGET WINDOW (NOVO) --- */
+        #target-window {
+            position: absolute; top: 20px; left: 50%; transform: translateX(-50%);
+            background: rgba(0,0,0,0.8); padding: 10px 20px; border-radius: 8px; 
+            color: white; border: 2px solid #e74c3c; pointer-events: none; 
+            min-width: 250px; display: none; /* Escondido por padrão */
+            box-shadow: 0 0 15px rgba(231, 76, 60, 0.5);
+        }
+        #target-name { font-size: 16px; font-weight: bold; text-align: center; margin-bottom: 5px; color: #fff; text-shadow: 1px 1px 0 #000; }
+        .target-hp-bg { width: 100%; height: 15px; background: #333; border: 1px solid #555; border-radius: 3px; position: relative; }
+        .target-hp-fill { height: 100%; background: #e74c3c; width: 50%; transition: width 0.1s; }
+        .target-hp-text { position: absolute; top: 0; left: 0; width: 100%; height: 100%; text-align: center; font-size: 10px; line-height: 15px; font-weight: bold; text-shadow: 1px 1px 0 #000; }
+
         #controls-help {
             position: absolute; bottom: 20px; left: 20px;
             background: rgba(0,0,0,0.5); color: #ccc;
@@ -210,6 +223,14 @@
         <div id="interaction-hint">[X] Interagir</div>
         <div id="tooltip"></div>
 
+        <div id="target-window">
+            <div id="target-name">Nome do Alvo</div>
+            <div class="target-hp-bg">
+                <div id="target-hp-fill" class="target-hp-fill"></div>
+                <div id="target-hp-text" class="target-hp-text">100/100</div>
+            </div>
+        </div>
+
         <div class="char-info">
             <div id="name-display" style="font-size: 18px; font-weight: bold;">Loading...</div>
             <div style="font-size: 12px; color: #aaa;">Lvl <span id="lvl-display">0</span></div>
@@ -217,14 +238,14 @@
             <div style="font-size:10px;">Energy <span id="en-text"></span></div> <div class="bar-container"><div id="en-bar-fill" class="en-bar"></div></div>
             <div style="font-size:10px;">EXP</div> <div class="bar-container" style="height: 4px;"><div id="xp-bar-fill" class="xp-bar"></div></div>
             <div style="margin-top:5px; color:#f1c40f">💰 <span id="gold-display">0</span> Berries</div>
-            <div style="margin-top:5px; font-size: 10px; color: #ccc;">[C] Status | [I] Mochila</div>
+            <div style="margin-top:5px; font-size: 10px; color: #ccc;">[C] Status | [I] Mochila | [TAB] Alvo</div>
         </div>
 
         <div id="controls-help">
             <strong>CONTROLES:</strong><br>
             [W,A,S,D] Mover<br>[SHIFT] Correr<br>[Espaço] Pular<br>
             [A] Soco &nbsp; [S] Chute<br>[D] Espada [F] Arma<br>
-            [R] Descansar<br>[C] Stats [I] Itens [X] NPC
+            [R] Descansar<br>[C] Stats [I] Itens [TAB] Alvo
         </div>
 
         <div id="stat-window">

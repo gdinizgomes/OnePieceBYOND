@@ -1,4 +1,4 @@
-// game.js - Lógica Principal com CORREÇÃO DE COLISÃO FANTASMA
+// game.js - Lógica Principal com TARGET SYSTEM, AUTO-AIM, BLENDING e CORREÇÕES
 
 // --- VARIÁVEIS GLOBAIS ---
 let playerGroup = null; 
@@ -8,10 +8,15 @@ let isCharacterReady = false;
 let lastPacketTime = Date.now();
 let blockSync = false;
 
+// --- TARGET SYSTEM VARS ---
+let currentTargetID = null; // ID do alvo atual
+const TARGET_MAX_RANGE = 25; // Distância máxima para manter o target
+const TARGET_SELECTION_RANGE = 20; // Distância máxima para selecionar com TAB
+
 // --- DELTA TIME VARS ---
 let lastFrameTime = performance.now();
 const TARGET_FPS = 60;
-const OPTIMAL_FRAME_TIME = 1000 / TARGET_FPS; // ~16.6ms
+const OPTIMAL_FRAME_TIME = 1000 / TARGET_FPS; 
 
 const groundItemsMeshes = {}; 
 const activeProjectiles = []; 
@@ -245,8 +250,109 @@ function unequipItem(slotName) { if(blockSync) return; blockSync = true; window.
 function dropItem(ref, maxAmount) { if(blockSync) return; hideTooltip(); let qty = 1; if(maxAmount > 1) { let input = prompt(`Quantos? (Máx: ${maxAmount})`, "1"); if(input===null) return; qty = parseInt(input); if(isNaN(qty) || qty <= 0) return; if(qty > maxAmount) qty = maxAmount; } blockSync = true; window.location.href = `byond://?src=${BYOND_REF}&action=drop_item&ref=${ref}&amount=${qty}`; setTimeout(() => { blockSync = false; }, 200); }
 function addStat(statName) { if(blockSync) return; blockSync = true; window.location.href = `byond://?src=${BYOND_REF}&action=add_stat&stat=${statName}`; setTimeout(function() { blockSync = false; }, 200); }
 
+// --- TARGET SYSTEM LOGIC ---
+function cycleTarget() {
+    if (!playerGroup) return;
+    
+    // 1. Encontra todos os alvos válidos no alcance
+    const potentialTargets = [];
+    for (const id in otherPlayers) {
+        const other = otherPlayers[id];
+        const dist = playerGroup.position.distanceTo(other.mesh.position);
+        
+        // Verifica alcance e se não está desmaiado (opcional)
+        if (dist <= TARGET_SELECTION_RANGE) {
+            potentialTargets.push({ id: id, dist: dist });
+        }
+    }
+
+    if (potentialTargets.length === 0) {
+        currentTargetID = null;
+        return;
+    }
+
+    // Ordena por distância (opcional, pode ser só ciclar)
+    potentialTargets.sort((a, b) => a.dist - b.dist);
+
+    // Se não tinha target, pega o mais perto
+    if (!currentTargetID) {
+        currentTargetID = potentialTargets[0].id;
+    } else {
+        // Se já tinha, acha o índice e pega o próximo
+        const currentIndex = potentialTargets.findIndex(t => t.id === currentTargetID);
+        if (currentIndex === -1 || currentIndex === potentialTargets.length - 1) {
+            // Se o atual não está na lista (saiu do alcance) ou é o último, volta pro primeiro
+            currentTargetID = potentialTargets[0].id;
+        } else {
+            currentTargetID = potentialTargets[currentIndex + 1].id;
+        }
+    }
+}
+
+function deselectTarget() {
+    currentTargetID = null;
+}
+
+function updateTargetUI() {
+    const targetWin = document.getElementById('target-window');
+    
+    // Se não tem alvo ou alvo desconectou
+    if (!currentTargetID || !otherPlayers[currentTargetID]) {
+        targetWin.style.display = 'none';
+        
+        // Adiciona um "highlight" visual (opcional) - remove de todos
+        for (const id in otherPlayers) {
+            if(otherPlayers[id].label) otherPlayers[id].label.style.border = "1px solid rgba(255,255,255,0.2)";
+        }
+        return;
+    }
+
+    const target = otherPlayers[currentTargetID];
+    
+    // Verifica distância para limpar target automaticamente
+    const dist = playerGroup.position.distanceTo(target.mesh.position);
+    if (dist > TARGET_MAX_RANGE) {
+        deselectTarget();
+        return;
+    }
+
+    // Exibe Janela
+    targetWin.style.display = 'block';
+    
+    // Atualiza Nome
+    document.getElementById('target-name').innerText = target.name || "Desconhecido";
+    
+    // Atualiza HP
+    const hp = target.currentHp || 100;
+    const maxHp = target.maxHp || 100;
+    const pct = Math.max(0, Math.min(100, (hp / maxHp) * 100));
+    
+    document.getElementById('target-hp-fill').style.width = pct + "%";
+    document.getElementById('target-hp-text').innerText = `${Math.floor(hp)}/${maxHp}`;
+
+    // Highlight Visual no Label (Borda Vermelha no alvo)
+    for (const id in otherPlayers) {
+        if(otherPlayers[id].label) {
+            otherPlayers[id].label.style.border = (id === currentTargetID) ? "2px solid #e74c3c" : "1px solid rgba(255,255,255,0.2)";
+        }
+    }
+}
+
 window.addEventListener('keydown', function(e) {
     const k = e.key.toLowerCase();
+    
+    // TARGET KEYS
+    if (e.key === 'Tab') {
+        e.preventDefault(); // Impede o tab de mudar o foco do navegador
+        cycleTarget();
+    }
+    if (e.key === 'Escape') {
+        if (isInvWindowOpen) toggleInventory();
+        else if (isStatWindowOpen) toggleStats();
+        else if (isShopOpen) toggleShop();
+        else deselectTarget();
+    }
+
     if(k === 'c') toggleStats(); if(k === 'i') toggleInventory(); if(k === 'x') interact();
     if(k === 'e' && !blockSync) { blockSync = true; window.location.href = `byond://?src=${BYOND_REF}&action=pick_up`; setTimeout(function() { blockSync = false; }, 300); }
     if(k === 'r' && !blockSync) { blockSync = true; window.location.href = `byond://?src=${BYOND_REF}&action=toggle_rest`; setTimeout(function() { blockSync = false; }, 500); }
@@ -255,6 +361,16 @@ window.addEventListener('keydown', function(e) {
 window.addEventListener('keyup', function(e) { if(e.key === 'Shift') isRunning = false; });
 
 function interact() {
+    // Prioriza o Target se estiver perto
+    if (currentTargetID && otherPlayers[currentTargetID]) {
+        let dist = playerGroup.position.distanceTo(otherPlayers[currentTargetID].mesh.position);
+        if (dist < 3.0) {
+            window.location.href = `byond://?src=${BYOND_REF}&action=interact_npc&ref=${currentTargetID}`;
+            return;
+        }
+    }
+
+    // Se não, busca o mais perto
     let targetRef = ""; for(let id in otherPlayers) { let dist = playerGroup.position.distanceTo(otherPlayers[id].mesh.position); if(dist < 3.0) { targetRef = id; break; } }
     if(targetRef !== "") window.location.href = `byond://?src=${BYOND_REF}&action=interact_npc&ref=${targetRef}`;
 }
@@ -322,7 +438,7 @@ function spawnHitbox(size, forwardOffset, lifetime, customData, yOffset) {
 }
 
 const tempBoxAttacker = new THREE.Box3(); const tempBoxTarget = new THREE.Box3();
-function updateCombatHitboxes(timeScale) { // Recebe timeScale para projéteis
+function updateCombatHitboxes(timeScale) { 
     for (let i = activeProjectiles.length - 1; i >= 0; i--) {
         const p = activeProjectiles[i]; 
         const moveStep = p.speed * timeScale;
@@ -365,6 +481,16 @@ function performAttack(type) {
     if(type === "sword" && !hasSword) { addLog("Sem espada!", "log-miss"); return; }
     if(type === "gun" && !hasGun) { addLog("Sem arma!", "log-miss"); return; }
     
+    // --- AUTO-AIM: Virar para o alvo antes de atacar ---
+    if (currentTargetID && otherPlayers[currentTargetID]) {
+        const targetMesh = otherPlayers[currentTargetID].mesh;
+        const dx = targetMesh.position.x - playerGroup.position.x;
+        const dz = targetMesh.position.z - playerGroup.position.z;
+        // Math.atan2(x, z) dá o ângulo Y correto no Three.js para o setup atual
+        playerGroup.rotation.y = Math.atan2(dx, dz);
+        Input.camAngle = playerGroup.rotation.y + Math.PI; // Atualiza camera para ficar nas costas (opcional, mas bom)
+    }
+
     isAttacking = true; 
     lastCombatActionTime = Date.now();
     let windupStance = "SWORD_WINDUP"; let atkStance = "SWORD_ATK_1"; let idleStance = "SWORD_IDLE";
@@ -465,7 +591,6 @@ function receberDadosGlobal(json) {
         if (!otherPlayers[id]) {
             if(pData.skin) {
                 const newChar = CharFactory.createCharacter(pData.skin, pData.cloth);
-                // --- FIX: INSTANT SNAP NO PRIMEIRO FRAME ---
                 newChar.position.set(pData.x, pData.y, pData.z); 
                 
                 Engine.scene.add(newChar); Engine.collidables.push(newChar);
@@ -474,11 +599,32 @@ function receberDadosGlobal(json) {
                 newChar.userData.lastHead = ""; newChar.userData.lastBody = "";
                 newChar.userData.lastLegs = ""; newChar.userData.lastFeet = ""; newChar.userData.lastItem = "";
                 
-                otherPlayers[id] = { mesh: newChar, label: label, hpFill: label.querySelector('.mini-hp-fill'), startX: pData.x, startY: pData.y, startZ: pData.z, startRot: pData.rot, targetX: pData.x, targetY: pData.y, targetZ: pData.z, targetRot: pData.rot, lastPacketTime: now, lerpDuration: 150, attacking: pData.a, attackType: pData.at, comboStep: pData.cs, resting: pData.rest, fainted: pData.ft, lastItem: "", isNPC: (pData.npc === 1), npcType: pData.type, gender: pData.gen, isRunning: false };
+                otherPlayers[id] = { 
+                    mesh: newChar, 
+                    label: label, 
+                    hpFill: label.querySelector('.mini-hp-fill'), 
+                    // Salva status para UI do Target
+                    name: pData.name,
+                    currentHp: pData.hp,
+                    maxHp: pData.mhp,
+                    
+                    startX: pData.x, startY: pData.y, startZ: pData.z, startRot: pData.rot, 
+                    targetX: pData.x, targetY: pData.y, targetZ: pData.z, targetRot: pData.rot, 
+                    lastPacketTime: now, lerpDuration: 150, 
+                    attacking: pData.a, attackType: pData.at, comboStep: pData.cs, 
+                    resting: pData.rest, fainted: pData.ft, lastItem: "", 
+                    isNPC: (pData.npc === 1), npcType: pData.type, gender: pData.gen, isRunning: false 
+                };
             }
         } else {
             const other = otherPlayers[id];
             const mesh = other.mesh;
+            
+            // Atualiza status (vital para a UI do target funcionar)
+            other.currentHp = pData.hp;
+            other.maxHp = pData.mhp;
+            other.name = pData.name; // Caso mude ou carregue depois
+
             other.startX = mesh.position.x; other.startY = mesh.position.y; other.startZ = mesh.position.z; other.startRot = mesh.rotation.y;
             other.targetX = pData.x; other.targetY = pData.y; other.targetZ = pData.z; other.targetRot = pData.rot; other.lastPacketTime = now;
             other.attacking = pData.a; other.attackType = pData.at; 
@@ -503,20 +649,14 @@ function receberDadosGlobal(json) {
     // --- CORREÇÃO DE LIMPEZA DE JOGADORES (GHOST COLLISION FIX) ---
     for (const id in otherPlayers) { 
         if (!receivedIds.has(id)) { 
-            // 1. Remove da Cena
             Engine.scene.remove(otherPlayers[id].mesh); 
-            
-            // 2. Remove da Lista de Colisões (CRÍTICO!)
-            // Sem isso, a caixa de colisão continua lá e te prende
             const colIndex = Engine.collidables.indexOf(otherPlayers[id].mesh);
-            if(colIndex > -1) {
-                Engine.collidables.splice(colIndex, 1);
-            }
-
-            // 3. Remove Interface
+            if(colIndex > -1) Engine.collidables.splice(colIndex, 1);
             otherPlayers[id].label.remove(); 
             
-            // 4. Apaga do objeto
+            // Se o alvo atual desconectou, limpa o target
+            if (currentTargetID === id) deselectTarget();
+
             delete otherPlayers[id]; 
         } 
     }
@@ -712,6 +852,9 @@ function animate() {
 
     animTime += 0.1 * timeScale; 
 
+    // Atualiza a UI do Target a cada frame
+    updateTargetUI();
+
     updateCombatHitboxes(timeScale); 
     
     if (isCharacterReady) {
@@ -743,8 +886,14 @@ function animate() {
                 let canMoveZ = true;
                 if(nextZ > MAP_LIMIT || nextZ < -MAP_LIMIT || checkCollision(playerGroup.position.x, playerGroup.position.y, nextZ) || checkPlayerCollision(playerGroup.position.x, nextZ)) { canMoveZ = false; } else { playerGroup.position.z = nextZ; }
 
-                const targetCharRot = Math.atan2(inputX, inputZ); playerGroup.rotation.y = targetCharRot;
-                if(!Input.keys.arrowdown && !Input.mouseRight) Input.camAngle = lerpAngle(Input.camAngle, targetCharRot + Math.PI, 0.02 * timeScale); 
+                // Se não estiver atacando, a direção do movimento gira o corpo
+                // Se estiver atacando, o performAttack já travou a mira no alvo
+                if (!isAttacking) {
+                    const targetCharRot = Math.atan2(inputX, inputZ); 
+                    playerGroup.rotation.y = targetCharRot;
+                }
+                
+                if(!Input.keys.arrowdown && !Input.mouseRight) Input.camAngle = lerpAngle(Input.camAngle, playerGroup.rotation.y + Math.PI, 0.02 * timeScale); 
             }
 
             if(Input.keys[" "] && !isJumping && Math.abs(playerGroup.position.y - groundHeight) < 0.1) { verticalVelocity = currentJumpForce; isJumping = true; }
