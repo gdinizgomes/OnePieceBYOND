@@ -1,0 +1,252 @@
+// client/CombatVisualSystem.js
+
+const CombatVisualSystem = {
+    activeProjectiles: [],
+    activeHitboxes: [],
+    activeSkillProjectiles: [],
+    hitboxPool: [],
+    projectilePool: [],
+    tempBoxAttacker: new THREE.Box3(),
+    tempBoxTarget: new THREE.Box3(),
+
+    getHitbox: function(size, colorHex) {
+        let m;
+        if (this.hitboxPool.length > 0) {
+            m = this.hitboxPool.pop();
+        } else {
+            const geo = new THREE.BoxGeometry(1, 1, 1);
+            const mat = new THREE.MeshBasicMaterial({ color: 0xFF0000, wireframe: true, transparent: true, opacity: 0.3 });
+            m = new THREE.Mesh(geo, mat);
+        }
+        m.scale.set(size.x, size.y, size.z);
+        m.material.color.setHex(colorHex || 0xFF0000);
+        return m;
+    },
+
+    releaseHitbox: function(m) {
+        Engine.scene.remove(m);
+        this.hitboxPool.push(m);
+    },
+
+    getProjectile: function(colorHex, scaleArr) {
+        let m;
+        if (this.projectilePool.length > 0) {
+            m = this.projectilePool.pop();
+        } else {
+            const geo = new THREE.BoxGeometry(1, 1, 1);
+            const mat = new THREE.MeshBasicMaterial({ color: 0xFFFFFF });
+            m = new THREE.Mesh(geo, mat);
+        }
+        m.scale.set(scaleArr[0], scaleArr[1], scaleArr[2]);
+        m.material.color.setHex(colorHex);
+        return m;
+    },
+
+    releaseProjectile: function(m) {
+        while(m.children.length > 0){ m.remove(m.children[0]); }
+        Engine.scene.remove(m);
+        this.projectilePool.push(m);
+    },
+
+    spawnDamageNumber: function(targetRef, amount) {
+        if(!EntityManager.otherPlayers[targetRef]) return;
+        const mesh = EntityManager.otherPlayers[targetRef].mesh;
+        const tempV = new THREE.Vector3(mesh.position.x, mesh.position.y + 2.5, mesh.position.z);
+        tempV.project(Engine.camera);
+        const x = (tempV.x * .5 + .5) * window.innerWidth;
+        const y = (-(tempV.y * .5) + .5) * window.innerHeight;
+        const div = document.createElement('div');
+        div.className = 'dmg-popup';
+        div.innerText = "-" + amount;
+        div.style.left = x + 'px';
+        div.style.top = y + 'px';
+        document.body.appendChild(div);
+        setTimeout(() => { div.remove(); }, 1000);
+    },
+
+    fireProjectile: function(originMesh, projectileDef, isMine) {
+        const s = projectileDef.scale || [0.1, 0.1, 0.1];
+        const bullet = this.getProjectile(projectileDef.color, s);
+        
+        if(!originMesh) return; 
+        
+        const bodyRot = originMesh.rotation.y; 
+        const sin = Math.sin(bodyRot); 
+        const cos = Math.cos(bodyRot);
+        
+        bullet.position.copy(originMesh.position); 
+        bullet.position.y += 1.3; 
+        bullet.position.x += sin * 0.5 - cos * 0.4; 
+        bullet.position.z += cos * 0.5 + sin * 0.4; 
+        
+        let dX = sin; let dY = 0; let dZ = cos;
+        
+        if (isMine && TargetSystem.currentTargetID && EntityManager.otherPlayers[TargetSystem.currentTargetID] && EntityManager.otherPlayers[TargetSystem.currentTargetID].mesh) {
+            const targetMesh = EntityManager.otherPlayers[TargetSystem.currentTargetID].mesh;
+            const targetPos = new THREE.Vector3(targetMesh.position.x, targetMesh.position.y + 0.9, targetMesh.position.z);
+            const bulletPos = bullet.position.clone();
+            
+            const dirVec = new THREE.Vector3().subVectors(targetPos, bulletPos).normalize();
+            dX = dirVec.x; dY = dirVec.y; dZ = dirVec.z;
+            
+            bullet.lookAt(targetPos); 
+        } else {
+            bullet.rotation.y = bodyRot; 
+        }
+
+        Engine.scene.add(bullet);
+        
+        this.activeProjectiles.push({ 
+            mesh: bullet, dirX: dX, dirY: dY, dirZ: dZ, 
+            speed: projectileDef.speed, distTraveled: 0, 
+            maxDist: projectileDef.range || 10, isMine: isMine 
+        });
+    },
+
+    spawnHitbox: function(playerMesh, size, forwardOffset, lifetime, customData, yOffset) {
+        if(!playerMesh) return;
+        const hitbox = this.getHitbox(size, 0xFF0000);
+        hitbox.position.copy(playerMesh.position); 
+        hitbox.position.y += (yOffset !== undefined ? yOffset : 1.0); 
+        const bodyRot = playerMesh.rotation.y; 
+        const sin = Math.sin(bodyRot); const cos = Math.cos(bodyRot);
+        hitbox.position.x += sin * forwardOffset; hitbox.position.z += cos * forwardOffset; hitbox.rotation.y = bodyRot;
+        
+        Engine.scene.add(hitbox);
+        this.activeHitboxes.push({ mesh: hitbox, startTime: Date.now(), duration: lifetime, hasHit: [], data: customData || {} });
+    },
+
+    fireSkillProjectile: function(originMesh, skillId, ownerRef) {
+        const def = GameSkills[skillId];
+        if(!def || !originMesh) return;
+
+        const isMine = (ownerRef === EntityManager.myID);
+
+        const hitboxMesh = this.getProjectile(0x00FF00, def.hitboxSize);
+        hitboxMesh.material.wireframe = true;
+        hitboxMesh.material.transparent = true;
+        hitboxMesh.material.opacity = 0.5; 
+
+        if (def.visualDef && GameDefinitions[def.visualDef]) {
+            const skinData = GameDefinitions[def.visualDef];
+            const skinMesh = CharFactory.createFromDef(def.visualDef, skinData.visual);
+            hitboxMesh.add(skinMesh); 
+        }
+
+        const bodyRot = originMesh.rotation.y;
+        const sin = Math.sin(bodyRot); const cos = Math.cos(bodyRot);
+        
+        hitboxMesh.position.copy(originMesh.position);
+        hitboxMesh.position.y += 1.0; 
+        hitboxMesh.position.x += sin * 1.0; 
+        hitboxMesh.position.z += cos * 1.0;
+
+        let dX = sin; let dY = 0; let dZ = cos;
+        
+        if (isMine && TargetSystem.currentTargetID && EntityManager.otherPlayers[TargetSystem.currentTargetID] && EntityManager.otherPlayers[TargetSystem.currentTargetID].mesh) {
+            const targetMesh = EntityManager.otherPlayers[TargetSystem.currentTargetID].mesh;
+            const targetPos = new THREE.Vector3(targetMesh.position.x, targetMesh.position.y + 0.9, targetMesh.position.z);
+            const dirVec = new THREE.Vector3().subVectors(targetPos, hitboxMesh.position).normalize();
+            dX = dirVec.x; dY = dirVec.y; dZ = dirVec.z;
+        }
+
+        hitboxMesh.rotation.y = Math.atan2(dX, dZ);
+
+        Engine.scene.add(hitboxMesh);
+        
+        this.activeSkillProjectiles.push({
+            mesh: hitboxMesh, skillId: skillId, def: def,
+            ownerRef: ownerRef, isMine: isMine,
+            dirX: dX, dirY: dY, dirZ: dZ,
+            distTraveled: 0, hasHit: [] 
+        });
+    },
+
+    checkCollisions: function(attackerBox, type, objRef) {
+        for (let id in EntityManager.otherPlayers) {
+            const target = EntityManager.otherPlayers[id]; 
+            
+            if(type === "melee" && objRef.hasHit.includes(id)) continue;
+            this.tempBoxTarget.setFromObject(target.mesh);
+            if (attackerBox.intersectsBox(this.tempBoxTarget)) {
+                let extra = "";
+                if(type === "melee" && objRef.data && objRef.data.step) extra = `&combo=${objRef.data.step}`;
+                if(typeof BYOND_REF !== 'undefined') NetworkSystem.queueCommand(`action=register_hit&target_ref=${id}&hit_type=${type}${extra}`);
+                
+                if(type === "projectile") { 
+                    this.releaseProjectile(objRef.mesh); 
+                    objRef.distTraveled = 99999; 
+                } else if(type === "melee") { 
+                    objRef.hasHit.push(id); 
+                    objRef.mesh.material.color.setHex(0xFFFFFF); 
+                }
+            }
+        }
+    },
+
+    update: function(timeScale) { 
+        for (let i = this.activeProjectiles.length - 1; i >= 0; i--) {
+            const p = this.activeProjectiles[i]; 
+            const moveStep = p.speed * timeScale;
+            
+            p.mesh.position.x += p.dirX * moveStep; 
+            p.mesh.position.y += (p.dirY || 0) * moveStep; 
+            p.mesh.position.z += p.dirZ * moveStep; 
+            p.distTraveled += moveStep;
+            
+            if (p.isMine) { this.tempBoxAttacker.setFromObject(p.mesh); this.checkCollisions(this.tempBoxAttacker, "projectile", p); }
+            if (p.distTraveled >= p.maxDist) { this.releaseProjectile(p.mesh); this.activeProjectiles.splice(i, 1); }
+        }
+
+        for (let i = this.activeSkillProjectiles.length - 1; i >= 0; i--) {
+            const p = this.activeSkillProjectiles[i]; 
+            const moveStep = p.def.speed * timeScale;
+            
+            p.mesh.position.x += p.dirX * moveStep; 
+            p.mesh.position.y += p.dirY * moveStep; 
+            p.mesh.position.z += p.dirZ * moveStep; 
+            p.distTraveled += moveStep;
+            
+            if (p.isMine) { 
+                this.tempBoxAttacker.setFromObject(p.mesh); 
+                
+                for (let id in EntityManager.otherPlayers) {
+                    if(p.hasHit.includes(id)) continue; 
+                    
+                    this.tempBoxTarget.setFromObject(EntityManager.otherPlayers[id].mesh);
+                    if (this.tempBoxAttacker.intersectsBox(this.tempBoxTarget)) {
+                        if(typeof BYOND_REF !== 'undefined') {
+                            NetworkSystem.queueCommand(`action=register_skill_hit&skill_id=${p.skillId}&target_ref=${id}`);
+                        }
+                        
+                        p.hasHit.push(id);
+                        
+                        if (!p.def.pierce) {
+                            this.releaseProjectile(p.mesh); 
+                            p.distTraveled = 99999; 
+                            break; 
+                        }
+                    }
+                }
+            }
+            
+            if (p.distTraveled >= p.def.range) { 
+                this.releaseProjectile(p.mesh); 
+                this.activeSkillProjectiles.splice(i, 1); 
+            }
+        }
+
+        const now = Date.now();
+        for (let i = this.activeHitboxes.length - 1; i >= 0; i--) {
+            const hb = this.activeHitboxes[i]; 
+            if (now - hb.startTime > hb.duration) { 
+                this.releaseHitbox(hb.mesh); 
+                this.activeHitboxes.splice(i, 1); 
+                continue; 
+            }
+            this.tempBoxAttacker.setFromObject(hb.mesh); this.checkCollisions(this.tempBoxAttacker, "melee", hb);
+        }
+    }
+};
+
+window.CombatVisualSystem = CombatVisualSystem;

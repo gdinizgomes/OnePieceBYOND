@@ -716,6 +716,9 @@ mob
 		// ARQUIVOS MODULARIZADOS FISICAMENTE SENDO ENVIADOS:
 		src << browse_rsc(file("client/NetworkSystem.js"), "NetworkSystem.js")
 		src << browse_rsc(file("client/UISystem.js"), "UISystem.js")
+		src << browse_rsc(file("client/TargetSystem.js"), "TargetSystem.js")
+		src << browse_rsc(file("client/CombatVisualSystem.js"), "CombatVisualSystem.js")
+		src << browse_rsc(file("client/CombatSystem.js"), "CombatSystem.js")
 		
 		src << browse_rsc(file("game.js"), "game.js")
 
