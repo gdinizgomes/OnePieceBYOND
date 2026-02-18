@@ -11,7 +11,6 @@ world/New()
 	world.maxz = 1
 	..()
 	
-	// Carrega a "Fonte Única de Verdade" Data-Driven
 	var/skills_file = file2text('shared/SkillDefinitions.json')
 	if(skills_file)
 		try
@@ -43,133 +42,141 @@ datum/game_controller
 		set background = 1
 		while(running)
 			server_tick++
-			var/full_sync = (server_tick % 20 == 0) 
 			
-			var/list/all_entity_data = list()
-			var/list/active_clients = list()
-			
-			for(var/mob/M in global_players_list)
-				if(M.client && M.in_game && M.char_loaded)
-					active_clients += M
-					
-				if(M.in_game && M.char_loaded)
-					var/pid = "\ref[M]"
-					
-					var/list/pData = list(
-						"x" = M.R2(M.real_x), "y" = M.R2(M.real_y), "z" = M.R2(M.real_z), "rot" = M.R2(M.real_rot),
-						"a" = M.is_attacking, "at" = M.attack_type, "cs" = M.combo_step,
-						"rn" = M.is_running, "rest" = M.is_resting, "ft" = M.is_fainted,
-						"hp" = M.current_hp, "npc" = 0
+			// COFRE DE SEGURANÇA: Impede que o servidor caia se ocorrer um erro matemático grave!
+			try
+				var/full_sync = (server_tick % 20 == 0) 
+				
+				var/list/all_entity_data = list()
+				var/list/active_clients = list()
+				
+				for(var/mob/M in global_players_list)
+					if(M.client && M.in_game && M.char_loaded)
+						active_clients += M
+						
+					if(M.in_game && M.char_loaded)
+						var/pid = "\ref[M]"
+						
+						var/list/pData = list(
+							"x" = M.R2(M.real_x), "y" = M.R2(M.real_y), "z" = M.R2(M.real_z), "rot" = M.R2(M.real_rot),
+							"a" = M.is_attacking, "at" = M.attack_type, "cs" = M.combo_step,
+							"rn" = M.is_running, "rest" = M.is_resting, "ft" = M.is_fainted,
+							"hp" = M.current_hp, "npc" = 0
+						)
+
+						var/send_visuals = full_sync || (M.last_visual_update >= server_tick - 5)
+						if(send_visuals)
+							var/e_hand = ""; var/e_head = ""; var/e_body = ""; var/e_legs = ""; var/e_feet = ""
+							if(M.slot_hand) e_hand = M.slot_hand.id_visual
+							if(M.slot_head) e_head = M.slot_head.id_visual
+							if(M.slot_body) e_body = M.slot_body.id_visual
+							if(M.slot_legs) e_legs = M.slot_legs.id_visual
+							if(M.slot_feet) e_feet = M.slot_feet.id_visual
+
+							pData["it"] = e_hand; pData["eq_h"] = e_head; pData["eq_b"] = e_body; pData["eq_l"] = e_legs; pData["eq_f"] = e_feet
+							pData["name"] = M.name; pData["skin"] = M.skin_color; pData["cloth"] = M.cloth_color
+							pData["mhp"] = M.max_hp; pData["gen"] = M.char_gender
+
+						all_entity_data[pid] = pData
+
+				for(var/mob/npc/N in global_npcs)
+					var/nid = "\ref[N]"
+					var/list/nData = list(
+						"x" = N.R2(N.real_x), "y" = N.R2(N.real_y), "z" = N.R2(N.real_z), "rot" = N.R2(N.real_rot),
+						"a" = 0, "at" = "", "cs" = 0, "rn" = 0, "rest" = 0, "ft" = 0,
+						"hp" = N.current_hp, "npc" = 1
 					)
 
-					var/send_visuals = full_sync || (M.last_visual_update >= server_tick - 5)
+					var/send_visuals = full_sync || (N.last_visual_update >= server_tick - 5)
 					if(send_visuals)
-						var/e_hand = ""; var/e_head = ""; var/e_body = ""; var/e_legs = ""; var/e_feet = ""
-						if(M.slot_hand) e_hand = M.slot_hand.id_visual
-						if(M.slot_head) e_head = M.slot_head.id_visual
-						if(M.slot_body) e_body = M.slot_body.id_visual
-						if(M.slot_legs) e_legs = M.slot_legs.id_visual
-						if(M.slot_feet) e_feet = M.slot_feet.id_visual
+						nData["type"] = N.npc_type
+						nData["name"] = N.name; nData["skin"] = N.skin_color; nData["cloth"] = N.cloth_color
+						nData["mhp"] = N.max_hp; nData["gen"] = N.char_gender
+						if(N.npc_type == "prop") nData["prop_id"] = N:prop_id
 
-						pData["it"] = e_hand; pData["eq_h"] = e_head; pData["eq_b"] = e_body; pData["eq_l"] = e_legs; pData["eq_f"] = e_feet
-						pData["name"] = M.name; pData["skin"] = M.skin_color; pData["cloth"] = M.cloth_color
-						pData["mhp"] = M.max_hp; pData["gen"] = M.char_gender
-
-					all_entity_data[pid] = pData
-
-			for(var/mob/npc/N in global_npcs)
-				var/nid = "\ref[N]"
+					all_entity_data[nid] = nData
 				
-				var/list/nData = list(
-					"x" = N.R2(N.real_x), "y" = N.R2(N.real_y), "z" = N.R2(N.real_z), "rot" = N.R2(N.real_rot),
-					"a" = 0, "at" = "", "cs" = 0, "rn" = 0, "rest" = 0, "ft" = 0,
-					"hp" = N.current_hp, "npc" = 1
-				)
-
-				var/send_visuals = full_sync || (N.last_visual_update >= server_tick - 5)
-				if(send_visuals)
-					nData["type"] = N.npc_type
-					nData["name"] = N.name; nData["skin"] = N.skin_color; nData["cloth"] = N.cloth_color
-					nData["mhp"] = N.max_hp; nData["gen"] = N.char_gender
-					if(N.npc_type == "prop") nData["prop_id"] = N:prop_id
-
-				all_entity_data[nid] = nData
-			
-			var/send_ground = full_sync || (ground_dirty_tick >= server_tick - 5)
-			var/list/ground_data = list()
-			
-			if(send_ground)
-				for(var/obj/item/I in global_ground_items)
-					if(isturf(I.loc))
-						ground_data += list(list("ref" = "\ref[I]", "id" = I.id_visual, "x" = I.real_x, "y" = I.real_y, "z" = I.real_z))
-					else
-						global_ground_items -= I
-
-			for(var/mob/M in active_clients)
-				var/faint_rem = 0
-				if(M.is_fainted && M.faint_end_time > world.time) faint_rem = round((M.faint_end_time - world.time) / 10)
-
-				var/list/my_visible_entities = list()
-				for(var/id in all_entity_data)
-					var/list/edata = all_entity_data[id]
-					var/dist = sqrt((edata["x"] - M.real_x)**2 + (edata["z"] - M.real_z)**2)
-					if(dist <= 40.0)
-						my_visible_entities[id] = edata
+				var/send_ground = full_sync || (ground_dirty_tick >= server_tick - 5)
+				var/list/ground_data = list()
 				
-				var/list/my_visible_ground = list()
 				if(send_ground)
-					for(var/list/gdata in ground_data)
-						var/dist = sqrt((gdata["x"] - M.real_x)**2 + (gdata["z"] - M.real_z)**2)
-						if(dist <= 40.0)
-							my_visible_ground += list(gdata)
+					for(var/obj/item/I in global_ground_items)
+						if(isturf(I.loc))
+							ground_data += list(list("ref" = "\ref[I]", "id" = I.id_visual, "x" = I.real_x, "y" = I.real_y, "z" = I.real_z))
+						else
+							global_ground_items -= I
 
-				var/list/my_global_json_list = list("others" = my_visible_entities, "t" = world.time)
-				if(send_ground) my_global_json_list["ground"] = my_visible_ground
-				
-				if(global_events.len > 0)
-					my_global_json_list["evts"] = list()
-					for(var/list/evt in global_events)
-						var/dist = sqrt((evt["x"] - M.real_x)**2 + (evt["z"] - M.real_z)**2)
-						if(dist <= 40.0) my_global_json_list["evts"] += list(evt)
+				for(var/mob/M in active_clients)
+					var/faint_rem = 0
+					if(M.is_fainted && M.faint_end_time > world.time) faint_rem = round((M.faint_end_time - world.time) / 10)
 
-				var/global_json = json_encode(my_global_json_list)
+					var/list/my_visible_entities = list()
+					for(var/id in all_entity_data)
+						var/list/edata = all_entity_data[id]
+						var/dist = sqrt((edata["x"] - M.real_x)**2 + (edata["z"] - M.real_z)**2)
+						if(dist <= 40.0) my_visible_entities[id] = edata
+					
+					var/list/my_visible_ground = list()
+					if(send_ground)
+						for(var/list/gdata in ground_data)
+							var/dist = sqrt((gdata["x"] - M.real_x)**2 + (gdata["z"] - M.real_z)**2)
+							if(dist <= 40.0) my_visible_ground += list(gdata)
 
-				var/my_hand = ""; var/my_head = ""; var/my_body = ""; var/my_legs = ""; var/my_feet = ""
-				if(M.slot_hand) my_hand = M.slot_hand.id_visual
-				if(M.slot_head) my_head = M.slot_head.id_visual
-				if(M.slot_body) my_body = M.slot_body.id_visual
-				if(M.slot_legs) my_legs = M.slot_legs.id_visual
-				if(M.slot_feet) my_feet = M.slot_feet.id_visual
+					var/list/my_global_json_list = list("others" = my_visible_entities, "t" = world.time)
+					if(send_ground) my_global_json_list["ground"] = my_visible_ground
+					
+					if(global_events.len > 0)
+						my_global_json_list["evts"] = list()
+						for(var/list/evt in global_events)
+							var/dist = sqrt((evt["x"] - M.real_x)**2 + (evt["z"] - M.real_z)**2)
+							if(dist <= 40.0) my_global_json_list["evts"] += list(evt)
 
-				var/list/my_stats = list(
-					"my_id" = "\ref[M]",
-					"me" = list(
-						"loaded" = 1,
-						"x" = M.R2(M.real_x), "y" = M.R2(M.real_y), "z" = M.R2(M.real_z), "rot" = M.R2(M.real_rot),
-						"nick" = M.name, "class" = M.char_class,
-						"lvl" = M.level, "exp" = M.experience, "req_exp" = M.req_experience, "pts" = M.stat_points,
-						"str" = M.strength, "vit" = M.vitality, "agi" = M.agility, "dex" = M.dexterity, "von" = M.willpower, "sor" = M.luck,
-						"atk" = M.calc_atk, "ratk" = M.calc_ratk, "def" = M.calc_def, "hit" = M.calc_hit, "flee" = M.calc_flee, "crit" = M.calc_crit,
-						"gold" = M.gold, "hp" = M.current_hp, "max_hp" = M.max_hp, "en" = M.current_energy, "max_en" = M.max_energy,
-						"pp" = M.prof_punch_lvl, "pp_x" = M.prof_punch_exp, "pp_r" = M.GetProficiencyReq(M.prof_punch_lvl),
-						"pk" = M.prof_kick_lvl,  "pk_x" = M.prof_kick_exp,  "pk_r" = M.GetProficiencyReq(M.prof_kick_lvl),
-						"ps" = M.prof_sword_lvl, "ps_x" = M.prof_sword_exp, "ps_r" = M.GetProficiencyReq(M.prof_sword_lvl),
-						"pg" = M.prof_gun_lvl,   "pg_x" = M.prof_gun_exp,   "pg_r" = M.GetProficiencyReq(M.prof_gun_lvl),
-						"mspd" = M.calc_move_speed, "jmp" = M.calc_jump_power,
-						"rest" = M.is_resting, "ft" = M.is_fainted, "rem" = faint_rem,
-						"skin" = M.skin_color, "cloth" = M.cloth_color, "gen" = M.char_gender,
-						"it" = my_hand, "eq_h" = my_head, "eq_b" = my_body, "eq_l" = my_legs, "eq_f" = my_feet,
-						"kills" = M.kills, "deaths" = M.deaths, "lethal" = M.lethality_mode 
-					),
-					"evts" = M.pending_visuals
-				)
-				
-				if(M.pending_visuals.len > 0) M.pending_visuals = list()
+					var/global_json = json_encode(my_global_json_list)
 
-				M << output(global_json, "map3d:receberDadosGlobal")
-				M << output(json_encode(my_stats), "map3d:receberDadosPessoal")
+					var/my_hand = ""; var/my_head = ""; var/my_body = ""; var/my_legs = ""; var/my_feet = ""
+					if(M.slot_hand) my_hand = M.slot_hand.id_visual
+					if(M.slot_head) my_head = M.slot_head.id_visual
+					if(M.slot_body) my_body = M.slot_body.id_visual
+					if(M.slot_legs) my_legs = M.slot_legs.id_visual
+					if(M.slot_feet) my_feet = M.slot_feet.id_visual
 
-			if(global_events.len > 0) global_events = list()
+					var/list/my_stats = list(
+						"my_id" = "\ref[M]",
+						"me" = list(
+							"loaded" = 1,
+							"x" = M.R2(M.real_x), "y" = M.R2(M.real_y), "z" = M.R2(M.real_z), "rot" = M.R2(M.real_rot),
+							"nick" = M.name, "class" = M.char_class,
+							"lvl" = M.level, "exp" = M.experience, "req_exp" = M.req_experience, "pts" = M.stat_points,
+							"str" = M.strength, "vit" = M.vitality, "agi" = M.agility, "dex" = M.dexterity, "von" = M.willpower, "sor" = M.luck,
+							"atk" = M.calc_atk, "ratk" = M.calc_ratk, "def" = M.calc_def, "hit" = M.calc_hit, "flee" = M.calc_flee, "crit" = M.calc_crit,
+							"gold" = M.gold, "hp" = M.current_hp, "max_hp" = M.max_hp, "en" = M.current_energy, "max_en" = M.max_energy,
+							"pp" = M.prof_punch_lvl, "pp_x" = M.prof_punch_exp, "pp_r" = M.GetProficiencyReq(M.prof_punch_lvl),
+							"pk" = M.prof_kick_lvl,  "pk_x" = M.prof_kick_exp,  "pk_r" = M.GetProficiencyReq(M.prof_kick_lvl),
+							"ps" = M.prof_sword_lvl, "ps_x" = M.prof_sword_exp, "ps_r" = M.GetProficiencyReq(M.prof_sword_lvl),
+							"pg" = M.prof_gun_lvl,   "pg_x" = M.prof_gun_exp,   "pg_r" = M.GetProficiencyReq(M.prof_gun_lvl),
+							"mspd" = M.calc_move_speed, "jmp" = M.calc_jump_power,
+							"rest" = M.is_resting, "ft" = M.is_fainted, "rem" = faint_rem,
+							"skin" = M.skin_color, "cloth" = M.cloth_color, "gen" = M.char_gender,
+							"it" = my_hand, "eq_h" = my_head, "eq_b" = my_body, "eq_l" = my_legs, "eq_f" = my_feet,
+							"kills" = M.kills, "deaths" = M.deaths, "lethal" = M.lethality_mode 
+						),
+						"evts" = M.pending_visuals
+					)
+					
+					if(M.needs_skill_sync)
+						my_stats["skills_data"] = GlobalSkillsData
+						M.needs_skill_sync = 0
+					
+					if(M.pending_visuals.len > 0) M.pending_visuals = list()
+
+					M << output(global_json, "map3d:receberDadosGlobal")
+					M << output(json_encode(my_stats), "map3d:receberDadosPessoal")
+
+				if(global_events.len > 0) global_events = list()
+			
+			catch(var/exception/e)
+				world.log << "HEARTBEAT PREVENIU UM CRASH TOTAL: [e.name]"
+			
 			sleep(tick_rate)
 
 
@@ -323,6 +330,8 @@ mob
 	var/deaths = 0
 	var/lethality_mode = 0
 
+	var/needs_skill_sync = 1 
+
 	var/list/unlocked_skills = list("fireball", "iceball")
 	var/list/skill_cooldowns = list()
 	var/list/active_skill_hits = list()
@@ -395,6 +404,7 @@ mob
 	Login()
 		..()
 		in_game = 0
+		needs_skill_sync = 1
 		global_players_list += src
 		ShowCharacterMenu()
 
@@ -565,7 +575,10 @@ mob
 		
 		calc_move_speed = 0.08 + (agility * 0.002)
 		if(calc_move_speed > 0.20) calc_move_speed = 0.20 
+		
+		// CORREÇÃO: Limite de pulo para não voar para o infinito
 		calc_jump_power = 0.18 + (agility * 0.002)
+		if(calc_jump_power > 0.40) calc_jump_power = 0.40
 
 		var/eq_atk = 0; var/eq_ratk = 0; var/eq_def = 0; var/eq_crit = 0
 		var/list/equipped = list(slot_hand, slot_head, slot_body, slot_legs, slot_feet)
@@ -596,8 +609,12 @@ mob
 	proc/LevelUp()
 		level++
 		experience -= req_experience
-		req_experience = round(req_experience * 1.5)
+		if(experience < 0) experience = 0 // Trava de segurança
+		
+		// CORREÇÃO DA MATEMÁTICA: Escalonamento Polinomial Seguro (Evita que o Level 50 trave o servidor)
+		req_experience = round(100 * (level ** 2))
 		if(req_experience < 100) req_experience = 100
+		
 		stat_points += 3
 		RecalculateStats()
 		current_hp = max_hp 
@@ -606,7 +623,7 @@ mob
 		src << output("<span class='log-hit' style='font-size:14px;color:#ffff00'>LEVEL UP! Nível [level]</span>", "map3d:addLog")
 		SaveCharacter()
 
-	proc/GetProficiencyReq(lvl) return 50 * (lvl * 1.2)
+	proc/GetProficiencyReq(lvl) return round(50 * (lvl * 1.2))
 
 	proc/GainWeaponExp(type, amount)
 		var/lvl = 1; var/exp = 0; var/req = 100
@@ -713,7 +730,6 @@ mob
 			GiveStarterItems()
 			src << output("Novo char!", "map3d:mostrarNotificacao")
 
-		// HTML LIMPO - Sem injeção de texto!
 		var/page = file2text('game.html')
 		page = replacetext(page, "{{BYOND_REF}}", "\ref[src]")
 
@@ -806,9 +822,9 @@ mob
 		if(F["kills"]) F["kills"] >> src.kills; else src.kills = 0
 		if(F["deaths"]) F["deaths"] >> src.deaths; else src.deaths = 0
 
-		if(!src.req_experience || src.req_experience <= 0)
-			src.req_experience = 100 * (1.5 ** (src.level - 1))
-			if(src.req_experience < 100) src.req_experience = 100
+		// FORÇA O RECALCULO PARA A NOVA FÓRMULA DE MMO, CORRIGINDO SAVES ANTIGOS "QUEBRADOS"
+		src.req_experience = round(100 * (src.level ** 2))
+		if(src.req_experience < 100) src.req_experience = 100
 		
 		active_item_visual = ""
 		if(slot_hand) active_item_visual = slot_hand.id_visual
@@ -827,7 +843,6 @@ mob
 		..()
 		var/action = href_list["action"]
 		
-		// ROTA DE REDE DATA-DRIVEN - O cliente pede quando liga!
 		if(action == "request_skills")
 			var/skills_text = "{}"
 			if(GlobalSkillsData && GlobalSkillsData.len > 0)
