@@ -210,11 +210,54 @@ const GameDefinitions = {
         id: "prop_tree_log",
         name: "Tronco de Treino",
         type: "prop",
-        // MODELO GROUP: Para que a origem XYZ dele seja exatamente na base (0.0), e não no meio da altura
         visual: { 
             model: "group", 
             parts: [ { model: "cylinder", color: 0x8B4513, scale: [0.4, 1.8, 0.4], pos: [0, 0.9, 0] } ] 
         },
         physics: { solid: true, standable: true, mass: 50, shape: "cylinder", radius: 0.2 } 
+    },
+
+    // -------------------------------------------------------------
+    // --- SKILLS DATA-DRIVEN: SKINS VISUAIS ---
+    // Definições visuais isoladas que serão acopladas ao Hitbox físico
+    // -------------------------------------------------------------
+    "vfx_fireball": {
+        type: "vfx",
+        visual: { model: "box", color: 0xFF4500, scale: [0.6, 0.6, 0.6] }
+    },
+    "vfx_iceball": {
+        type: "vfx",
+        visual: { model: "box", color: 0x00FFFF, scale: [0.2, 0.2, 1.0] }
+    }
+};
+
+// -------------------------------------------------------------
+// --- SKILLS DATA-DRIVEN: LÓGICA E HITBOX ---
+// Fichas de Habilidades que usam Hitbox + Skin anexada
+// -------------------------------------------------------------
+const GameSkills = {
+    "fireball": {
+        id: "fireball", 
+        name: "Bola de Fogo", 
+        energyCost: 15, 
+        cooldown: 3000, 
+        speed: 0.4, 
+        range: 40, 
+        pierce: false, // Explode no primeiro alvo
+        powerMultiplier: 1.5,
+        hitboxSize: [0.8, 0.8, 0.8],  // Forma e tamanho físico da colisão
+        visualDef: "vfx_fireball"     // O ID da "Skin" lá de cima que vai vestir o Hitbox
+    },
+    "iceball": {
+        id: "iceball", 
+        name: "Lança de Gelo", 
+        energyCost: 10, 
+        cooldown: 1500, 
+        speed: 0.7, 
+        range: 30, 
+        pierce: true, // Atravessa inimigos dando dano na reta inteira
+        powerMultiplier: 1.0,
+        hitboxSize: [0.3, 0.3, 1.2],
+        visualDef: "vfx_iceball"
     }
 };

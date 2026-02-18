@@ -34,6 +34,7 @@ const OPTIMAL_FRAME_TIME = 1000 / TARGET_FPS;
 const groundItemsMeshes = {}; 
 const activeProjectiles = []; 
 const activeHitboxes = []; 
+const activeSkillProjectiles = []; // Nova Array para Skills Baseadas em Data
 
 // --- POOLING DE OBJETOS ---
 const hitboxPool = [];
@@ -73,6 +74,10 @@ function getProjectile(colorHex, scaleArr) {
 }
 
 function releaseProjectile(m) {
+    // Se for um Hitbox com Skin anexada, removemos os filhos (Skin) antes de reciclar para não sujar o Pool
+    while(m.children.length > 0){ 
+        m.remove(m.children[0]); 
+    }
     Engine.scene.remove(m);
     projectilePool.push(m);
 }
@@ -123,6 +128,67 @@ let lastSentTime = 0;
 let lastSentX = null; let lastSentY = null; let lastSentZ = null; let lastSentRot = null;
 
 const MAP_LIMIT = 29; 
+
+// --- CONTROLE DE SKILLS (HOTBAR) ---
+const localSkillCooldowns = {};
+
+function castSkill(skillId) {
+    if(isFainted || isResting || isAttacking || !isCharacterReady) return;
+    
+    const skillDef = GameSkills[skillId];
+    if(!skillDef) return;
+
+    const now = Date.now();
+    if (localSkillCooldowns[skillId] && localSkillCooldowns[skillId] > now) {
+        addLog(`<span style='color:orange'>A habilidade ${skillDef.name} está em recarga.</span>`, "log-miss");
+        return;
+    }
+
+    if (cachedEn < skillDef.energyCost) {
+        addLog("<span style='color:red'>Energia insuficiente!</span>", "log-miss");
+        return;
+    }
+
+    isAttacking = true;
+    lastActionTime = now;
+    lastCombatActionTime = now;
+    charState = "SWORD_WINDUP"; 
+    
+    queueCommand(`action=cast_skill&skill_id=${skillId}`);
+    
+    setTimeout(() => {
+        charState = "FIST_COMBO_1"; 
+        setTimeout(() => { charState = "DEFAULT"; isAttacking = false; }, 300);
+    }, 100);
+}
+
+function startSkillCooldownUI(skillId) {
+    const skillDef = GameSkills[skillId];
+    if(!skillDef) return;
+
+    localSkillCooldowns[skillId] = Date.now() + skillDef.cooldown;
+    
+    const overlay = document.getElementById(`cd-${skillId}`);
+    if(overlay) {
+        overlay.style.transition = "none";
+        overlay.style.height = "100%";
+        overlay.innerText = (skillDef.cooldown / 1000).toFixed(1) + "s";
+        
+        let timeLeft = skillDef.cooldown;
+        const interval = setInterval(() => {
+            timeLeft -= 100;
+            if(timeLeft <= 0) {
+                overlay.style.height = "0%";
+                overlay.innerText = "";
+                clearInterval(interval);
+            } else {
+                overlay.style.height = (timeLeft / skillDef.cooldown * 100) + "%";
+                overlay.innerText = (timeLeft / 1000).toFixed(1) + "s";
+            }
+        }, 100);
+    }
+}
+
 
 // --- FUNÇÕES AUXILIARES UI ---
 function addLog(msg, css) { 
@@ -566,6 +632,10 @@ window.addEventListener('keydown', function(e) {
     if(k === 'e' && !blockSync) { blockSync = true; lastActionTime = Date.now(); queueCommand(`action=pick_up`); setTimeout(function() { blockSync = false; }, 300); }
     if(k === 'r' && !blockSync) { blockSync = true; lastActionTime = Date.now(); queueCommand(`action=toggle_rest`); setTimeout(function() { blockSync = false; }, 500); }
     if(e.key === 'Shift') isRunning = true;
+
+    // HOTKEYS DE SKILL
+    if(k === '1') castSkill("fireball");
+    if(k === '2') castSkill("iceball");
 });
 
 window.addEventListener('keyup', function(e) { if(e.key === 'Shift') isRunning = false; });
@@ -793,6 +863,65 @@ function spawnHitbox(size, forwardOffset, lifetime, customData, yOffset) {
     activeHitboxes.push({ mesh: hitbox, startTime: Date.now(), duration: lifetime, hasHit: [], data: customData || {} });
 }
 
+
+// --- MOTOR DATA-DRIVEN PARA SKILLS ---
+function fireSkillProjectile(skillId, ownerRef) {
+    const def = GameSkills[skillId];
+    if(!def) return;
+
+    const isMine = (ownerRef === myID);
+    const origin = isMine ? playerGroup : (otherPlayers[ownerRef] ? otherPlayers[ownerRef].mesh : null);
+    if(!origin) return;
+
+    // 1. Cria a Caixa FÍSICA Invisível (O Hitbox) - Cor verde para Debug
+    const hitboxMesh = getProjectile(0x00FF00, def.hitboxSize);
+    hitboxMesh.material.wireframe = true;
+    hitboxMesh.material.transparent = true;
+    hitboxMesh.material.opacity = 0.5; // 0.0 deixa invisível, mude para 0.5 para ver as hitboxes
+
+    // 2. Cria a SKIN/VISUAL e atrela (Parent-Child) à Hitbox
+    if (def.visualDef && GameDefinitions[def.visualDef]) {
+        const skinData = GameDefinitions[def.visualDef];
+        const skinMesh = CharFactory.createFromDef(def.visualDef, skinData.visual);
+        hitboxMesh.add(skinMesh); // A skin agora viaja junto com o Hitbox!
+    }
+
+    const bodyRot = origin.rotation.y;
+    const sin = Math.sin(bodyRot); 
+    const cos = Math.cos(bodyRot);
+    
+    hitboxMesh.position.copy(origin.position);
+    hitboxMesh.position.y += 1.0; 
+    hitboxMesh.position.x += sin * 1.0; 
+    hitboxMesh.position.z += cos * 1.0;
+
+    let dX = sin; let dY = 0; let dZ = cos;
+    
+    // Auto-Aim
+    if (isMine && currentTargetID && otherPlayers[currentTargetID] && otherPlayers[currentTargetID].mesh) {
+        const targetMesh = otherPlayers[currentTargetID].mesh;
+        const targetPos = new THREE.Vector3(targetMesh.position.x, targetMesh.position.y + 0.9, targetMesh.position.z);
+        const dirVec = new THREE.Vector3().subVectors(targetPos, hitboxMesh.position).normalize();
+        dX = dirVec.x; dY = dirVec.y; dZ = dirVec.z;
+    }
+
+    hitboxMesh.rotation.y = Math.atan2(dX, dZ);
+
+    Engine.scene.add(hitboxMesh);
+    
+    activeSkillProjectiles.push({
+        mesh: hitboxMesh,
+        skillId: skillId,
+        def: def,
+        ownerRef: ownerRef,
+        isMine: isMine,
+        dirX: dX, dirY: dY, dirZ: dZ,
+        distTraveled: 0,
+        hasHit: [] // Para skills pierce
+    });
+}
+
+
 const tempBoxAttacker = new THREE.Box3(); const tempBoxTarget = new THREE.Box3();
 
 function updateCombatHitboxes(timeScale) { 
@@ -808,6 +937,49 @@ function updateCombatHitboxes(timeScale) {
         if (p.isMine) { tempBoxAttacker.setFromObject(p.mesh); checkCollisions(tempBoxAttacker, "projectile", p); }
         if (p.distTraveled >= p.maxDist) { releaseProjectile(p.mesh); activeProjectiles.splice(i, 1); }
     }
+
+    // Projéteis de SKILLS (DATA-DRIVEN)
+    for (let i = activeSkillProjectiles.length - 1; i >= 0; i--) {
+        const p = activeSkillProjectiles[i]; 
+        const moveStep = p.def.speed * timeScale;
+        
+        p.mesh.position.x += p.dirX * moveStep; 
+        p.mesh.position.y += p.dirY * moveStep; 
+        p.mesh.position.z += p.dirZ * moveStep; 
+        p.distTraveled += moveStep;
+        
+        // Se eu sou o dono do projétil, eu verifico colisão
+        if (p.isMine) { 
+            tempBoxAttacker.setFromObject(p.mesh); 
+            
+            for (let id in otherPlayers) {
+                if(p.hasHit.includes(id)) continue; 
+                
+                tempBoxTarget.setFromObject(otherPlayers[id].mesh);
+                if (tempBoxAttacker.intersectsBox(tempBoxTarget)) {
+                    // Notifica o Servidor usando o novo Topic seguro
+                    if(typeof BYOND_REF !== 'undefined') {
+                        queueCommand(`action=register_skill_hit&skill_id=${p.skillId}&target_ref=${id}`);
+                    }
+                    
+                    p.hasHit.push(id);
+                    
+                    if (!p.def.pierce) {
+                        releaseProjectile(p.mesh); 
+                        p.distTraveled = 99999; // Força destruição na mesma frame
+                        break; 
+                    }
+                }
+            }
+        }
+        
+        // Destruição por Distância
+        if (p.distTraveled >= p.def.range) { 
+            releaseProjectile(p.mesh); 
+            activeSkillProjectiles.splice(i, 1); 
+        }
+    }
+
     const now = Date.now();
     for (let i = activeHitboxes.length - 1; i >= 0; i--) {
         const hb = activeHitboxes[i]; 
@@ -1055,6 +1227,15 @@ function receberDadosGlobal(json) {
             delete otherPlayers[id]; 
         } 
     }
+
+    // EVENTOS VISUAIS DE SKILLS
+    if(packet.t && packet.evts) {
+        packet.evts.forEach(evt => {
+            if (evt.type === "skill_cast") {
+                fireSkillProjectile(evt.skill, evt.caster);
+            }
+        });
+    }
     
     const hint = document.getElementById('interaction-hint');
     let npcNear = false;
@@ -1191,7 +1372,7 @@ function receberDadosPessoal(json) {
             }
         }
 
-        // --- ATUALIZAÇÃO FORÇADA DE COORDENADAS (EVENTO DE TELEPORT) ---
+        // --- ATUALIZAÇÃO FORÇADA DE COORDENADAS (EVENTO DE TELEPORT E SKILL CD) ---
         if(packet.evts) packet.evts.forEach(evt => { 
             if(evt.type === "dmg") spawnDamageNumber(evt.tid, evt.val); 
             if(evt.type === "teleport") {
@@ -1200,6 +1381,7 @@ function receberDadosPessoal(json) {
                     lastSentX = evt.x; lastSentY = evt.y; lastSentZ = evt.z;
                 }
             }
+            if(evt.type === "skill_cast_accept") { startSkillCooldownUI(evt.skill); }
         });
     }
 }

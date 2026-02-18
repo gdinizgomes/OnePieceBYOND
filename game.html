@@ -77,6 +77,17 @@
             padding: 10px; border-radius: 5px; font-size: 11px; font-family: monospace; pointer-events: auto;
         }
 
+        /* --- HOTBAR (SKILLS) --- */
+        #hotbar {
+            position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); display: flex; gap: 8px; pointer-events: auto;
+        }
+        .hotbar-slot {
+            width: 44px; height: 44px; background: rgba(30, 30, 30, 0.8); border: 2px solid #555; border-radius: 5px; display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; box-shadow: 0 4px 6px rgba(0,0,0,0.5); cursor: pointer;
+        }
+        .hotbar-key { position: absolute; top: -8px; left: -8px; background: #9b59b6; color: white; font-size: 10px; font-weight: bold; padding: 2px 5px; border-radius: 3px; border: 1px solid black; }
+        .cooldown-overlay { position: absolute; bottom: 0; left: 0; width: 100%; height: 0%; background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center; color: white; font-size: 12px; font-weight: bold; overflow: hidden; pointer-events: none; }
+
+
         /* --- STATUS WINDOW --- */
         #stat-window {
             position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
@@ -176,9 +187,9 @@
             pointer-events: none; display: none; z-index: 2000; max-width: 200px;
         }
         #tooltip strong { color: #f1c40f; display: block; margin-bottom: 3px; }
-        #combat-log { position: absolute; bottom: 20px; right: 20px; width: 300px; height: 150px; background: rgba(0,0,0,0.5); color: #fff; font-size: 12px; overflow-y: auto; padding: 10px; border-radius: 5px; font-family: monospace; pointer-events: auto; }
+        #combat-log { position: absolute; bottom: 80px; right: 20px; width: 300px; height: 150px; background: rgba(0,0,0,0.5); color: #fff; font-size: 12px; overflow-y: auto; padding: 10px; border-radius: 5px; font-family: monospace; pointer-events: auto; }
         .log-hit { color: #e74c3c; font-weight: bold; } 
-        #notif-area { position: absolute; bottom: 100px; left: 50%; transform: translateX(-50%); text-align: center; pointer-events: none;}
+        #notif-area { position: absolute; bottom: 150px; left: 50%; transform: translateX(-50%); text-align: center; pointer-events: none;}
         
         #faint-overlay {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(50, 0, 0, 0.6);
@@ -242,6 +253,27 @@
             [W,A,S,D] Mover<br>[SHIFT] Correr<br>[Espaço] Pular<br>
             [A] Soco &nbsp; [S] Chute<br>[D] Espada [F] Arma<br>
             [R] Descansar<br>[C] Stats [I] Itens [K] Habilidades<br>[TAB] Alvo
+        </div>
+
+        <div id="hotbar">
+            <div class="hotbar-slot" onclick="castSkill('fireball')">
+                <div class="hotbar-key">1</div>
+                <div style="color:#f39c12; font-size:10px;">Fogo</div>
+                <div class="cooldown-overlay" id="cd-fireball"></div>
+            </div>
+            <div class="hotbar-slot" onclick="castSkill('iceball')">
+                <div class="hotbar-key">2</div>
+                <div style="color:#00ffff; font-size:10px;">Gelo</div>
+                <div class="cooldown-overlay" id="cd-iceball"></div>
+            </div>
+            <div class="hotbar-slot">
+                <div class="hotbar-key">3</div>
+                <div class="cooldown-overlay"></div>
+            </div>
+            <div class="hotbar-slot">
+                <div class="hotbar-key">4</div>
+                <div class="cooldown-overlay"></div>
+            </div>
         </div>
 
         <div id="stat-window">

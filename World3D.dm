@@ -24,6 +24,7 @@ datum/game_controller
 	var/running = 1
 	var/server_tick = 0
 	var/ground_dirty_tick = 0 // Track para itens no chão
+	var/list/global_events = list() // Eventos de Skills Visuais
 
 	proc/Heartbeat()
 		set background = 1
@@ -119,6 +120,13 @@ datum/game_controller
 				var/list/my_global_json_list = list("others" = my_visible_entities, "t" = world.time)
 				if(send_ground) my_global_json_list["ground"] = my_visible_ground
 				
+				// Envia os eventos para os clients próximos
+				if(global_events.len > 0)
+					my_global_json_list["evts"] = list()
+					for(var/list/evt in global_events)
+						var/dist = sqrt((evt["x"] - M.real_x)**2 + (evt["z"] - M.real_z)**2)
+						if(dist <= 40.0) my_global_json_list["evts"] += list(evt)
+
 				var/global_json = json_encode(my_global_json_list)
 
 				// --- DADOS PESSOAIS ---
@@ -157,6 +165,7 @@ datum/game_controller
 				M << output(global_json, "map3d:receberDadosGlobal")
 				M << output(json_encode(my_stats), "map3d:receberDadosPessoal")
 
+			if(global_events.len > 0) global_events = list()
 			sleep(tick_rate)
 
 
@@ -164,6 +173,12 @@ datum/game_controller
 var/list/global_npcs = list()
 var/list/global_players_list = list()
 var/list/global_ground_items = list()
+
+// --- DATA-DRIVEN SKILL SERVER DEFINITIONS (Para Validar) ---
+var/list/ServerSkillsData = list(
+	"fireball" = list("cost" = 15, "cd" = 30, "power" = 25, "mult" = 1.5),
+	"iceball" = list("cost" = 10, "cd" = 15, "power" = 15, "mult" = 1.0)
+)
 
 // --- ESTRUTURA DE ITENS ---
 obj/item
@@ -317,6 +332,11 @@ mob
 	var/kills = 0
 	var/deaths = 0
 	var/lethality_mode = 0 // 0 = Desmaia, 1 = Mata
+
+	// --- SKILLS ---
+	var/list/unlocked_skills = list("fireball", "iceball")
+	var/list/skill_cooldowns = list()
+	var/list/active_skill_hits = list()
 
 	// --- ATRIBUTOS PRIMÁRIOS (RO STYLE) ---
 	var/strength = 5
@@ -977,6 +997,87 @@ mob
 					src << output("Vendeu [I.name] por [val] Berries.", "map3d:mostrarNotificacao")
 					del(I)
 					RequestInventoryUpdate()
+
+        // --- SKILL CASTING (Servidor autoriza a magia) ---
+		if(action == "cast_skill" && in_game)
+			var/s_id = href_list["skill_id"]
+			if(!(s_id in unlocked_skills)) return 
+			
+			var/list/skill_data = ServerSkillsData[s_id]
+			if(!skill_data) return
+			
+			if(skill_cooldowns[s_id] && skill_cooldowns[s_id] > world.time) return 
+			if(!ConsumeEnergy(skill_data["cost"])) return 
+			
+			skill_cooldowns[s_id] = world.time + round(skill_data["cd"])
+			src.pending_visuals += list(list("type"="skill_cast_accept", "skill"=s_id))
+			
+			if(SSserver)
+				SSserver.global_events += list(list("type" = "skill_cast", "skill" = s_id, "caster" = "\ref[src]", "x" = src.real_x, "z" = src.real_z))
+			
+			active_skill_hits["[s_id]"] = list()
+
+
+        // --- SKILL HIT (Servidor calcula o dano mágico) ---
+		if(action == "register_skill_hit" && in_game)
+			var/s_id = href_list["skill_id"]
+			var/mob/target = locate(href_list["target_ref"])
+			
+			if(!target || !(s_id in unlocked_skills) || target == src) return 
+			
+			var/list/skill_data = ServerSkillsData[s_id]
+			if(!skill_data) return
+			
+			var/list/already_hit = active_skill_hits["[s_id]"]
+			if(already_hit && (target in already_hit)) return 
+			if(!already_hit) already_hit = list()
+			already_hit += target
+			active_skill_hits["[s_id]"] = already_hit
+			
+			var/base_dmg = skill_data["power"]
+			var/mult = skill_data["mult"]
+			var/damage = round(base_dmg + (src.willpower * mult) + rand(0, 5))
+			
+			var/target_def = 0
+			if(istype(target, /mob/npc))
+				var/mob/npc/N = target; target_def = N.level * 2
+			else
+				var/mob/T = target; target_def = T.calc_def
+			
+			var/def_reduction = round(target_def * 0.4) 
+			damage -= def_reduction
+			if(damage < 1) damage = 1
+			
+			var/is_crit = 0
+			if(rand(1, 100) <= calc_crit) { is_crit = 1; damage = round(damage * 1.5) }
+			var/crit_txt = ""
+			if(is_crit) crit_txt = " <b style='color:#f1c40f'>CRÍTICO MAG!</b>"
+
+			src.pending_visuals += list(list("type"="dmg", "val"=damage, "tid"="\ref[target]"))
+
+			if(istype(target, /mob/npc))
+				var/mob/npc/N = target
+				if(N.npc_type == "prop")
+					src << output("<span class='log-hit' style='color:#e74c3c'>[N.name]: [damage] dmg[crit_txt]</span>", "map3d:addLog")
+					GainExperience(5)
+				else
+					src << output("<span class='log-hit'>HIT MÁGICO em [N.name]! Dano: [damage][crit_txt]</span>", "map3d:addLog")
+					N.current_hp -= damage
+					if(N.current_hp <= 0)
+						src << output("<span class='log-hit' style='color:red'>[N.name] eliminado!</span>", "map3d:addLog")
+						N.current_hp = N.max_hp; N.real_x = rand(-10, 10); N.real_z = rand(-10, 10)
+					GainExperience(10)
+			else 
+				var/mob/T = target
+				src << output("<span class='log-hit'>HIT MÁGICO em [T.name]! Dano: [damage][crit_txt]</span>", "map3d:addLog")
+				T << output("<span class='log-hit' style='color:red'>Você recebeu [damage] de dano mágico de [src.name]![crit_txt]</span>", "map3d:addLog")
+				T.current_hp -= damage
+				
+				if(T.current_hp <= 0)
+					if(src.lethality_mode == 1) T.Die(src)
+					else { src << output("<span class='log-hit' style='color:orange'>Você derrotou [T.name]! Ele está desmaiado.</span>", "map3d:addLog"); T.GoFaint() }
+				GainExperience(10)
+				T.UpdateVisuals()
 
 		if(action == "attack" && in_game)
 			if(is_resting || is_fainted) return
