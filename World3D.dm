@@ -11,7 +11,7 @@ world/New()
 	world.maxz = 1
 	..()
 	
-	// Carrega a "Fonte Única de Verdade" Data-Driven EMPACOTADA COM ASPAS SIMPLES
+	// Carrega a "Fonte Única de Verdade" Data-Driven
 	var/skills_file = file2text('shared/SkillDefinitions.json')
 	if(skills_file)
 		try
@@ -164,11 +164,6 @@ datum/game_controller
 					"evts" = M.pending_visuals
 				)
 				
-				// ENVIO DE SKILLS VIA REDE (Apenas 1 vez por login para não pesar)
-				if(M.needs_skill_sync)
-					my_stats["skills_data"] = GlobalSkillsData
-					M.needs_skill_sync = 0
-				
 				if(M.pending_visuals.len > 0) M.pending_visuals = list()
 
 				M << output(global_json, "map3d:receberDadosGlobal")
@@ -181,7 +176,6 @@ datum/game_controller
 var/list/global_npcs = list()
 var/list/global_players_list = list()
 var/list/global_ground_items = list()
-
 
 obj/item
 	var/id_visual = ""
@@ -329,8 +323,6 @@ mob
 	var/deaths = 0
 	var/lethality_mode = 0
 
-	var/needs_skill_sync = 1
-
 	var/list/unlocked_skills = list("fireball", "iceball")
 	var/list/skill_cooldowns = list()
 	var/list/active_skill_hits = list()
@@ -403,7 +395,6 @@ mob
 	Login()
 		..()
 		in_game = 0
-		needs_skill_sync = 1
 		global_players_list += src
 		ShowCharacterMenu()
 
@@ -722,7 +713,7 @@ mob
 			GiveStarterItems()
 			src << output("Novo char!", "map3d:mostrarNotificacao")
 
-		// SEM MAIS INJEÇÃO DE HTML (Foi essa injeção que gerou os erros antes)
+		// HTML LIMPO - Sem injeção de texto!
 		var/page = file2text('game.html')
 		page = replacetext(page, "{{BYOND_REF}}", "\ref[src]")
 
@@ -835,6 +826,14 @@ mob
 	Topic(href, href_list[])
 		..()
 		var/action = href_list["action"]
+		
+		// ROTA DE REDE DATA-DRIVEN - O cliente pede quando liga!
+		if(action == "request_skills")
+			var/skills_text = "{}"
+			if(GlobalSkillsData && GlobalSkillsData.len > 0)
+				skills_text = json_encode(GlobalSkillsData)
+			src << output(skills_text, "map3d:receberSkills")
+		
 		if(action == "request_slots")
 			var/list/slots_data = list()
 			for(var/i=1 to 3)

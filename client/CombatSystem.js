@@ -12,7 +12,6 @@ const CombatSystem = {
     castSkill: function(skillId) {
         if(EntityManager.isFainted || EntityManager.isResting || this.isAttacking || !EntityManager.isCharacterReady) return;
         
-        // Failsafe de leitura
         const skillDef = window.GameSkills ? window.GameSkills[skillId] : null;
         if(!skillDef) {
             UISystem.addLog("<span style='color:red'>Erro de Servidor: Magia Desconhecida.</span>", "log-miss");
@@ -71,7 +70,9 @@ const CombatSystem = {
     },
 
     performAttack: function(type) {
-        if(this.isAttacking || !EntityManager.isCharacterReady) return; 
+        // CORREÇÃO: Verifica se o jogador está descansando antes de agir visualmente
+        if(this.isAttacking || !EntityManager.isCharacterReady || EntityManager.isResting || EntityManager.isFainted) return; 
+        
         const equippedItem = EntityManager.playerGroup.userData.lastItem;
         let hasSword = false; let hasGun = false; let projectileData = null;
         if(equippedItem && GameDefinitions[equippedItem]) {

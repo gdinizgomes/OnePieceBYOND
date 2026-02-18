@@ -178,12 +178,6 @@ const EntityManager = {
         const me = packet.me; 
         this.myID = packet.my_id;
 
-        // O SEGREDO DO DATA-DRIVEN FICA AQUI: Recebemos via Rede no Login! (Resolve o Magia Desconhecida)
-        if (packet.skills_data) {
-            window.GameSkills = packet.skills_data;
-            if(typeof UISystem !== 'undefined') UISystem.addLog("<span style='color:#2ecc71'>[Sistema Data-Driven Carregado com Sucesso]</span>", "log-hit");
-        }
-
         if(me.loaded == 1 && !this.isCharacterReady) {
             this.playerGroup = CharFactory.createCharacter(me.skin || "FFCCAA", me.cloth || "FF0000"); 
             

@@ -12,6 +12,18 @@ window.receberDadosPessoal = function(json) {
     if(typeof EntityManager !== 'undefined') EntityManager.syncPersonal(packet);
 };
 
+// Nova ponte dedicada ao Data-Driven
+window.receberSkills = function(json) {
+    try { 
+        window.GameSkills = JSON.parse(json); 
+        if(typeof UISystem !== 'undefined') {
+            UISystem.addLog("<span style='color:#2ecc71'>[Sistema Data-Driven Carregado com Sucesso]</span>", "log-hit");
+        }
+    } catch(e) {
+        console.error("Falha ao processar JSON de Skills", e);
+    }
+};
+
 // --- MÓDULO 9: GAME LOOP ORQUESTRADOR ---
 const GameLoop = {
     lastFrameTime: performance.now(),
@@ -25,7 +37,6 @@ const GameLoop = {
             this.lastFrameTime = now;
             const timeScale = dt / this.OPTIMAL_FRAME_TIME;
 
-            // Delegação estrita de responsabilidades a cada Frame
             if (typeof AnimationSystem !== 'undefined') AnimationSystem.update(timeScale);
             if (typeof TargetSystem !== 'undefined') TargetSystem.updateUI();
             if (typeof CombatVisualSystem !== 'undefined') CombatVisualSystem.update(timeScale); 
@@ -35,12 +46,10 @@ const GameLoop = {
                 EntityManager.updateOthers(timeScale, now);
             }
 
-            // Renderiza o visual APENAS se a Engine estiver definida (Resolve a Tela Preta)
             if (typeof Engine !== 'undefined' && Engine.renderer && Engine.scene && Engine.camera) {
                 Engine.renderer.render(Engine.scene, Engine.camera);
             }
 
-            // O Loop continua apenas no final (Evita travamento do PC em caso de erro)
             requestAnimationFrame(animate); 
         };
         
@@ -58,5 +67,4 @@ const GameLoop = {
     }
 };
 
-// Inicia o Cliente Visual
 GameLoop.start();

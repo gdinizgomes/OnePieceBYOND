@@ -20,6 +20,9 @@ const NetworkSystem = {
                 window.location.href = `byond://?src=${BYOND_REF}&${cmd}`;
             }
         }, 50);
+
+        // Solicita ao servidor as configurações Data-Driven assim que a rede iniciar!
+        this.queueCommand("action=request_skills");
     },
 
     queueCommand: function(cmdString) {
@@ -54,4 +57,4 @@ const NetworkSystem = {
 };
 
 NetworkSystem.init();
-window.NetworkSystem = NetworkSystem; // Garante exposição global
+window.NetworkSystem = NetworkSystem;
