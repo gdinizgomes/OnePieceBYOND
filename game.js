@@ -8,6 +8,18 @@ let isCharacterReady = false;
 let lastPacketTime = Date.now();
 let blockSync = false;
 
+// --- TOPIC THROTTLING (Fila de Comandos) ---
+const commandQueue = [];
+function queueCommand(cmdString) {
+    commandQueue.push(cmdString);
+}
+setInterval(() => {
+    if (commandQueue.length > 0 && typeof BYOND_REF !== 'undefined') {
+        const cmd = commandQueue.shift();
+        window.location.href = `byond://?src=${BYOND_REF}&${cmd}`;
+    }
+}, 50); // Processa no máximo 1 comando a cada 50ms para prevenir congelamento de Browser
+
 // --- TARGET SYSTEM VARS ---
 let currentTargetID = null; 
 const TARGET_MAX_RANGE = 25; 
@@ -22,6 +34,49 @@ const OPTIMAL_FRAME_TIME = 1000 / TARGET_FPS;
 const groundItemsMeshes = {}; 
 const activeProjectiles = []; 
 const activeHitboxes = []; 
+
+// --- POOLING DE OBJETOS ---
+const hitboxPool = [];
+const projectilePool = [];
+
+function getHitbox(size, colorHex) {
+    let m;
+    if (hitboxPool.length > 0) {
+        m = hitboxPool.pop();
+    } else {
+        const geo = new THREE.BoxGeometry(1, 1, 1);
+        const mat = new THREE.MeshBasicMaterial({ color: 0xFF0000, wireframe: true, transparent: true, opacity: 0.3 });
+        m = new THREE.Mesh(geo, mat);
+    }
+    m.scale.set(size.x, size.y, size.z);
+    m.material.color.setHex(colorHex || 0xFF0000);
+    return m;
+}
+
+function releaseHitbox(m) {
+    Engine.scene.remove(m);
+    hitboxPool.push(m);
+}
+
+function getProjectile(colorHex, scaleArr) {
+    let m;
+    if (projectilePool.length > 0) {
+        m = projectilePool.pop();
+    } else {
+        const geo = new THREE.BoxGeometry(1, 1, 1);
+        const mat = new THREE.MeshBasicMaterial({ color: 0xFFFFFF });
+        m = new THREE.Mesh(geo, mat);
+    }
+    m.scale.set(scaleArr[0], scaleArr[1], scaleArr[2]);
+    m.material.color.setHex(colorHex);
+    return m;
+}
+
+function releaseProjectile(m) {
+    Engine.scene.remove(m);
+    projectilePool.push(m);
+}
+
 
 // Estado do Jogo
 let charState = "DEFAULT"; 
@@ -104,7 +159,7 @@ function toggleStats() {
     if(isStatWindowOpen) {
         isInvWindowOpen = false; document.getElementById('inventory-window').style.display = 'none';
         isSkillsWindowOpen = false; document.getElementById('skills-window').style.display = 'none';
-        window.location.href = `byond://?src=${BYOND_REF}&action=request_status`;
+        queueCommand(`action=request_status`);
     }
 }
 
@@ -118,7 +173,7 @@ function toggleInventory() {
     if(isInvWindowOpen) {
         isStatWindowOpen = false; document.getElementById('stat-window').style.display = 'none';
         isSkillsWindowOpen = false; document.getElementById('skills-window').style.display = 'none';
-        window.location.href = `byond://?src=${BYOND_REF}&action=request_inventory`;
+        queueCommand(`action=request_inventory`);
     }
 }
 
@@ -160,7 +215,7 @@ function toggleLethal() {
         btn.classList.remove('on');
         btn.title = "Modo Letalidade: OFF (Desmaiar jogadores)";
     }
-    window.location.href = `byond://?src=${BYOND_REF}&action=toggle_lethal`;
+    queueCommand(`action=toggle_lethal`);
     setTimeout(() => { blockSync = false; }, 300);
 }
 
@@ -172,7 +227,7 @@ function askKillConfirm(targetRef) {
 function confirmKill(choice) {
     document.getElementById('kill-modal').style.display = 'none';
     if(choice && killTargetRef) {
-        window.location.href = `byond://?src=${BYOND_REF}&action=confirm_kill&target=${killTargetRef}`;
+        queueCommand(`action=confirm_kill&target=${killTargetRef}`);
     }
     killTargetRef = null;
 }
@@ -247,14 +302,14 @@ function closeLoot() {
 function robItem(itemRef) {
     if(blockSync || !lootTargetRef) return;
     blockSync = true;
-    window.location.href = `byond://?src=${BYOND_REF}&action=rob_item&target=${lootTargetRef}&ref=${itemRef}`;
+    queueCommand(`action=rob_item&target=${lootTargetRef}&ref=${itemRef}`);
     setTimeout(() => { blockSync = false; }, 300);
 }
 
 function robGold() {
     if(blockSync || !lootTargetRef) return;
     blockSync = true;
-    window.location.href = `byond://?src=${BYOND_REF}&action=rob_gold&target=${lootTargetRef}`;
+    queueCommand(`action=rob_gold&target=${lootTargetRef}`);
     setTimeout(() => { blockSync = false; }, 300);
 }
 
@@ -277,7 +332,7 @@ function openShop(json) {
 function buyItem(typepath) {
     if(blockSync) return;
     blockSync = true;
-    window.location.href = `byond://?src=${BYOND_REF}&action=buy_item&type=${typepath}`;
+    queueCommand(`action=buy_item&type=${typepath}`);
     setTimeout(() => { blockSync = false; }, 200);
 }
 
@@ -285,7 +340,7 @@ function sellItem(ref) {
     if(blockSync) return;
     if(confirm("Vender este item?")) {
         blockSync = true;
-        window.location.href = `byond://?src=${BYOND_REF}&action=sell_item&ref=${ref}`;
+        queueCommand(`action=sell_item&ref=${ref}`);
         setTimeout(() => { blockSync = false; }, 200);
     }
 }
@@ -294,7 +349,7 @@ function trashItem(ref) {
     if(blockSync) return;
     if(confirm("Tem certeza? O item será DESTRUÍDO para sempre.")) {
         blockSync = true;
-        window.location.href = `byond://?src=${BYOND_REF}&action=trash_item&ref=${ref}`;
+        queueCommand(`action=trash_item&ref=${ref}`);
         setTimeout(() => { blockSync = false; }, 200);
     }
 }
@@ -378,10 +433,10 @@ function updateStatusMenu(json) {
     updateSlot('feet', data.equip.feet);
 }
 
-function equipItem(ref) { if(blockSync) return; hideTooltip(); blockSync = true; window.location.href = `byond://?src=${BYOND_REF}&action=equip_item&ref=${ref}`; setTimeout(() => { blockSync = false; }, 200); }
-function unequipItem(slotName) { if(blockSync) return; blockSync = true; window.location.href = `byond://?src=${BYOND_REF}&action=unequip_item&slot=${slotName}`; setTimeout(() => { blockSync = false; }, 200); }
-function dropItem(ref, maxAmount) { if(blockSync) return; hideTooltip(); let qty = 1; if(maxAmount > 1) { let input = prompt(`Quantos? (Máx: ${maxAmount})`, "1"); if(input===null) return; qty = parseInt(input); if(isNaN(qty) || qty <= 0) return; if(qty > maxAmount) qty = maxAmount; } blockSync = true; window.location.href = `byond://?src=${BYOND_REF}&action=drop_item&ref=${ref}&amount=${qty}`; setTimeout(() => { blockSync = false; }, 200); }
-function addStat(statName) { if(blockSync) return; blockSync = true; window.location.href = `byond://?src=${BYOND_REF}&action=add_stat&stat=${statName}`; setTimeout(function() { blockSync = false; }, 200); }
+function equipItem(ref) { if(blockSync) return; hideTooltip(); blockSync = true; queueCommand(`action=equip_item&ref=${ref}`); setTimeout(() => { blockSync = false; }, 200); }
+function unequipItem(slotName) { if(blockSync) return; blockSync = true; queueCommand(`action=unequip_item&slot=${slotName}`); setTimeout(() => { blockSync = false; }, 200); }
+function dropItem(ref, maxAmount) { if(blockSync) return; hideTooltip(); let qty = 1; if(maxAmount > 1) { let input = prompt(`Quantos? (Máx: ${maxAmount})`, "1"); if(input===null) return; qty = parseInt(input); if(isNaN(qty) || qty <= 0) return; if(qty > maxAmount) qty = maxAmount; } blockSync = true; queueCommand(`action=drop_item&ref=${ref}&amount=${qty}`); setTimeout(() => { blockSync = false; }, 200); }
+function addStat(statName) { if(blockSync) return; blockSync = true; queueCommand(`action=add_stat&stat=${statName}`); setTimeout(function() { blockSync = false; }, 200); }
 
 // --- TARGET SYSTEM LOGIC ESTABILIZADA ---
 function cycleTarget() {
@@ -508,8 +563,8 @@ window.addEventListener('keydown', function(e) {
     if(k === 'k') toggleSkills();
     if(k === 'x') interact();
     
-    if(k === 'e' && !blockSync) { blockSync = true; lastActionTime = Date.now(); window.location.href = `byond://?src=${BYOND_REF}&action=pick_up`; setTimeout(function() { blockSync = false; }, 300); }
-    if(k === 'r' && !blockSync) { blockSync = true; lastActionTime = Date.now(); window.location.href = `byond://?src=${BYOND_REF}&action=toggle_rest`; setTimeout(function() { blockSync = false; }, 500); }
+    if(k === 'e' && !blockSync) { blockSync = true; lastActionTime = Date.now(); queueCommand(`action=pick_up`); setTimeout(function() { blockSync = false; }, 300); }
+    if(k === 'r' && !blockSync) { blockSync = true; lastActionTime = Date.now(); queueCommand(`action=toggle_rest`); setTimeout(function() { blockSync = false; }, 500); }
     if(e.key === 'Shift') isRunning = true;
 });
 
@@ -520,13 +575,13 @@ function interact() {
     if (currentTargetID && otherPlayers[currentTargetID]) {
         let dist = playerGroup.position.distanceTo(otherPlayers[currentTargetID].mesh.position);
         if (dist < 3.0) {
-            window.location.href = `byond://?src=${BYOND_REF}&action=interact_npc&ref=${currentTargetID}`;
+            queueCommand(`action=interact_npc&ref=${currentTargetID}`);
             return;
         }
     }
 
     let targetRef = ""; for(let id in otherPlayers) { let dist = playerGroup.position.distanceTo(otherPlayers[id].mesh.position); if(dist < 3.0) { targetRef = id; break; } }
-    if(targetRef !== "") window.location.href = `byond://?src=${BYOND_REF}&action=interact_npc&ref=${targetRef}`;
+    if(targetRef !== "") queueCommand(`action=interact_npc&ref=${targetRef}`);
 }
 
 // --- SISTEMA DE COLISÃO DO AMBIENTE (FÍSICA GEOMÉTRICA EXATA + PLANO ZERO) ---
@@ -674,16 +729,13 @@ function checkPlayerCollision(nextX, nextY, nextZ) {
 window.addEventListener('game-action', function(e) {
     if(isFainted) return; const k = e.detail;
     if(k === 'd') performAttack("sword"); else if(k === 'f') performAttack("gun"); else if(k === 'a') performAttack("fist"); else if(k === 's') performAttack("kick");
-    else if(k === 'p' && !blockSync) { blockSync = true; window.location.href = "byond://?src=" + BYOND_REF + "&action=force_save"; addLog("Salvando...", "log-miss"); setTimeout(function() { blockSync = false; }, 500); }
+    else if(k === 'p' && !blockSync) { blockSync = true; queueCommand("action=force_save"); addLog("Salvando...", "log-miss"); setTimeout(function() { blockSync = false; }, 500); }
 });
 
-// --- LÓGICA DE PROJÉTEIS (ATUALIZADA PARA 3D VECTOR Y-AXIS) ---
+// --- LÓGICA DE PROJÉTEIS (ATUALIZADA PARA O POOL DE OBJETOS) ---
 function fireProjectile(projectileDef, isMine) {
-    const geo = new THREE.BoxGeometry(1, 1, 1); 
-    const mat = new THREE.MeshBasicMaterial({ color: projectileDef.color }); 
-    const bullet = new THREE.Mesh(geo, mat);
-    const s = projectileDef.scale || [0.1, 0.1, 0.1]; 
-    bullet.scale.set(s[0], s[1], s[2]);
+    const s = projectileDef.scale || [0.1, 0.1, 0.1];
+    const bullet = getProjectile(projectileDef.color, s);
     
     const origin = isMine ? playerGroup : (otherPlayers[projectileDef.ownerID] ? otherPlayers[projectileDef.ownerID].mesh : null);
     if(!origin) return; 
@@ -731,13 +783,12 @@ function fireProjectile(projectileDef, isMine) {
 }
 
 function spawnHitbox(size, forwardOffset, lifetime, customData, yOffset) {
-    const geo = new THREE.BoxGeometry(size.x, size.y, size.z);
-    const mat = new THREE.MeshBasicMaterial({ color: 0xFF0000, wireframe: true, transparent: true, opacity: 0.3 });
-    const hitbox = new THREE.Mesh(geo, mat);
+    const hitbox = getHitbox(size, 0xFF0000);
     hitbox.position.copy(playerGroup.position); 
     hitbox.position.y += (yOffset !== undefined ? yOffset : 1.0); 
     const bodyRot = playerGroup.rotation.y; const sin = Math.sin(bodyRot); const cos = Math.cos(bodyRot);
     hitbox.position.x += sin * forwardOffset; hitbox.position.z += cos * forwardOffset; hitbox.rotation.y = bodyRot;
+    
     Engine.scene.add(hitbox);
     activeHitboxes.push({ mesh: hitbox, startTime: Date.now(), duration: lifetime, hasHit: [], data: customData || {} });
 }
@@ -755,11 +806,16 @@ function updateCombatHitboxes(timeScale) {
         p.distTraveled += moveStep;
         
         if (p.isMine) { tempBoxAttacker.setFromObject(p.mesh); checkCollisions(tempBoxAttacker, "projectile", p); }
-        if (p.distTraveled >= p.maxDist) { Engine.scene.remove(p.mesh); activeProjectiles.splice(i, 1); }
+        if (p.distTraveled >= p.maxDist) { releaseProjectile(p.mesh); activeProjectiles.splice(i, 1); }
     }
     const now = Date.now();
     for (let i = activeHitboxes.length - 1; i >= 0; i--) {
-        const hb = activeHitboxes[i]; if (now - hb.startTime > hb.duration) { Engine.scene.remove(hb.mesh); activeHitboxes.splice(i, 1); continue; }
+        const hb = activeHitboxes[i]; 
+        if (now - hb.startTime > hb.duration) { 
+            releaseHitbox(hb.mesh); 
+            activeHitboxes.splice(i, 1); 
+            continue; 
+        }
         tempBoxAttacker.setFromObject(hb.mesh); checkCollisions(tempBoxAttacker, "melee", hb);
     }
 }
@@ -773,8 +829,15 @@ function checkCollisions(attackerBox, type, objRef) {
         if (attackerBox.intersectsBox(tempBoxTarget)) {
             let extra = "";
             if(type === "melee" && objRef.data && objRef.data.step) extra = `&combo=${objRef.data.step}`;
-            if(typeof BYOND_REF !== 'undefined') window.location.href = `byond://?src=${BYOND_REF}&action=register_hit&target_ref=${id}&hit_type=${type}${extra}`;
-            if(type === "projectile") { Engine.scene.remove(objRef.mesh); objRef.distTraveled = 99999; } else if(type === "melee") { objRef.hasHit.push(id); objRef.mesh.material.color.setHex(0xFFFFFF); }
+            if(typeof BYOND_REF !== 'undefined') queueCommand(`action=register_hit&target_ref=${id}&hit_type=${type}${extra}`);
+            
+            if(type === "projectile") { 
+                releaseProjectile(objRef.mesh); 
+                objRef.distTraveled = 99999; 
+            } else if(type === "melee") { 
+                objRef.hasHit.push(id); 
+                objRef.mesh.material.color.setHex(0xFFFFFF); 
+            }
         }
     }
 }
@@ -846,7 +909,7 @@ function performAttack(type) {
         
         if(typeof BYOND_REF !== 'undefined') { 
             blockSync = true; 
-            window.location.href = `byond://?src=${BYOND_REF}&action=attack&type=${type}&step=${currentComboStep}`; 
+            queueCommand(`action=attack&type=${type}&step=${currentComboStep}`); 
             setTimeout(function(){blockSync=false}, 200); 
         }
         setTimeout(function() { charState = idleStance; isAttacking = false; }, 300);
@@ -1142,7 +1205,14 @@ function receberDadosPessoal(json) {
 }
 
 function shouldSendPosition(x, y, z, rot, now) { if (now - lastSentTime < POSITION_SYNC_INTERVAL) return false; if (Math.abs(x - lastSentX) < POSITION_EPSILON && Math.abs(y - lastSentY) < POSITION_EPSILON && Math.abs(z - lastSentZ) < POSITION_EPSILON && Math.abs(rot - lastSentRot) < POSITION_EPSILON) return false; return true; }
-function sendPositionUpdate(now) { if (!isCharacterReady || blockSync || typeof BYOND_REF === 'undefined') return; const x = round2(playerGroup.position.x); const y = round2(playerGroup.position.y); const z = round2(playerGroup.position.z); const rot = round2(playerGroup.rotation.y); if (!shouldSendPosition(x, y, z, rot, now)) return; lastSentTime = now; lastSentX = x; lastSentY = y; lastSentZ = z; lastSentRot = rot; let runFlag = (isRunning && !isResting) ? 1 : 0; window.location.href = `byond://?src=${BYOND_REF}&action=update_pos&x=${x}&y=${y}&z=${z}&rot=${rot}&run=${runFlag}`; }
+function sendPositionUpdate(now) { 
+    if (!isCharacterReady || blockSync || typeof BYOND_REF === 'undefined') return; 
+    const x = round2(playerGroup.position.x); const y = round2(playerGroup.position.y); const z = round2(playerGroup.position.z); const rot = round2(playerGroup.rotation.y); 
+    if (!shouldSendPosition(x, y, z, rot, now)) return; 
+    lastSentTime = now; lastSentX = x; lastSentY = y; lastSentZ = z; lastSentRot = rot; 
+    let runFlag = (isRunning && !isResting) ? 1 : 0; 
+    queueCommand(`action=update_pos&x=${x}&y=${y}&z=${z}&rot=${rot}&run=${runFlag}`); 
+}
 
 // --- FUNÇÃO UNIFICADA DE ANIMAÇÃO EM CAMADAS ---
 function animateCharacterRig(mesh, state, isMoving, isRunning, isResting, isFainted, groundH) {

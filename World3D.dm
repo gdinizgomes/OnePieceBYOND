@@ -33,12 +33,14 @@ datum/game_controller
 			var/full_sync = (server_tick % 20 == 0) 
 			
 			// 1. Coletar dados de TODOS os jogadores e NPCs
-			var/list/all_player_data = list()
+			var/list/all_entity_data = list()
 			var/list/active_clients = list()
 			
 			for(var/mob/M in global_players_list)
 				if(M.client && M.in_game && M.char_loaded)
 					active_clients += M
+					
+				if(M.in_game && M.char_loaded)
 					var/pid = "\ref[M]"
 					
 					// DADOS DINÂMICOS (Enviados Sempre)
@@ -63,7 +65,7 @@ datum/game_controller
 						pData["name"] = M.name; pData["skin"] = M.skin_color; pData["cloth"] = M.cloth_color
 						pData["mhp"] = M.max_hp; pData["gen"] = M.char_gender
 
-					all_player_data[pid] = pData
+					all_entity_data[pid] = pData
 
 			for(var/mob/npc/N in global_npcs)
 				var/nid = "\ref[N]"
@@ -81,29 +83,45 @@ datum/game_controller
 					nData["mhp"] = N.max_hp; nData["gen"] = N.char_gender
 					if(N.npc_type == "prop") nData["prop_id"] = N:prop_id
 
-				all_player_data[nid] = nData
+				all_entity_data[nid] = nData
 			
-			// 2. Coletar Itens do chão 
+			// 2. Coletar Itens do chão globais
 			var/send_ground = full_sync || (ground_dirty_tick >= server_tick - 5)
-			
-			var/list/global_json_list = list("others" = all_player_data, "t" = world.time)
+			var/list/ground_data = list()
 			
 			if(send_ground)
-				var/list/ground_data = list()
 				for(var/obj/item/I in global_ground_items)
 					if(isturf(I.loc))
 						ground_data += list(list("ref" = "\ref[I]", "id" = I.id_visual, "x" = I.real_x, "y" = I.real_y, "z" = I.real_z))
 					else
 						global_ground_items -= I
-				global_json_list["ground"] = ground_data
 
-			var/global_json = json_encode(global_json_list)
-
-			// 3. Enviar Pacotes Individuais
+			// 3. Enviar Pacotes Individuais (Com Filtro Area of Interest)
 			for(var/mob/M in active_clients)
 				var/faint_rem = 0
 				if(M.is_fainted && M.faint_end_time > world.time) faint_rem = round((M.faint_end_time - world.time) / 10)
 
+				// --- FILTRO AREA OF INTEREST (AoI) ---
+				var/list/my_visible_entities = list()
+				for(var/id in all_entity_data)
+					var/list/edata = all_entity_data[id]
+					var/dist = sqrt((edata["x"] - M.real_x)**2 + (edata["z"] - M.real_z)**2)
+					if(dist <= 40.0) // O jogador só recebe dados de quem estiver a até 40 blocos
+						my_visible_entities[id] = edata
+				
+				var/list/my_visible_ground = list()
+				if(send_ground)
+					for(var/list/gdata in ground_data)
+						var/dist = sqrt((gdata["x"] - M.real_x)**2 + (gdata["z"] - M.real_z)**2)
+						if(dist <= 40.0)
+							my_visible_ground += list(gdata)
+
+				var/list/my_global_json_list = list("others" = my_visible_entities, "t" = world.time)
+				if(send_ground) my_global_json_list["ground"] = my_visible_ground
+				
+				var/global_json = json_encode(my_global_json_list)
+
+				// --- DADOS PESSOAIS ---
 				var/my_hand = ""; var/my_head = ""; var/my_body = ""; var/my_legs = ""; var/my_feet = ""
 				if(M.slot_hand) my_hand = M.slot_hand.id_visual
 				if(M.slot_head) my_head = M.slot_head.id_visual

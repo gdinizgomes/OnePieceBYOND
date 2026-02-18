@@ -9,17 +9,24 @@ const CharFactory = {
         plane: new THREE.PlaneGeometry(1, 1)
     },
 
+    matCache: {}, // Dicionário para reaproveitamento de materiais (Otimização de Memória)
+
     createMesh: function(visualData, overrides = {}) {
         const geometry = this.geoCache[visualData.model] || this.geoCache.box;
-        let material;
         const colorHex = overrides.color ? parseInt("0x" + overrides.color) : (visualData.color || 0xFFFFFF);
+        const cacheKey = visualData.texture ? `${visualData.texture}_${colorHex}` : `${colorHex}`;
 
-        if (visualData.texture) {
-            const tex = this.textureLoader.load(visualData.texture);
-            tex.magFilter = THREE.NearestFilter; 
-            material = new THREE.MeshPhongMaterial({ map: tex, transparent: true, alphaTest: 0.5, color: colorHex });
-        } else {
-            material = new THREE.MeshPhongMaterial({ color: colorHex });
+        let material = this.matCache[cacheKey];
+
+        if (!material) {
+            if (visualData.texture) {
+                const tex = this.textureLoader.load(visualData.texture);
+                tex.magFilter = THREE.NearestFilter; 
+                material = new THREE.MeshPhongMaterial({ map: tex, transparent: true, alphaTest: 0.5, color: colorHex });
+            } else {
+                material = new THREE.MeshPhongMaterial({ color: colorHex });
+            }
+            this.matCache[cacheKey] = material;
         }
 
         const mesh = new THREE.Mesh(geometry, material);
