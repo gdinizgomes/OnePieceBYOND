@@ -151,7 +151,7 @@
             border: 2px solid #3498db; border-radius: 10px; padding: 15px;
             display: none; pointer-events: auto; color: white; z-index: 100; flex-direction: column;
         }
-        #loot-window { border-color: #e74c3c; right: auto; left: 10%; } /* Fica na esquerda para não encavalar */
+        #loot-window { border-color: #e74c3c; right: auto; left: 10%; }
         
         .grid-container { display: grid; grid-template-columns: repeat(4, 1fr); grid-template-rows: repeat(3, 1fr); gap: 8px; margin-top: 10px; }
         .inv-slot {
@@ -435,7 +435,11 @@
 
     <script src="definitions.js"></script>
     <script src="factory.js"></script>
-    <script src="engine.js"></script> 
+    <script src="engine.js"></script>
+    
+    <script src="NetworkSystem.js"></script>
+    <script src="UISystem.js"></script>
+    
     <script src="game.js"></script>
 </body>
 </html>

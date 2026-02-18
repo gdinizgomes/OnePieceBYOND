@@ -712,6 +712,11 @@ mob
 		src << browse_rsc(file("definitions.js"), "definitions.js")
 		src << browse_rsc(file("factory.js"), "factory.js")
 		src << browse_rsc(file("engine.js"), "engine.js")
+		
+		// ARQUIVOS MODULARIZADOS FISICAMENTE SENDO ENVIADOS:
+		src << browse_rsc(file("client/NetworkSystem.js"), "NetworkSystem.js")
+		src << browse_rsc(file("client/UISystem.js"), "UISystem.js")
+		
 		src << browse_rsc(file("game.js"), "game.js")
 
 		if(fexists("weapon_sword_wood_img.png")) src << browse_rsc(file("weapon_sword_wood_img.png"), "weapon_sword_wood_img.png")
@@ -997,7 +1002,6 @@ mob
 			
 			if(!target || !(s_id in unlocked_skills) || target == src) return 
 			
-			// BUGFIX: Ignorar NPCs não lutáveis nas SKILLS (assim como no Melee)
 			if(istype(target, /mob/npc))
 				var/mob/npc/N = target
 				if(N.npc_type == "vendor" || N.npc_type == "nurse") return 
