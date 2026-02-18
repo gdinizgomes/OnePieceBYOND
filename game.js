@@ -1,7 +1,6 @@
 // game.js - Lógica Principal com ANTI-STUCK SPAWN, TELEPORT FIX E LOOT AUTO-CLOSE
 
 // --- MÓDULO 1: NETWORK SYSTEM ---
-// Responsável exclusivo pela comunicação com o servidor BYOND.
 const NetworkSystem = {
     commandQueue: [],
     lastPacketTime: Date.now(),
@@ -55,7 +54,6 @@ const NetworkSystem = {
 NetworkSystem.init();
 
 // --- MÓDULO 2: UI SYSTEM ---
-// Responsável por toda a interface de usuário, cache de DOM, janelas e interações de menus.
 const UISystem = {
     state: {
         statOpen: false, invOpen: false, shopOpen: false, skillsOpen: false, lootOpen: false,
@@ -68,7 +66,6 @@ const UISystem = {
     },
 
     init: function() {
-        // Expõe funções vitais no escopo global para manter o HTML legível e funcional
         window.toggleStats = () => this.toggleStats();
         window.toggleInventory = () => this.toggleInventory();
         window.toggleSkills = () => this.toggleSkills();
@@ -504,16 +501,360 @@ const UISystem = {
 
 UISystem.init();
 
-// --- VARIÁVEIS GLOBAIS DE ENTIDADE (Manteremos até criar o EntityManager/SkillSystem) ---
+// --- MÓDULO 3: TARGET SYSTEM ---
+// Encapsula toda a lógica de seleção, alcance e interface de Alvo (Target)
+const TargetSystem = {
+    currentTargetID: null,
+    MAX_RANGE: 25,
+    SELECTION_RANGE: 20,
+
+    cycleTarget: function() {
+        if (!playerGroup) return;
+        lastActionTime = Date.now(); 
+
+        const potentialTargets = [];
+        for (const id in otherPlayers) {
+            const other = otherPlayers[id];
+            const dist = playerGroup.position.distanceTo(other.mesh.position);
+            
+            if (dist <= this.SELECTION_RANGE) {
+                potentialTargets.push({ id: id, dist: dist });
+            }
+        }
+
+        if (potentialTargets.length === 0) {
+            this.currentTargetID = null;
+            return;
+        }
+
+        potentialTargets.sort((a, b) => {
+            const distA = Math.round(a.dist * 10);
+            const distB = Math.round(b.dist * 10);
+            
+            if (distA === distB) return a.id.localeCompare(b.id);
+            return distA - distB;
+        });
+
+        if (!this.currentTargetID) {
+            this.currentTargetID = potentialTargets[0].id;
+        } else {
+            const currentIndex = potentialTargets.findIndex(t => t.id === this.currentTargetID);
+            if (currentIndex === -1 || currentIndex === potentialTargets.length - 1) {
+                this.currentTargetID = potentialTargets[0].id;
+            } else {
+                this.currentTargetID = potentialTargets[currentIndex + 1].id;
+            }
+        }
+    },
+
+    deselectTarget: function() {
+        this.currentTargetID = null;
+    },
+
+    updateUI: function() {
+        const targetWin = document.getElementById('target-window');
+        
+        if (!this.currentTargetID || !otherPlayers[this.currentTargetID]) {
+            targetWin.style.display = 'none';
+            for (const id in otherPlayers) {
+                if(otherPlayers[id].label) {
+                    otherPlayers[id].label.style.border = "1px solid rgba(255,255,255,0.2)";
+                    otherPlayers[id].label.style.zIndex = "1";
+                }
+            }
+            return;
+        }
+
+        const target = otherPlayers[this.currentTargetID];
+        const dist = playerGroup.position.distanceTo(target.mesh.position);
+        
+        if (dist > this.MAX_RANGE || Date.now() - lastActionTime > 15000) {
+            this.deselectTarget();
+            return;
+        }
+
+        targetWin.style.display = 'block';
+        document.getElementById('target-name').innerText = target.name || "Desconhecido";
+        
+        const hp = target.currentHp || 100;
+        const maxHp = target.maxHp || 100;
+        const pct = Math.max(0, Math.min(100, (hp / maxHp) * 100));
+        
+        document.getElementById('target-hp-fill').style.width = pct + "%";
+        document.getElementById('target-hp-text').innerText = `${Math.floor(hp)}/${maxHp}`;
+
+        for (const id in otherPlayers) {
+            if(otherPlayers[id].label) {
+                if (id === this.currentTargetID) {
+                    otherPlayers[id].label.style.border = "2px solid #e74c3c";
+                    otherPlayers[id].label.style.zIndex = "100"; 
+                } else {
+                    otherPlayers[id].label.style.border = "1px solid rgba(255,255,255,0.2)";
+                    otherPlayers[id].label.style.zIndex = "1";
+                }
+            }
+        }
+    }
+};
+
+// --- MÓDULO 4: COMBAT VISUAL SYSTEM ---
+// Separa responsabilidades estéticas, de renderização de Dano e de Object Pooling
+const CombatVisualSystem = {
+    activeProjectiles: [],
+    activeHitboxes: [],
+    activeSkillProjectiles: [],
+    hitboxPool: [],
+    projectilePool: [],
+    tempBoxAttacker: new THREE.Box3(),
+    tempBoxTarget: new THREE.Box3(),
+
+    getHitbox: function(size, colorHex) {
+        let m;
+        if (this.hitboxPool.length > 0) {
+            m = this.hitboxPool.pop();
+        } else {
+            const geo = new THREE.BoxGeometry(1, 1, 1);
+            const mat = new THREE.MeshBasicMaterial({ color: 0xFF0000, wireframe: true, transparent: true, opacity: 0.3 });
+            m = new THREE.Mesh(geo, mat);
+        }
+        m.scale.set(size.x, size.y, size.z);
+        m.material.color.setHex(colorHex || 0xFF0000);
+        return m;
+    },
+
+    releaseHitbox: function(m) {
+        Engine.scene.remove(m);
+        this.hitboxPool.push(m);
+    },
+
+    getProjectile: function(colorHex, scaleArr) {
+        let m;
+        if (this.projectilePool.length > 0) {
+            m = this.projectilePool.pop();
+        } else {
+            const geo = new THREE.BoxGeometry(1, 1, 1);
+            const mat = new THREE.MeshBasicMaterial({ color: 0xFFFFFF });
+            m = new THREE.Mesh(geo, mat);
+        }
+        m.scale.set(scaleArr[0], scaleArr[1], scaleArr[2]);
+        m.material.color.setHex(colorHex);
+        return m;
+    },
+
+    releaseProjectile: function(m) {
+        while(m.children.length > 0){ m.remove(m.children[0]); }
+        Engine.scene.remove(m);
+        this.projectilePool.push(m);
+    },
+
+    spawnDamageNumber: function(targetRef, amount) {
+        if(!otherPlayers[targetRef]) return;
+        const mesh = otherPlayers[targetRef].mesh;
+        const tempV = new THREE.Vector3(mesh.position.x, mesh.position.y + 2.5, mesh.position.z);
+        tempV.project(Engine.camera);
+        const x = (tempV.x * .5 + .5) * window.innerWidth;
+        const y = (-(tempV.y * .5) + .5) * window.innerHeight;
+        const div = document.createElement('div');
+        div.className = 'dmg-popup';
+        div.innerText = "-" + amount;
+        div.style.left = x + 'px';
+        div.style.top = y + 'px';
+        document.body.appendChild(div);
+        setTimeout(() => { div.remove(); }, 1000);
+    },
+
+    fireProjectile: function(originMesh, projectileDef, isMine) {
+        const s = projectileDef.scale || [0.1, 0.1, 0.1];
+        const bullet = this.getProjectile(projectileDef.color, s);
+        
+        if(!originMesh) return; 
+        
+        const bodyRot = originMesh.rotation.y; 
+        const sin = Math.sin(bodyRot); 
+        const cos = Math.cos(bodyRot);
+        
+        bullet.position.copy(originMesh.position); 
+        bullet.position.y += 1.3; 
+        bullet.position.x += sin * 0.5 - cos * 0.4; 
+        bullet.position.z += cos * 0.5 + sin * 0.4; 
+        
+        let dX = sin; let dY = 0; let dZ = cos;
+        
+        if (isMine && TargetSystem.currentTargetID && otherPlayers[TargetSystem.currentTargetID] && otherPlayers[TargetSystem.currentTargetID].mesh) {
+            const targetMesh = otherPlayers[TargetSystem.currentTargetID].mesh;
+            const targetPos = new THREE.Vector3(targetMesh.position.x, targetMesh.position.y + 0.9, targetMesh.position.z);
+            const bulletPos = bullet.position.clone();
+            
+            const dirVec = new THREE.Vector3().subVectors(targetPos, bulletPos).normalize();
+            dX = dirVec.x; dY = dirVec.y; dZ = dirVec.z;
+            
+            bullet.lookAt(targetPos); 
+        } else {
+            bullet.rotation.y = bodyRot; 
+        }
+
+        Engine.scene.add(bullet);
+        
+        this.activeProjectiles.push({ 
+            mesh: bullet, dirX: dX, dirY: dY, dirZ: dZ, 
+            speed: projectileDef.speed, distTraveled: 0, 
+            maxDist: projectileDef.range || 10, isMine: isMine 
+        });
+    },
+
+    spawnHitbox: function(playerMesh, size, forwardOffset, lifetime, customData, yOffset) {
+        if(!playerMesh) return;
+        const hitbox = this.getHitbox(size, 0xFF0000);
+        hitbox.position.copy(playerMesh.position); 
+        hitbox.position.y += (yOffset !== undefined ? yOffset : 1.0); 
+        const bodyRot = playerMesh.rotation.y; 
+        const sin = Math.sin(bodyRot); const cos = Math.cos(bodyRot);
+        hitbox.position.x += sin * forwardOffset; hitbox.position.z += cos * forwardOffset; hitbox.rotation.y = bodyRot;
+        
+        Engine.scene.add(hitbox);
+        this.activeHitboxes.push({ mesh: hitbox, startTime: Date.now(), duration: lifetime, hasHit: [], data: customData || {} });
+    },
+
+    fireSkillProjectile: function(originMesh, skillId, ownerRef) {
+        const def = GameSkills[skillId];
+        if(!def || !originMesh) return;
+
+        const isMine = (ownerRef === myID);
+
+        const hitboxMesh = this.getProjectile(0x00FF00, def.hitboxSize);
+        hitboxMesh.material.wireframe = true;
+        hitboxMesh.material.transparent = true;
+        hitboxMesh.material.opacity = 0.5; 
+
+        if (def.visualDef && GameDefinitions[def.visualDef]) {
+            const skinData = GameDefinitions[def.visualDef];
+            const skinMesh = CharFactory.createFromDef(def.visualDef, skinData.visual);
+            hitboxMesh.add(skinMesh); 
+        }
+
+        const bodyRot = originMesh.rotation.y;
+        const sin = Math.sin(bodyRot); const cos = Math.cos(bodyRot);
+        
+        hitboxMesh.position.copy(originMesh.position);
+        hitboxMesh.position.y += 1.0; 
+        hitboxMesh.position.x += sin * 1.0; 
+        hitboxMesh.position.z += cos * 1.0;
+
+        let dX = sin; let dY = 0; let dZ = cos;
+        
+        if (isMine && TargetSystem.currentTargetID && otherPlayers[TargetSystem.currentTargetID] && otherPlayers[TargetSystem.currentTargetID].mesh) {
+            const targetMesh = otherPlayers[TargetSystem.currentTargetID].mesh;
+            const targetPos = new THREE.Vector3(targetMesh.position.x, targetMesh.position.y + 0.9, targetMesh.position.z);
+            const dirVec = new THREE.Vector3().subVectors(targetPos, hitboxMesh.position).normalize();
+            dX = dirVec.x; dY = dirVec.y; dZ = dirVec.z;
+        }
+
+        hitboxMesh.rotation.y = Math.atan2(dX, dZ);
+
+        Engine.scene.add(hitboxMesh);
+        
+        this.activeSkillProjectiles.push({
+            mesh: hitboxMesh, skillId: skillId, def: def,
+            ownerRef: ownerRef, isMine: isMine,
+            dirX: dX, dirY: dY, dirZ: dZ,
+            distTraveled: 0, hasHit: [] 
+        });
+    },
+
+    checkCollisions: function(attackerBox, type, objRef) {
+        for (let id in otherPlayers) {
+            const target = otherPlayers[id]; 
+            
+            if(type === "melee" && objRef.hasHit.includes(id)) continue;
+            this.tempBoxTarget.setFromObject(target.mesh);
+            if (attackerBox.intersectsBox(this.tempBoxTarget)) {
+                let extra = "";
+                if(type === "melee" && objRef.data && objRef.data.step) extra = `&combo=${objRef.data.step}`;
+                if(typeof BYOND_REF !== 'undefined') NetworkSystem.queueCommand(`action=register_hit&target_ref=${id}&hit_type=${type}${extra}`);
+                
+                if(type === "projectile") { 
+                    this.releaseProjectile(objRef.mesh); 
+                    objRef.distTraveled = 99999; 
+                } else if(type === "melee") { 
+                    objRef.hasHit.push(id); 
+                    objRef.mesh.material.color.setHex(0xFFFFFF); 
+                }
+            }
+        }
+    },
+
+    update: function(timeScale) { 
+        for (let i = this.activeProjectiles.length - 1; i >= 0; i--) {
+            const p = this.activeProjectiles[i]; 
+            const moveStep = p.speed * timeScale;
+            
+            p.mesh.position.x += p.dirX * moveStep; 
+            p.mesh.position.y += (p.dirY || 0) * moveStep; 
+            p.mesh.position.z += p.dirZ * moveStep; 
+            p.distTraveled += moveStep;
+            
+            if (p.isMine) { this.tempBoxAttacker.setFromObject(p.mesh); this.checkCollisions(this.tempBoxAttacker, "projectile", p); }
+            if (p.distTraveled >= p.maxDist) { this.releaseProjectile(p.mesh); this.activeProjectiles.splice(i, 1); }
+        }
+
+        for (let i = this.activeSkillProjectiles.length - 1; i >= 0; i--) {
+            const p = this.activeSkillProjectiles[i]; 
+            const moveStep = p.def.speed * timeScale;
+            
+            p.mesh.position.x += p.dirX * moveStep; 
+            p.mesh.position.y += p.dirY * moveStep; 
+            p.mesh.position.z += p.dirZ * moveStep; 
+            p.distTraveled += moveStep;
+            
+            if (p.isMine) { 
+                this.tempBoxAttacker.setFromObject(p.mesh); 
+                
+                for (let id in otherPlayers) {
+                    if(p.hasHit.includes(id)) continue; 
+                    
+                    this.tempBoxTarget.setFromObject(otherPlayers[id].mesh);
+                    if (this.tempBoxAttacker.intersectsBox(this.tempBoxTarget)) {
+                        if(typeof BYOND_REF !== 'undefined') {
+                            NetworkSystem.queueCommand(`action=register_skill_hit&skill_id=${p.skillId}&target_ref=${id}`);
+                        }
+                        
+                        p.hasHit.push(id);
+                        
+                        if (!p.def.pierce) {
+                            this.releaseProjectile(p.mesh); 
+                            p.distTraveled = 99999; 
+                            break; 
+                        }
+                    }
+                }
+            }
+            
+            if (p.distTraveled >= p.def.range) { 
+                this.releaseProjectile(p.mesh); 
+                this.activeSkillProjectiles.splice(i, 1); 
+            }
+        }
+
+        const now = Date.now();
+        for (let i = this.activeHitboxes.length - 1; i >= 0; i--) {
+            const hb = this.activeHitboxes[i]; 
+            if (now - hb.startTime > hb.duration) { 
+                this.releaseHitbox(hb.mesh); 
+                this.activeHitboxes.splice(i, 1); 
+                continue; 
+            }
+            this.tempBoxAttacker.setFromObject(hb.mesh); this.checkCollisions(this.tempBoxAttacker, "melee", hb);
+        }
+    }
+};
+
+// --- VARIÁVEIS GLOBAIS DE ENTIDADE (Manteremos até criar o EntityManager) ---
 let playerGroup = null; 
 const otherPlayers = {}; 
 let myID = null; 
 let isCharacterReady = false;
 
-// --- TARGET SYSTEM VARS ---
-let currentTargetID = null; 
-const TARGET_MAX_RANGE = 25; 
-const TARGET_SELECTION_RANGE = 20; 
+// Variáveis Críticas Residuais
 let lastActionTime = Date.now(); 
 
 // --- DELTA TIME VARS ---
@@ -522,52 +863,6 @@ const TARGET_FPS = 60;
 const OPTIMAL_FRAME_TIME = 1000 / TARGET_FPS; 
 
 const groundItemsMeshes = {}; 
-const activeProjectiles = []; 
-const activeHitboxes = []; 
-const activeSkillProjectiles = []; 
-
-// --- POOLING DE OBJETOS ---
-const hitboxPool = [];
-const projectilePool = [];
-
-function getHitbox(size, colorHex) {
-    let m;
-    if (hitboxPool.length > 0) {
-        m = hitboxPool.pop();
-    } else {
-        const geo = new THREE.BoxGeometry(1, 1, 1);
-        const mat = new THREE.MeshBasicMaterial({ color: 0xFF0000, wireframe: true, transparent: true, opacity: 0.3 });
-        m = new THREE.Mesh(geo, mat);
-    }
-    m.scale.set(size.x, size.y, size.z);
-    m.material.color.setHex(colorHex || 0xFF0000);
-    return m;
-}
-
-function releaseHitbox(m) {
-    Engine.scene.remove(m);
-    hitboxPool.push(m);
-}
-
-function getProjectile(colorHex, scaleArr) {
-    let m;
-    if (projectilePool.length > 0) {
-        m = projectilePool.pop();
-    } else {
-        const geo = new THREE.BoxGeometry(1, 1, 1);
-        const mat = new THREE.MeshBasicMaterial({ color: 0xFFFFFF });
-        m = new THREE.Mesh(geo, mat);
-    }
-    m.scale.set(scaleArr[0], scaleArr[1], scaleArr[2]);
-    m.material.color.setHex(colorHex);
-    return m;
-}
-
-function releaseProjectile(m) {
-    while(m.children.length > 0){ m.remove(m.children[0]); }
-    Engine.scene.remove(m);
-    projectilePool.push(m);
-}
 
 // Estado do Jogo (Física/Entidade)
 let charState = "DEFAULT"; 
@@ -624,129 +919,17 @@ function castSkill(skillId) {
     }, 100);
 }
 
-// --- FUNÇÕES AUXILIARES VISUAIS ---
-function spawnDamageNumber(targetRef, amount) {
-    if(!otherPlayers[targetRef]) return;
-    const mesh = otherPlayers[targetRef].mesh;
-    const tempV = new THREE.Vector3(mesh.position.x, mesh.position.y + 2.5, mesh.position.z);
-    tempV.project(Engine.camera);
-    const x = (tempV.x * .5 + .5) * window.innerWidth;
-    const y = (-(tempV.y * .5) + .5) * window.innerHeight;
-    const div = document.createElement('div');
-    div.className = 'dmg-popup';
-    div.innerText = "-" + amount;
-    div.style.left = x + 'px';
-    div.style.top = y + 'px';
-    document.body.appendChild(div);
-    setTimeout(() => { div.remove(); }, 1000);
-}
-
+// Helper Matemático
 function round2(num) { return Math.round((num + Number.EPSILON) * 100) / 100; }
 
-// --- TARGET SYSTEM LOGIC ESTABILIZADA ---
-function cycleTarget() {
-    if (!playerGroup) return;
-    
-    lastActionTime = Date.now(); 
-
-    const potentialTargets = [];
-    for (const id in otherPlayers) {
-        const other = otherPlayers[id];
-        const dist = playerGroup.position.distanceTo(other.mesh.position);
-        
-        if (dist <= TARGET_SELECTION_RANGE) {
-            potentialTargets.push({ id: id, dist: dist });
-        }
-    }
-
-    if (potentialTargets.length === 0) {
-        currentTargetID = null;
-        return;
-    }
-
-    potentialTargets.sort((a, b) => {
-        const distA = Math.round(a.dist * 10);
-        const distB = Math.round(b.dist * 10);
-        
-        if (distA === distB) {
-            return a.id.localeCompare(b.id);
-        }
-        return distA - distB;
-    });
-
-    if (!currentTargetID) {
-        currentTargetID = potentialTargets[0].id;
-    } else {
-        const currentIndex = potentialTargets.findIndex(t => t.id === currentTargetID);
-        if (currentIndex === -1 || currentIndex === potentialTargets.length - 1) {
-            currentTargetID = potentialTargets[0].id;
-        } else {
-            currentTargetID = potentialTargets[currentIndex + 1].id;
-        }
-    }
-}
-
-function deselectTarget() {
-    currentTargetID = null;
-}
-
-function updateTargetUI() {
-    const targetWin = document.getElementById('target-window');
-    
-    if (!currentTargetID || !otherPlayers[currentTargetID]) {
-        targetWin.style.display = 'none';
-        for (const id in otherPlayers) {
-            if(otherPlayers[id].label) {
-                otherPlayers[id].label.style.border = "1px solid rgba(255,255,255,0.2)";
-                otherPlayers[id].label.style.zIndex = "1";
-            }
-        }
-        return;
-    }
-
-    const target = otherPlayers[currentTargetID];
-    const dist = playerGroup.position.distanceTo(target.mesh.position);
-    
-    if (dist > TARGET_MAX_RANGE) {
-        deselectTarget();
-        return;
-    }
-
-    if (Date.now() - lastActionTime > 15000) {
-        deselectTarget();
-        return;
-    }
-
-    targetWin.style.display = 'block';
-    document.getElementById('target-name').innerText = target.name || "Desconhecido";
-    
-    const hp = target.currentHp || 100;
-    const maxHp = target.maxHp || 100;
-    const pct = Math.max(0, Math.min(100, (hp / maxHp) * 100));
-    
-    document.getElementById('target-hp-fill').style.width = pct + "%";
-    document.getElementById('target-hp-text').innerText = `${Math.floor(hp)}/${maxHp}`;
-
-    for (const id in otherPlayers) {
-        if(otherPlayers[id].label) {
-            if (id === currentTargetID) {
-                otherPlayers[id].label.style.border = "2px solid #e74c3c";
-                otherPlayers[id].label.style.zIndex = "100"; 
-            } else {
-                otherPlayers[id].label.style.border = "1px solid rgba(255,255,255,0.2)";
-                otherPlayers[id].label.style.zIndex = "1";
-            }
-        }
-    }
-}
-
+// --- EVENTOS DE CONTROLE ---
 window.addEventListener('keydown', function(e) {
     const k = e.key.toLowerCase();
     
     if (k === 'tab') {
         e.preventDefault(); 
         if (e.repeat) return; 
-        cycleTarget();
+        TargetSystem.cycleTarget();
         return;
     }
     
@@ -757,7 +940,7 @@ window.addEventListener('keydown', function(e) {
         else if (UISystem.state.shopOpen) UISystem.toggleShop();
         else if (UISystem.state.lootOpen) UISystem.closeLoot();
         else {
-            deselectTarget();
+            TargetSystem.deselectTarget();
             if(document.getElementById('kill-modal').style.display === 'block') UISystem.confirmKill(false);
         }
         return;
@@ -781,10 +964,10 @@ window.addEventListener('keyup', function(e) { if(e.key === 'Shift') isRunning =
 
 function interact() {
     lastActionTime = Date.now(); 
-    if (currentTargetID && otherPlayers[currentTargetID]) {
-        let dist = playerGroup.position.distanceTo(otherPlayers[currentTargetID].mesh.position);
+    if (TargetSystem.currentTargetID && otherPlayers[TargetSystem.currentTargetID]) {
+        let dist = playerGroup.position.distanceTo(otherPlayers[TargetSystem.currentTargetID].mesh.position);
         if (dist < 3.0) {
-            NetworkSystem.queueCommand(`action=interact_npc&ref=${currentTargetID}`);
+            NetworkSystem.queueCommand(`action=interact_npc&ref=${TargetSystem.currentTargetID}`);
             return;
         }
     }
@@ -795,7 +978,6 @@ function interact() {
 
 // --- SISTEMA DE COLISÃO DO AMBIENTE ---
 const tempBoxObstacle = new THREE.Box3(); 
-
 const playerRadius = 0.15; 
 const playerHeight = 1.6;  
 
@@ -938,211 +1120,6 @@ window.addEventListener('game-action', function(e) {
     else if(k === 'p' && !NetworkSystem.blockSync) { NetworkSystem.blockSync = true; NetworkSystem.queueCommand("action=force_save"); UISystem.addLog("Salvando...", "log-miss"); setTimeout(function() { NetworkSystem.blockSync = false; }, 500); }
 });
 
-// --- LÓGICA DE PROJÉTEIS ---
-function fireProjectile(projectileDef, isMine) {
-    const s = projectileDef.scale || [0.1, 0.1, 0.1];
-    const bullet = getProjectile(projectileDef.color, s);
-    
-    const origin = isMine ? playerGroup : (otherPlayers[projectileDef.ownerID] ? otherPlayers[projectileDef.ownerID].mesh : null);
-    if(!origin) return; 
-    
-    const bodyRot = origin.rotation.y; 
-    const sin = Math.sin(bodyRot); 
-    const cos = Math.cos(bodyRot);
-    
-    bullet.position.copy(origin.position); 
-    bullet.position.y += 1.3; 
-    bullet.position.x += sin * 0.5 - cos * 0.4; 
-    bullet.position.z += cos * 0.5 + sin * 0.4; 
-    
-    let dX = sin; 
-    let dY = 0; 
-    let dZ = cos;
-    
-    if (isMine && currentTargetID && otherPlayers[currentTargetID] && otherPlayers[currentTargetID].mesh) {
-        const targetMesh = otherPlayers[currentTargetID].mesh;
-        const targetPos = new THREE.Vector3(targetMesh.position.x, targetMesh.position.y + 0.9, targetMesh.position.z);
-        const bulletPos = bullet.position.clone();
-        
-        const dirVec = new THREE.Vector3().subVectors(targetPos, bulletPos).normalize();
-        dX = dirVec.x; 
-        dY = dirVec.y; 
-        dZ = dirVec.z;
-        
-        bullet.lookAt(targetPos); 
-    } else {
-        bullet.rotation.y = bodyRot; 
-    }
-
-    Engine.scene.add(bullet);
-    
-    activeProjectiles.push({ 
-        mesh: bullet, 
-        dirX: dX, 
-        dirY: dY, 
-        dirZ: dZ, 
-        speed: projectileDef.speed, 
-        distTraveled: 0, 
-        maxDist: projectileDef.range || 10, 
-        isMine: isMine 
-    });
-}
-
-function spawnHitbox(size, forwardOffset, lifetime, customData, yOffset) {
-    const hitbox = getHitbox(size, 0xFF0000);
-    hitbox.position.copy(playerGroup.position); 
-    hitbox.position.y += (yOffset !== undefined ? yOffset : 1.0); 
-    const bodyRot = playerGroup.rotation.y; const sin = Math.sin(bodyRot); const cos = Math.cos(bodyRot);
-    hitbox.position.x += sin * forwardOffset; hitbox.position.z += cos * forwardOffset; hitbox.rotation.y = bodyRot;
-    
-    Engine.scene.add(hitbox);
-    activeHitboxes.push({ mesh: hitbox, startTime: Date.now(), duration: lifetime, hasHit: [], data: customData || {} });
-}
-
-
-// --- MOTOR DATA-DRIVEN PARA SKILLS ---
-function fireSkillProjectile(skillId, ownerRef) {
-    const def = GameSkills[skillId];
-    if(!def) return;
-
-    const isMine = (ownerRef === myID);
-    const origin = isMine ? playerGroup : (otherPlayers[ownerRef] ? otherPlayers[ownerRef].mesh : null);
-    if(!origin) return;
-
-    const hitboxMesh = getProjectile(0x00FF00, def.hitboxSize);
-    hitboxMesh.material.wireframe = true;
-    hitboxMesh.material.transparent = true;
-    hitboxMesh.material.opacity = 0.5; 
-
-    if (def.visualDef && GameDefinitions[def.visualDef]) {
-        const skinData = GameDefinitions[def.visualDef];
-        const skinMesh = CharFactory.createFromDef(def.visualDef, skinData.visual);
-        hitboxMesh.add(skinMesh); 
-    }
-
-    const bodyRot = origin.rotation.y;
-    const sin = Math.sin(bodyRot); 
-    const cos = Math.cos(bodyRot);
-    
-    hitboxMesh.position.copy(origin.position);
-    hitboxMesh.position.y += 1.0; 
-    hitboxMesh.position.x += sin * 1.0; 
-    hitboxMesh.position.z += cos * 1.0;
-
-    let dX = sin; let dY = 0; let dZ = cos;
-    
-    if (isMine && currentTargetID && otherPlayers[currentTargetID] && otherPlayers[currentTargetID].mesh) {
-        const targetMesh = otherPlayers[currentTargetID].mesh;
-        const targetPos = new THREE.Vector3(targetMesh.position.x, targetMesh.position.y + 0.9, targetMesh.position.z);
-        const dirVec = new THREE.Vector3().subVectors(targetPos, hitboxMesh.position).normalize();
-        dX = dirVec.x; dY = dirVec.y; dZ = dirVec.z;
-    }
-
-    hitboxMesh.rotation.y = Math.atan2(dX, dZ);
-
-    Engine.scene.add(hitboxMesh);
-    
-    activeSkillProjectiles.push({
-        mesh: hitboxMesh,
-        skillId: skillId,
-        def: def,
-        ownerRef: ownerRef,
-        isMine: isMine,
-        dirX: dX, dirY: dY, dirZ: dZ,
-        distTraveled: 0,
-        hasHit: [] 
-    });
-}
-
-
-const tempBoxAttacker = new THREE.Box3(); const tempBoxTarget = new THREE.Box3();
-
-function updateCombatHitboxes(timeScale) { 
-    for (let i = activeProjectiles.length - 1; i >= 0; i--) {
-        const p = activeProjectiles[i]; 
-        const moveStep = p.speed * timeScale;
-        
-        p.mesh.position.x += p.dirX * moveStep; 
-        p.mesh.position.y += (p.dirY || 0) * moveStep; 
-        p.mesh.position.z += p.dirZ * moveStep; 
-        p.distTraveled += moveStep;
-        
-        if (p.isMine) { tempBoxAttacker.setFromObject(p.mesh); checkCollisions(tempBoxAttacker, "projectile", p); }
-        if (p.distTraveled >= p.maxDist) { releaseProjectile(p.mesh); activeProjectiles.splice(i, 1); }
-    }
-
-    for (let i = activeSkillProjectiles.length - 1; i >= 0; i--) {
-        const p = activeSkillProjectiles[i]; 
-        const moveStep = p.def.speed * timeScale;
-        
-        p.mesh.position.x += p.dirX * moveStep; 
-        p.mesh.position.y += p.dirY * moveStep; 
-        p.mesh.position.z += p.dirZ * moveStep; 
-        p.distTraveled += moveStep;
-        
-        if (p.isMine) { 
-            tempBoxAttacker.setFromObject(p.mesh); 
-            
-            for (let id in otherPlayers) {
-                if(p.hasHit.includes(id)) continue; 
-                
-                tempBoxTarget.setFromObject(otherPlayers[id].mesh);
-                if (tempBoxAttacker.intersectsBox(tempBoxTarget)) {
-                    if(typeof BYOND_REF !== 'undefined') {
-                        NetworkSystem.queueCommand(`action=register_skill_hit&skill_id=${p.skillId}&target_ref=${id}`);
-                    }
-                    
-                    p.hasHit.push(id);
-                    
-                    if (!p.def.pierce) {
-                        releaseProjectile(p.mesh); 
-                        p.distTraveled = 99999; 
-                        break; 
-                    }
-                }
-            }
-        }
-        
-        if (p.distTraveled >= p.def.range) { 
-            releaseProjectile(p.mesh); 
-            activeSkillProjectiles.splice(i, 1); 
-        }
-    }
-
-    const now = Date.now();
-    for (let i = activeHitboxes.length - 1; i >= 0; i--) {
-        const hb = activeHitboxes[i]; 
-        if (now - hb.startTime > hb.duration) { 
-            releaseHitbox(hb.mesh); 
-            activeHitboxes.splice(i, 1); 
-            continue; 
-        }
-        tempBoxAttacker.setFromObject(hb.mesh); checkCollisions(tempBoxAttacker, "melee", hb);
-    }
-}
-
-function checkCollisions(attackerBox, type, objRef) {
-    for (let id in otherPlayers) {
-        const target = otherPlayers[id]; 
-        
-        if(type === "melee" && objRef.hasHit.includes(id)) continue;
-        tempBoxTarget.setFromObject(target.mesh);
-        if (attackerBox.intersectsBox(tempBoxTarget)) {
-            let extra = "";
-            if(type === "melee" && objRef.data && objRef.data.step) extra = `&combo=${objRef.data.step}`;
-            if(typeof BYOND_REF !== 'undefined') NetworkSystem.queueCommand(`action=register_hit&target_ref=${id}&hit_type=${type}${extra}`);
-            
-            if(type === "projectile") { 
-                releaseProjectile(objRef.mesh); 
-                objRef.distTraveled = 99999; 
-            } else if(type === "melee") { 
-                objRef.hasHit.push(id); 
-                objRef.mesh.material.color.setHex(0xFFFFFF); 
-            }
-        }
-    }
-}
-
 function performAttack(type) {
     if(isAttacking || !isCharacterReady) return; 
     const equippedItem = playerGroup.userData.lastItem;
@@ -1154,8 +1131,8 @@ function performAttack(type) {
     if(type === "sword" && !hasSword) { UISystem.addLog("Sem espada!", "log-miss"); return; }
     if(type === "gun" && !hasGun) { UISystem.addLog("Sem arma!", "log-miss"); return; }
     
-    if (currentTargetID && otherPlayers[currentTargetID]) {
-        const targetMesh = otherPlayers[currentTargetID].mesh;
+    if (TargetSystem.currentTargetID && otherPlayers[TargetSystem.currentTargetID]) {
+        const targetMesh = otherPlayers[TargetSystem.currentTargetID].mesh;
         const dx = targetMesh.position.x - playerGroup.position.x;
         const dz = targetMesh.position.z - playerGroup.position.z;
         playerGroup.rotation.y = Math.atan2(dx, dz);
@@ -1193,19 +1170,19 @@ function performAttack(type) {
     charState = windupStance; 
     setTimeout(function() {
         charState = atkStance;
-        if(type === "gun" && projectileData) fireProjectile(projectileData, true);
+        if(type === "gun" && projectileData) CombatVisualSystem.fireProjectile(playerGroup, projectileData, true);
         else if (type === "fist") {
-            if(fistComboStep === 3) spawnHitbox({x:1.5, y:1.5, z:1.5}, 1.5, 200, {step: 3}); 
-            else spawnHitbox({x:1, y:1, z:1}, 1.0, 200, {step: fistComboStep}); 
+            if(fistComboStep === 3) CombatVisualSystem.spawnHitbox(playerGroup, {x:1.5, y:1.5, z:1.5}, 1.5, 200, {step: 3}); 
+            else CombatVisualSystem.spawnHitbox(playerGroup, {x:1, y:1, z:1}, 1.0, 200, {step: fistComboStep}); 
         }
         else if (type === "kick") {
-            if(kickComboStep === 1) spawnHitbox({x:1.2, y:0.8, z:1.2}, 1.0, 300, {step: 1}, 0.5); 
-            else if(kickComboStep === 2) spawnHitbox({x:1.2, y:1.0, z:1.2}, 1.2, 300, {step: 2}, 1.0); 
-            else spawnHitbox({x:1.5, y:1.2, z:1.5}, 1.4, 300, {step: 3}, 1.7); 
+            if(kickComboStep === 1) CombatVisualSystem.spawnHitbox(playerGroup, {x:1.2, y:0.8, z:1.2}, 1.0, 300, {step: 1}, 0.5); 
+            else if(kickComboStep === 2) CombatVisualSystem.spawnHitbox(playerGroup, {x:1.2, y:1.0, z:1.2}, 1.2, 300, {step: 2}, 1.0); 
+            else CombatVisualSystem.spawnHitbox(playerGroup, {x:1.5, y:1.2, z:1.5}, 1.4, 300, {step: 3}, 1.7); 
         }
         else if (type === "sword") {
-            if(swordComboStep === 3) spawnHitbox({x:1.0, y:1.0, z:4.0}, 2.5, 300, {step: 3}); 
-            else spawnHitbox({x:2.5, y:1.0, z:2.0}, 1.5, 300, {step: swordComboStep}); 
+            if(swordComboStep === 3) CombatVisualSystem.spawnHitbox(playerGroup, {x:1.0, y:1.0, z:4.0}, 2.5, 300, {step: 3}); 
+            else CombatVisualSystem.spawnHitbox(playerGroup, {x:2.5, y:1.0, z:2.0}, 1.5, 300, {step: swordComboStep}); 
         }
         
         if(typeof BYOND_REF !== 'undefined') { 
@@ -1290,13 +1267,8 @@ function receberDadosGlobal(json) {
                 newChar.userData.lastLegs = ""; newChar.userData.lastFeet = ""; newChar.userData.lastItem = "";
                 
                 otherPlayers[id] = { 
-                    mesh: newChar, 
-                    label: label, 
-                    hpFill: label.querySelector('.mini-hp-fill'), 
-                    name: pData.name,
-                    currentHp: pData.hp,
-                    maxHp: pData.mhp,
-                    
+                    mesh: newChar, label: label, hpFill: label.querySelector('.mini-hp-fill'), 
+                    name: pData.name, currentHp: pData.hp, maxHp: pData.mhp,
                     startX: pData.x, startY: pData.y, startZ: pData.z, startRot: pData.rot, 
                     targetX: pData.x, targetY: pData.y, targetZ: pData.z, targetRot: pData.rot, 
                     lastPacketTime: now, lerpDuration: 150, 
@@ -1339,7 +1311,10 @@ function receberDadosGlobal(json) {
             
             if(other.hpFill && other.maxHp > 0) other.hpFill.style.width = Math.max(0, Math.min(100, (other.currentHp / other.maxHp) * 100)) + "%";
             
-            if (other.attacking && other.attackType === "gun" && !other.hasFiredThisCycle) { fireProjectile({ speed: 0.6, color: 0xFFFF00, ownerID: id }, false); other.hasFiredThisCycle = true; setTimeout(() => { other.hasFiredThisCycle = false; }, 500); }
+            if (other.attacking && other.attackType === "gun" && !other.hasFiredThisCycle) { 
+                CombatVisualSystem.fireProjectile(mesh, { speed: 0.6, color: 0xFFFF00, ownerID: id }, false); 
+                other.hasFiredThisCycle = true; setTimeout(() => { other.hasFiredThisCycle = false; }, 500); 
+            }
         }
     }
     
@@ -1350,7 +1325,7 @@ function receberDadosGlobal(json) {
             if(colIndex > -1) Engine.collidables.splice(colIndex, 1);
             otherPlayers[id].label.remove(); 
             
-            if (currentTargetID === id) deselectTarget();
+            if (TargetSystem.currentTargetID === id) TargetSystem.deselectTarget();
 
             delete otherPlayers[id]; 
         } 
@@ -1359,7 +1334,11 @@ function receberDadosGlobal(json) {
     if(packet.t && packet.evts) {
         packet.evts.forEach(evt => {
             if (evt.type === "skill_cast") {
-                fireSkillProjectile(evt.skill, evt.caster);
+                let originMesh = null;
+                if(evt.caster === myID && playerGroup) originMesh = playerGroup;
+                else if(otherPlayers[evt.caster]) originMesh = otherPlayers[evt.caster].mesh;
+                
+                CombatVisualSystem.fireSkillProjectile(originMesh, evt.skill, evt.caster);
             }
         });
     }
@@ -1410,11 +1389,10 @@ function receberDadosPessoal(json) {
         if(me.mspd) currentMoveSpeed = me.mspd;
         if(me.jmp) currentJumpForce = me.jmp;
 
-        // Toda a renderização brutal de DOM do Player agora está oculta e protegida
         UISystem.updatePersonalStatus(me);
 
         if(packet.evts) packet.evts.forEach(evt => { 
-            if(evt.type === "dmg") spawnDamageNumber(evt.tid, evt.val); 
+            if(evt.type === "dmg") CombatVisualSystem.spawnDamageNumber(evt.tid, evt.val); 
             if(evt.type === "teleport") {
                 if(playerGroup) {
                     playerGroup.position.set(evt.x, evt.y, evt.z);
@@ -1512,8 +1490,9 @@ function animate() {
 
     animTime += 0.1 * timeScale; 
 
-    updateTargetUI();
-    updateCombatHitboxes(timeScale); 
+    // Atualização Modularizada
+    TargetSystem.updateUI();
+    CombatVisualSystem.update(timeScale); 
     
     if (isCharacterReady) {
         if(!isAttacking && charState !== "DEFAULT") { if(Date.now() - lastCombatActionTime > 3000) charState = "DEFAULT"; }
