@@ -66,6 +66,9 @@ const UISystem = {
     },
 
     init: function() {
+        // Correção do Bug 1: Expor o addLog para o BYOND
+        window.addLog = (msg, css) => this.addLog(msg, css);
+        
         window.toggleStats = () => this.toggleStats();
         window.toggleInventory = () => this.toggleInventory();
         window.toggleSkills = () => this.toggleSkills();
@@ -380,33 +383,6 @@ const UISystem = {
     dropItem: function(ref, maxAmount) { if(NetworkSystem.blockSync) return; this.hideTooltip(); let qty = 1; if(maxAmount > 1) { let input = prompt(`Quantos? (Máx: ${maxAmount})`, "1"); if(input===null) return; qty = parseInt(input); if(isNaN(qty) || qty <= 0) return; if(qty > maxAmount) qty = maxAmount; } NetworkSystem.blockSync = true; NetworkSystem.queueCommand(`action=drop_item&ref=${ref}&amount=${qty}`); setTimeout(() => { NetworkSystem.blockSync = false; }, 200); },
     addStat: function(statName) { if(NetworkSystem.blockSync) return; NetworkSystem.blockSync = true; NetworkSystem.queueCommand(`action=add_stat&stat=${statName}`); setTimeout(function() { NetworkSystem.blockSync = false; }, 200); },
 
-    startSkillCooldownUI: function(skillId) {
-        const skillDef = GameSkills[skillId];
-        if(!skillDef) return;
-
-        localSkillCooldowns[skillId] = Date.now() + skillDef.cooldown;
-        
-        const overlay = document.getElementById(`cd-${skillId}`);
-        if(overlay) {
-            overlay.style.transition = "none";
-            overlay.style.height = "100%";
-            overlay.innerText = (skillDef.cooldown / 1000).toFixed(1) + "s";
-            
-            let timeLeft = skillDef.cooldown;
-            const interval = setInterval(() => {
-                timeLeft -= 100;
-                if(timeLeft <= 0) {
-                    overlay.style.height = "0%";
-                    overlay.innerText = "";
-                    clearInterval(interval);
-                } else {
-                    overlay.style.height = (timeLeft / skillDef.cooldown * 100) + "%";
-                    overlay.innerText = (timeLeft / 1000).toFixed(1) + "s";
-                }
-            }, 100);
-        }
-    },
-
     updatePersonalStatus: function(me) {
         if(me.nick && this.cache.name !== me.nick) { document.getElementById('name-display').innerText = me.nick; this.cache.name = me.nick; }
         
@@ -502,7 +478,6 @@ const UISystem = {
 UISystem.init();
 
 // --- MÓDULO 3: TARGET SYSTEM ---
-// Encapsula toda a lógica de seleção, alcance e interface de Alvo (Target)
 const TargetSystem = {
     currentTargetID: null,
     MAX_RANGE: 25,
@@ -598,7 +573,6 @@ const TargetSystem = {
 };
 
 // --- MÓDULO 4: COMBAT VISUAL SYSTEM ---
-// Separa responsabilidades estéticas, de renderização de Dano e de Object Pooling
 const CombatVisualSystem = {
     activeProjectiles: [],
     activeHitboxes: [],
@@ -872,52 +846,154 @@ let isRunning = false;
 let currentMoveSpeed = 0.08; 
 let currentJumpForce = 0.20; 
 
-// --- SISTEMA DE COMBOS ---
-let lastCombatActionTime = 0; 
-let isAttacking = false; 
-let fistComboStep = 0; let lastFistAttackTime = 0;
-let kickComboStep = 0; let lastKickAttackTime = 0;
-let swordComboStep = 0; let lastSwordAttackTime = 0;
-
 let animTime = 0; 
 let isJumping = false; 
 let verticalVelocity = 0; 
 const gravity = -0.015; 
-
 const MAP_LIMIT = 29; 
 
-// --- CONTROLE DE SKILLS (HOTBAR) ---
-const localSkillCooldowns = {};
-
-function castSkill(skillId) {
-    if(isFainted || isResting || isAttacking || !isCharacterReady) return;
+// --- MÓDULO 5: SKILL & COMBAT SYSTEM ---
+// Separa lógicas de recarga, animação de golpes e combos da raiz
+const CombatSystem = {
+    localSkillCooldowns: {},
+    isAttacking: false,
+    lastCombatActionTime: 0,
     
-    const skillDef = GameSkills[skillId];
-    if(!skillDef) return;
+    fistComboStep: 0, lastFistAttackTime: 0,
+    kickComboStep: 0, lastKickAttackTime: 0,
+    swordComboStep: 0, lastSwordAttackTime: 0,
 
-    const now = Date.now();
-    if (localSkillCooldowns[skillId] && localSkillCooldowns[skillId] > now) {
-        UISystem.addLog(`<span style='color:orange'>A habilidade ${skillDef.name} está em recarga.</span>`, "log-miss");
-        return;
+    castSkill: function(skillId) {
+        if(isFainted || isResting || this.isAttacking || !isCharacterReady) return;
+        
+        const skillDef = GameSkills[skillId];
+        if(!skillDef) return;
+
+        const now = Date.now();
+        if (this.localSkillCooldowns[skillId] && this.localSkillCooldowns[skillId] > now) {
+            UISystem.addLog(`<span style='color:orange'>A habilidade ${skillDef.name} está em recarga.</span>`, "log-miss");
+            return;
+        }
+
+        if (UISystem.cache.en < skillDef.energyCost) {
+            UISystem.addLog("<span style='color:red'>Energia insuficiente!</span>", "log-miss");
+            return;
+        }
+
+        this.isAttacking = true;
+        lastActionTime = now;
+        this.lastCombatActionTime = now;
+        charState = "SWORD_WINDUP"; 
+        
+        NetworkSystem.queueCommand(`action=cast_skill&skill_id=${skillId}`);
+        
+        setTimeout(() => {
+            charState = "FIST_COMBO_1"; 
+            setTimeout(() => { charState = "DEFAULT"; this.isAttacking = false; }, 300);
+        }, 100);
+    },
+
+    startSkillCooldownUI: function(skillId) {
+        const skillDef = GameSkills[skillId];
+        if(!skillDef) return;
+
+        this.localSkillCooldowns[skillId] = Date.now() + skillDef.cooldown;
+        
+        const overlay = document.getElementById(`cd-${skillId}`);
+        if(overlay) {
+            overlay.style.transition = "none";
+            overlay.style.height = "100%";
+            overlay.innerText = (skillDef.cooldown / 1000).toFixed(1) + "s";
+            
+            let timeLeft = skillDef.cooldown;
+            const interval = setInterval(() => {
+                timeLeft -= 100;
+                if(timeLeft <= 0) {
+                    overlay.style.height = "0%";
+                    overlay.innerText = "";
+                    clearInterval(interval);
+                } else {
+                    overlay.style.height = (timeLeft / skillDef.cooldown * 100) + "%";
+                    overlay.innerText = (timeLeft / 1000).toFixed(1) + "s";
+                }
+            }, 100);
+        }
+    },
+
+    performAttack: function(type) {
+        if(this.isAttacking || !isCharacterReady) return; 
+        const equippedItem = playerGroup.userData.lastItem;
+        let hasSword = false; let hasGun = false; let projectileData = null;
+        if(equippedItem && GameDefinitions[equippedItem]) {
+            const def = GameDefinitions[equippedItem]; const tags = def.tags || (def.data ? def.data.tags : []);
+            if(tags && tags.includes("sword")) hasSword = true; if(tags && tags.includes("gun")) { hasGun = true; projectileData = def.projectile; }
+        }
+        if(type === "sword" && !hasSword) { UISystem.addLog("Sem espada!", "log-miss"); return; }
+        if(type === "gun" && !hasGun) { UISystem.addLog("Sem arma!", "log-miss"); return; }
+        
+        if (TargetSystem.currentTargetID && otherPlayers[TargetSystem.currentTargetID]) {
+            const targetMesh = otherPlayers[TargetSystem.currentTargetID].mesh;
+            const dx = targetMesh.position.x - playerGroup.position.x;
+            const dz = targetMesh.position.z - playerGroup.position.z;
+            playerGroup.rotation.y = Math.atan2(dx, dz);
+        }
+
+        this.isAttacking = true; 
+        this.lastCombatActionTime = Date.now();
+        lastActionTime = Date.now(); 
+        let windupStance = "SWORD_WINDUP"; let atkStance = "SWORD_ATK_1"; let idleStance = "SWORD_IDLE";
+        let currentComboStep = 1;
+
+        if(type === "fist") {
+            if(Date.now() - this.lastFistAttackTime > 600) this.fistComboStep = 0;
+            this.fistComboStep++; if(this.fistComboStep > 3) this.fistComboStep = 1; 
+            this.lastFistAttackTime = Date.now();
+            currentComboStep = this.fistComboStep;
+            windupStance = "FIST_WINDUP"; atkStance = "FIST_COMBO_" + this.fistComboStep; idleStance = "FIST_IDLE";
+        }
+        else if(type === "kick") { 
+            if(Date.now() - this.lastKickAttackTime > 600) this.kickComboStep = 0;
+            this.kickComboStep++; if(this.kickComboStep > 3) this.kickComboStep = 1;
+            this.lastKickAttackTime = Date.now();
+            currentComboStep = this.kickComboStep;
+            windupStance = "KICK_WINDUP"; atkStance = "KICK_COMBO_" + this.kickComboStep; idleStance = "FIST_IDLE";
+        }
+        else if(type === "sword") {
+            if(Date.now() - this.lastSwordAttackTime > 600) this.swordComboStep = 0;
+            this.swordComboStep++; if(this.swordComboStep > 3) this.swordComboStep = 1;
+            this.lastSwordAttackTime = Date.now();
+            currentComboStep = this.swordComboStep;
+            windupStance = "SWORD_WINDUP"; atkStance = "SWORD_COMBO_" + this.swordComboStep; idleStance = "SWORD_IDLE";
+        }
+        else if(type === "gun") { windupStance = "GUN_IDLE"; atkStance = "GUN_ATK"; idleStance = "GUN_IDLE"; }
+        
+        charState = windupStance; 
+        setTimeout(() => {
+            charState = atkStance;
+            if(type === "gun" && projectileData) CombatVisualSystem.fireProjectile(playerGroup, projectileData, true);
+            else if (type === "fist") {
+                if(this.fistComboStep === 3) CombatVisualSystem.spawnHitbox(playerGroup, {x:1.5, y:1.5, z:1.5}, 1.5, 200, {step: 3}); 
+                else CombatVisualSystem.spawnHitbox(playerGroup, {x:1, y:1, z:1}, 1.0, 200, {step: this.fistComboStep}); 
+            }
+            else if (type === "kick") {
+                if(this.kickComboStep === 1) CombatVisualSystem.spawnHitbox(playerGroup, {x:1.2, y:0.8, z:1.2}, 1.0, 300, {step: 1}, 0.5); 
+                else if(this.kickComboStep === 2) CombatVisualSystem.spawnHitbox(playerGroup, {x:1.2, y:1.0, z:1.2}, 1.2, 300, {step: 2}, 1.0); 
+                else CombatVisualSystem.spawnHitbox(playerGroup, {x:1.5, y:1.2, z:1.5}, 1.4, 300, {step: 3}, 1.7); 
+            }
+            else if (type === "sword") {
+                if(this.swordComboStep === 3) CombatVisualSystem.spawnHitbox(playerGroup, {x:1.0, y:1.0, z:4.0}, 2.5, 300, {step: 3}); 
+                else CombatVisualSystem.spawnHitbox(playerGroup, {x:2.5, y:1.0, z:2.0}, 1.5, 300, {step: this.swordComboStep}); 
+            }
+            
+            if(typeof BYOND_REF !== 'undefined') { 
+                NetworkSystem.blockSync = true; 
+                NetworkSystem.queueCommand(`action=attack&type=${type}&step=${currentComboStep}`); 
+                setTimeout(()=>{NetworkSystem.blockSync=false}, 200); 
+            }
+            setTimeout(() => { charState = idleStance; this.isAttacking = false; }, 300);
+        }, 100); 
     }
-
-    if (UISystem.cache.en < skillDef.energyCost) {
-        UISystem.addLog("<span style='color:red'>Energia insuficiente!</span>", "log-miss");
-        return;
-    }
-
-    isAttacking = true;
-    lastActionTime = now;
-    lastCombatActionTime = now;
-    charState = "SWORD_WINDUP"; 
-    
-    NetworkSystem.queueCommand(`action=cast_skill&skill_id=${skillId}`);
-    
-    setTimeout(() => {
-        charState = "FIST_COMBO_1"; 
-        setTimeout(() => { charState = "DEFAULT"; isAttacking = false; }, 300);
-    }, 100);
-}
+};
 
 // Helper Matemático
 function round2(num) { return Math.round((num + Number.EPSILON) * 100) / 100; }
@@ -955,9 +1031,9 @@ window.addEventListener('keydown', function(e) {
     if(k === 'r' && !NetworkSystem.blockSync) { NetworkSystem.blockSync = true; lastActionTime = Date.now(); NetworkSystem.queueCommand(`action=toggle_rest`); setTimeout(function() { NetworkSystem.blockSync = false; }, 500); }
     if(e.key === 'Shift') isRunning = true;
 
-    // HOTKEYS DE SKILL
-    if(k === '1') castSkill("fireball");
-    if(k === '2') castSkill("iceball");
+    // HOTKEYS DE SKILL (Agora roteadas via CombatSystem)
+    if(k === '1') CombatSystem.castSkill("fireball");
+    if(k === '2') CombatSystem.castSkill("iceball");
 });
 
 window.addEventListener('keyup', function(e) { if(e.key === 'Shift') isRunning = false; });
@@ -1116,83 +1192,13 @@ function checkPlayerCollision(nextX, nextY, nextZ) {
 
 window.addEventListener('game-action', function(e) {
     if(isFainted) return; const k = e.detail;
-    if(k === 'd') performAttack("sword"); else if(k === 'f') performAttack("gun"); else if(k === 'a') performAttack("fist"); else if(k === 's') performAttack("kick");
+    // Roteado para o CombatSystem
+    if(k === 'd') CombatSystem.performAttack("sword"); 
+    else if(k === 'f') CombatSystem.performAttack("gun"); 
+    else if(k === 'a') CombatSystem.performAttack("fist"); 
+    else if(k === 's') CombatSystem.performAttack("kick");
     else if(k === 'p' && !NetworkSystem.blockSync) { NetworkSystem.blockSync = true; NetworkSystem.queueCommand("action=force_save"); UISystem.addLog("Salvando...", "log-miss"); setTimeout(function() { NetworkSystem.blockSync = false; }, 500); }
 });
-
-function performAttack(type) {
-    if(isAttacking || !isCharacterReady) return; 
-    const equippedItem = playerGroup.userData.lastItem;
-    let hasSword = false; let hasGun = false; let projectileData = null;
-    if(equippedItem && GameDefinitions[equippedItem]) {
-        const def = GameDefinitions[equippedItem]; const tags = def.tags || (def.data ? def.data.tags : []);
-        if(tags && tags.includes("sword")) hasSword = true; if(tags && tags.includes("gun")) { hasGun = true; projectileData = def.projectile; }
-    }
-    if(type === "sword" && !hasSword) { UISystem.addLog("Sem espada!", "log-miss"); return; }
-    if(type === "gun" && !hasGun) { UISystem.addLog("Sem arma!", "log-miss"); return; }
-    
-    if (TargetSystem.currentTargetID && otherPlayers[TargetSystem.currentTargetID]) {
-        const targetMesh = otherPlayers[TargetSystem.currentTargetID].mesh;
-        const dx = targetMesh.position.x - playerGroup.position.x;
-        const dz = targetMesh.position.z - playerGroup.position.z;
-        playerGroup.rotation.y = Math.atan2(dx, dz);
-    }
-
-    isAttacking = true; 
-    lastCombatActionTime = Date.now();
-    lastActionTime = Date.now(); 
-    let windupStance = "SWORD_WINDUP"; let atkStance = "SWORD_ATK_1"; let idleStance = "SWORD_IDLE";
-    let currentComboStep = 1;
-
-    if(type === "fist") {
-        if(Date.now() - lastFistAttackTime > 600) fistComboStep = 0;
-        fistComboStep++; if(fistComboStep > 3) fistComboStep = 1; 
-        lastFistAttackTime = Date.now();
-        currentComboStep = fistComboStep;
-        windupStance = "FIST_WINDUP"; atkStance = "FIST_COMBO_" + fistComboStep; idleStance = "FIST_IDLE";
-    }
-    else if(type === "kick") { 
-        if(Date.now() - lastKickAttackTime > 600) kickComboStep = 0;
-        kickComboStep++; if(kickComboStep > 3) kickComboStep = 1;
-        lastKickAttackTime = Date.now();
-        currentComboStep = kickComboStep;
-        windupStance = "KICK_WINDUP"; atkStance = "KICK_COMBO_" + kickComboStep; idleStance = "FIST_IDLE";
-    }
-    else if(type === "sword") {
-        if(Date.now() - lastSwordAttackTime > 600) swordComboStep = 0;
-        swordComboStep++; if(swordComboStep > 3) swordComboStep = 1;
-        lastSwordAttackTime = Date.now();
-        currentComboStep = swordComboStep;
-        windupStance = "SWORD_WINDUP"; atkStance = "SWORD_COMBO_" + swordComboStep; idleStance = "SWORD_IDLE";
-    }
-    else if(type === "gun") { windupStance = "GUN_IDLE"; atkStance = "GUN_ATK"; idleStance = "GUN_IDLE"; }
-    
-    charState = windupStance; 
-    setTimeout(function() {
-        charState = atkStance;
-        if(type === "gun" && projectileData) CombatVisualSystem.fireProjectile(playerGroup, projectileData, true);
-        else if (type === "fist") {
-            if(fistComboStep === 3) CombatVisualSystem.spawnHitbox(playerGroup, {x:1.5, y:1.5, z:1.5}, 1.5, 200, {step: 3}); 
-            else CombatVisualSystem.spawnHitbox(playerGroup, {x:1, y:1, z:1}, 1.0, 200, {step: fistComboStep}); 
-        }
-        else if (type === "kick") {
-            if(kickComboStep === 1) CombatVisualSystem.spawnHitbox(playerGroup, {x:1.2, y:0.8, z:1.2}, 1.0, 300, {step: 1}, 0.5); 
-            else if(kickComboStep === 2) CombatVisualSystem.spawnHitbox(playerGroup, {x:1.2, y:1.0, z:1.2}, 1.2, 300, {step: 2}, 1.0); 
-            else CombatVisualSystem.spawnHitbox(playerGroup, {x:1.5, y:1.2, z:1.5}, 1.4, 300, {step: 3}, 1.7); 
-        }
-        else if (type === "sword") {
-            if(swordComboStep === 3) CombatVisualSystem.spawnHitbox(playerGroup, {x:1.0, y:1.0, z:4.0}, 2.5, 300, {step: 3}); 
-            else CombatVisualSystem.spawnHitbox(playerGroup, {x:2.5, y:1.0, z:2.0}, 1.5, 300, {step: swordComboStep}); 
-        }
-        
-        if(typeof BYOND_REF !== 'undefined') { 
-            NetworkSystem.blockSync = true; 
-            NetworkSystem.queueCommand(`action=attack&type=${type}&step=${currentComboStep}`); 
-            setTimeout(function(){NetworkSystem.blockSync=false}, 200); 
-        }
-        setTimeout(function() { charState = idleStance; isAttacking = false; }, 300);
-    }, 100); 
-}
 
 // --- NETWORK HANDLERS ---
 function receberDadosGlobal(json) {
@@ -1399,7 +1405,7 @@ function receberDadosPessoal(json) {
                     NetworkSystem.lastSentX = evt.x; NetworkSystem.lastSentY = evt.y; NetworkSystem.lastSentZ = evt.z;
                 }
             }
-            if(evt.type === "skill_cast_accept") { UISystem.startSkillCooldownUI(evt.skill); }
+            if(evt.type === "skill_cast_accept") { CombatSystem.startSkillCooldownUI(evt.skill); }
         });
     }
 }
@@ -1495,7 +1501,7 @@ function animate() {
     CombatVisualSystem.update(timeScale); 
     
     if (isCharacterReady) {
-        if(!isAttacking && charState !== "DEFAULT") { if(Date.now() - lastCombatActionTime > 3000) charState = "DEFAULT"; }
+        if(!CombatSystem.isAttacking && charState !== "DEFAULT") { if(Date.now() - CombatSystem.lastCombatActionTime > 3000) charState = "DEFAULT"; }
         
         const groundHeight = getGroundHeightAt(playerGroup.position.x, playerGroup.position.y, playerGroup.position.z);
 
@@ -1530,7 +1536,7 @@ function animate() {
                    checkCollision(playerGroup.position.x, playerGroup.position.y, nextZ) || 
                    checkPlayerCollision(playerGroup.position.x, playerGroup.position.y, nextZ)) { canMoveZ = false; } else { playerGroup.position.z = nextZ; }
 
-                if (!isAttacking) {
+                if (!CombatSystem.isAttacking) {
                     const targetCharRot = Math.atan2(inputX, inputZ); 
                     playerGroup.rotation.y = targetCharRot;
                 }

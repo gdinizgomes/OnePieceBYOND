@@ -30,7 +30,6 @@ datum/game_controller
 		set background = 1
 		while(running)
 			server_tick++
-			// PULSO: A cada 20 ticks (2 segundos), forçamos envio completo para curar desyncs e carregar novos players
 			var/full_sync = (server_tick % 20 == 0) 
 			
 			// 1. Coletar dados de TODOS os jogadores e NPCs
@@ -44,7 +43,6 @@ datum/game_controller
 				if(M.in_game && M.char_loaded)
 					var/pid = "\ref[M]"
 					
-					// DADOS DINÂMICOS (Enviados Sempre)
 					var/list/pData = list(
 						"x" = M.R2(M.real_x), "y" = M.R2(M.real_y), "z" = M.R2(M.real_z), "rot" = M.R2(M.real_rot),
 						"a" = M.is_attacking, "at" = M.attack_type, "cs" = M.combo_step,
@@ -52,7 +50,6 @@ datum/game_controller
 						"hp" = M.current_hp, "npc" = 0
 					)
 
-					// DADOS ESTÁTICOS (Enviados apenas se houve mudança ou no pulso de 2s)
 					var/send_visuals = full_sync || (M.last_visual_update >= server_tick - 5)
 					if(send_visuals)
 						var/e_hand = ""; var/e_head = ""; var/e_body = ""; var/e_legs = ""; var/e_feet = ""
@@ -102,12 +99,11 @@ datum/game_controller
 				var/faint_rem = 0
 				if(M.is_fainted && M.faint_end_time > world.time) faint_rem = round((M.faint_end_time - world.time) / 10)
 
-				// --- FILTRO AREA OF INTEREST (AoI) ---
 				var/list/my_visible_entities = list()
 				for(var/id in all_entity_data)
 					var/list/edata = all_entity_data[id]
 					var/dist = sqrt((edata["x"] - M.real_x)**2 + (edata["z"] - M.real_z)**2)
-					if(dist <= 40.0) // O jogador só recebe dados de quem estiver a até 40 blocos
+					if(dist <= 40.0)
 						my_visible_entities[id] = edata
 				
 				var/list/my_visible_ground = list()
@@ -120,7 +116,6 @@ datum/game_controller
 				var/list/my_global_json_list = list("others" = my_visible_entities, "t" = world.time)
 				if(send_ground) my_global_json_list["ground"] = my_visible_ground
 				
-				// Envia os eventos para os clients próximos
 				if(global_events.len > 0)
 					my_global_json_list["evts"] = list()
 					for(var/list/evt in global_events)
@@ -169,18 +164,15 @@ datum/game_controller
 			sleep(tick_rate)
 
 
-// --- LISTA GLOBAL DE NPCS E ITENS ---
 var/list/global_npcs = list()
 var/list/global_players_list = list()
 var/list/global_ground_items = list()
 
-// --- DATA-DRIVEN SKILL SERVER DEFINITIONS (Para Validar) ---
 var/list/ServerSkillsData = list(
 	"fireball" = list("cost" = 15, "cd" = 30, "power" = 25, "mult" = 1.5),
 	"iceball" = list("cost" = 10, "cd" = 15, "power" = 15, "mult" = 1.0)
 )
 
-// --- ESTRUTURA DE ITENS ---
 obj/item
 	var/id_visual = ""
 	var/slot = "none" 
@@ -197,7 +189,6 @@ obj/item
 	var/real_y = 0
 	var/real_z = 0
 
-// -- Armas --
 obj/item/weapon
 	slot = "hand"
 	max_stack = 1
@@ -263,7 +254,6 @@ obj/item/weapon/gun_silver
 	projectile_speed = 7.2 
 	shop_tags = "armorer"
 
-// -- Roupas e Armaduras --
 obj/item/armor
 	max_stack = 1
 
@@ -312,9 +302,6 @@ obj/item/armor/feet_boots
 	def = 2
 	shop_tags = "armorer"
 
-// -----------------------------------------------------
-// CÓDIGO DO MOB
-// -----------------------------------------------------
 
 mob
 	var/current_slot = 0
@@ -328,17 +315,14 @@ mob
 	var/stat_points = 0
 	var/gold = 0
 
-	// --- PVP E LETALIDADE ---
 	var/kills = 0
 	var/deaths = 0
-	var/lethality_mode = 0 // 0 = Desmaia, 1 = Mata
+	var/lethality_mode = 0
 
-	// --- SKILLS ---
 	var/list/unlocked_skills = list("fireball", "iceball")
 	var/list/skill_cooldowns = list()
 	var/list/active_skill_hits = list()
 
-	// --- ATRIBUTOS PRIMÁRIOS (RO STYLE) ---
 	var/strength = 5
 	var/agility = 5
 	var/vitality = 5
@@ -346,7 +330,6 @@ mob
 	var/willpower = 5 
 	var/luck = 5
 
-	// --- ATRIBUTOS SECUNDÁRIOS CALCULADOS ---
 	var/calc_atk = 0
 	var/calc_ratk = 0
 	var/calc_def = 0
@@ -390,7 +373,6 @@ mob
 	
 	var/last_visual_update = 0
 
-	// --- VARIÁVEIS DE VALIDAÇÃO DE HIT (SERVER AUTHORITY) ---
 	var/list/hit_targets_this_swing = list()
 	var/max_targets_per_swing = 1
 	var/attack_window = 0
@@ -646,7 +628,6 @@ mob
 		if(current_energy <= 0) { current_energy = 0; GoFaint() }
 		return 1
 
-	// --- SISTEMA DE DESMAIO E MORTE ---
 	proc/GoFaint()
 		if(is_fainted) return
 		is_fainted = 1; is_resting = 1; faint_end_time = world.time + 150
@@ -673,12 +654,10 @@ mob
 		current_hp = max_hp
 		current_energy = max_energy
 		
-		// Respawn em frente à Enfermeira com micro-offset para não empilhar bonecos
 		real_x = 8 + (rand(-50, 50) / 100)
 		real_z = 5 + (rand(-50, 50) / 100) 
 		real_y = 0
 		
-		// FORÇA O JAVASCRIPT A PUXAR O BONECO PRA CÁ IMEDIATAMENTE (Limpa Desync!)
 		src.pending_visuals += list(list("type"="teleport", "x"=real_x, "y"=real_y, "z"=real_z))
 		
 		src << output("Você morreu e foi revivido pela Enfermeira.", "map3d:mostrarNotificacao")
@@ -716,7 +695,6 @@ mob
 			src << output("Carregado!", "map3d:mostrarNotificacao")
 			GiveStarterItems() 
 		else
-			// Novo personagem: Spawn randomizado com micro-offset
 			real_x = rand(-50, 50) / 100 
 			real_y = 0
 			real_z = rand(-50, 50) / 100
@@ -818,7 +796,7 @@ mob
 		active_item_visual = ""
 		if(slot_hand) active_item_visual = slot_hand.id_visual
 		RecalculateStats()
-		lethality_mode = 0 // Sempre reseta o modo letal ao logar
+		lethality_mode = 0 
 		return 1
 
 	proc/R2(n) return round(n * 100) / 100
@@ -918,7 +896,6 @@ mob
 			var/ref_id = href_list["ref"]
 			var/mob/M = locate(ref_id)
 			if(M && get_dist_euclid(src.real_x, src.real_z, M.real_x, M.real_z) < 3.0)
-				// NPCs Lojas
 				if(istype(M, /mob/npc/vendor))
 					var/mob/npc/vendor/V = M
 					var/list/shop_items = list()
@@ -935,11 +912,9 @@ mob
 					src.faint_end_time = 0
 					src << output("Enfermeira: Você foi curado!", "map3d:mostrarNotificacao")
 				
-				// --- INTERAÇÃO COM PLAYER DESMAIADO (ROUBO) ---
 				else if(M.client && M.is_fainted)
 					M.SendLootWindow(src)
 
-		// --- AÇÕES DE ROUBO ---
 		if(action == "rob_item" && in_game)
 			var/mob/target = locate(href_list["target"])
 			var/obj/item/I = locate(href_list["ref"])
@@ -965,7 +940,6 @@ mob
 					target.gold = 0
 					target.SendLootWindow(src)
 
-		// --- CONFIRMAÇÃO DE EXECUÇÃO ---
 		if(action == "confirm_kill" && in_game)
 			var/mob/target = locate(href_list["target"])
 			if(target && target.client && target.is_fainted && get_dist_euclid(src.real_x, src.real_z, target.real_x, target.real_z) < 4.0)
@@ -998,7 +972,6 @@ mob
 					del(I)
 					RequestInventoryUpdate()
 
-        // --- SKILL CASTING (Servidor autoriza a magia) ---
 		if(action == "cast_skill" && in_game)
 			var/s_id = href_list["skill_id"]
 			if(!(s_id in unlocked_skills)) return 
@@ -1018,13 +991,17 @@ mob
 			active_skill_hits["[s_id]"] = list()
 
 
-        // --- SKILL HIT (Servidor calcula o dano mágico) ---
 		if(action == "register_skill_hit" && in_game)
 			var/s_id = href_list["skill_id"]
 			var/mob/target = locate(href_list["target_ref"])
 			
 			if(!target || !(s_id in unlocked_skills) || target == src) return 
 			
+			// BUGFIX: Ignorar NPCs não lutáveis nas SKILLS (assim como no Melee)
+			if(istype(target, /mob/npc))
+				var/mob/npc/N = target
+				if(N.npc_type == "vendor" || N.npc_type == "nurse") return 
+
 			var/list/skill_data = ServerSkillsData[s_id]
 			if(!skill_data) return
 			
@@ -1106,11 +1083,10 @@ mob
 				var/mob/npc/N = target
 				if(N.npc_type == "vendor" || N.npc_type == "nurse") return 
 
-			// --- LÓGICA DE PVP: EXECUTAR ALVO DESMAIADO ---
 			if(target.client && target.is_fainted)
 				if(get_dist_euclid(src.real_x, src.real_z, target.real_x, target.real_z) < 4.0)
 					if(src.lethality_mode == 1)
-						target.Die(src) // Morte instântanea
+						target.Die(src) 
 					else
 						src << output("\ref[target]", "map3d:askKillConfirm")
 				return 
