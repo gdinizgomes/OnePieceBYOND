@@ -20,32 +20,37 @@ const GameLoop = {
 
     start: function() {
         const animate = () => {
-            requestAnimationFrame(animate); 
-            
             const now = performance.now();
             const dt = Math.min((now - this.lastFrameTime), 100); 
             this.lastFrameTime = now;
             const timeScale = dt / this.OPTIMAL_FRAME_TIME;
 
             // Delegação estrita de responsabilidades a cada Frame
-            AnimationSystem.update(timeScale);
-            TargetSystem.updateUI();
-            CombatVisualSystem.update(timeScale); 
+            if(window.AnimationSystem) window.AnimationSystem.update(timeScale);
+            if(window.TargetSystem) window.TargetSystem.updateUI();
+            if(window.CombatVisualSystem) window.CombatVisualSystem.update(timeScale); 
             
-            EntityManager.updatePlayer(timeScale, now);
-            EntityManager.updateOthers(timeScale, now);
+            if(window.EntityManager) {
+                window.EntityManager.updatePlayer(timeScale, now);
+                window.EntityManager.updateOthers(timeScale, now);
+            }
 
-            // Renderiza o visual após todo o processamento matemático/lógico
-            Engine.renderer.render(Engine.scene, Engine.camera);
+            // Renderiza o visual após todo o processamento
+            if (window.Engine && window.Engine.renderer && window.Engine.scene && window.Engine.camera) {
+                window.Engine.renderer.render(window.Engine.scene, window.Engine.camera);
+            }
+
+            // TRAVA DE SEGURANÇA: Só pede o próximo frame se o atual rodou até o final sem quebrar!
+            requestAnimationFrame(animate); 
         };
         
         animate();
         
         // Watchdog de Desconexão
         setInterval(() => { 
-            if(EntityManager.isCharacterReady && Date.now() - NetworkSystem.lastPacketTime > 4000) { 
-                UISystem.addLog("AVISO: Conexão com o servidor perdida.", "log-hit"); 
-                EntityManager.isCharacterReady = false; 
+            if(window.EntityManager && window.EntityManager.isCharacterReady && Date.now() - window.NetworkSystem.lastPacketTime > 4000) { 
+                if(window.UISystem) window.UISystem.addLog("AVISO: Conexão com o servidor perdida.", "log-hit"); 
+                window.EntityManager.isCharacterReady = false; 
             } 
         }, 1000);
     }

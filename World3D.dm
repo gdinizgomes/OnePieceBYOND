@@ -11,7 +11,7 @@ world/New()
 	world.maxz = 1
 	..()
 	
-	// Carrega a "Fonte Única de Verdade" Data-Driven EMPACOTADA COM ASPAS SIMPLES
+	// Carrega a "Fonte Única de Verdade" Data-Driven
 	var/skills_file = file2text('shared/SkillDefinitions.json')
 	if(skills_file)
 		try
@@ -164,6 +164,11 @@ datum/game_controller
 					"evts" = M.pending_visuals
 				)
 				
+				// ENVIO DATA-DRIVEN: Só manda as skills se o mob acabou de logar
+				if(M.needs_skill_sync)
+					my_stats["skills_data"] = GlobalSkillsData
+					M.needs_skill_sync = 0
+				
 				if(M.pending_visuals.len > 0) M.pending_visuals = list()
 
 				M << output(global_json, "map3d:receberDadosGlobal")
@@ -176,7 +181,6 @@ datum/game_controller
 var/list/global_npcs = list()
 var/list/global_players_list = list()
 var/list/global_ground_items = list()
-
 
 obj/item
 	var/id_visual = ""
@@ -324,6 +328,8 @@ mob
 	var/deaths = 0
 	var/lethality_mode = 0
 
+	var/needs_skill_sync = 1 // FLAG PARA ENVIAR AS SKILLS 1 ÚNICA VEZ
+
 	var/list/unlocked_skills = list("fireball", "iceball")
 	var/list/skill_cooldowns = list()
 	var/list/active_skill_hits = list()
@@ -396,6 +402,7 @@ mob
 	Login()
 		..()
 		in_game = 0
+		needs_skill_sync = 1
 		global_players_list += src
 		ShowCharacterMenu()
 
@@ -714,16 +721,9 @@ mob
 			GiveStarterItems()
 			src << output("Novo char!", "map3d:mostrarNotificacao")
 
-		// PREPARAÇÃO E INJEÇÃO DATA-DRIVEN NO HTML
+		// SEM MAIS INJEÇÃO DE HTML!
 		var/page = file2text('game.html')
 		page = replacetext(page, "{{BYOND_REF}}", "\ref[src]")
-		
-		// INJEÇÃO SEGURA: Busca a tag exata no HTML e injeta os dados sem congelar o servidor
-		var/skills_text = "{}"
-		if(GlobalSkillsData && GlobalSkillsData.len > 0)
-			skills_text = json_encode(GlobalSkillsData)
-		
-		page = replacetext(page, "", "<script>window.GameSkills = [skills_text];</script>")
 
 		src << browse_rsc(file("definitions.js"), "definitions.js")
 		src << browse_rsc(file("factory.js"), "factory.js")
@@ -756,7 +756,7 @@ mob
 		char_loaded = 1; in_game = 1; is_resting = 0; is_fainted = 0; is_running = 0
 		UpdateVisuals()
 		
-		src << browse(page, "window=map3d") // Envia o HTML injetado
+		src << browse(page, "window=map3d")
 		
 		spawn(600) AutoSaveLoop()
 		spawn(10) RestLoop()

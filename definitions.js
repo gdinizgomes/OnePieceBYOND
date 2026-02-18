@@ -1,6 +1,7 @@
 // definitions.js - Visuais, Equipamentos e Poses (Sem Lógica de Dano)
 
-const GameDefinitions = {
+// Usando window. para evitar conflitos de declaração em cache (SyntaxError)
+window.GameDefinitions = {
     // --- PARTES DO CORPO ---
     "char_head": { type: "part", visual: { model: "box", color: 0xFFCCAA, scale: [0.30, 0.30, 0.30] } },
     "char_torso": { type: "part", visual: { model: "box", color: 0xFF0000, scale: [0.35, 0.60, 0.20] } },
@@ -61,7 +62,7 @@ const GameDefinitions = {
     "vfx_iceball": { type: "vfx", visual: { model: "box", color: 0x00FFFF, scale: [0.2, 0.2, 1.0] } }
 };
 
-const STANCES = {
+window.STANCES = {
     DEFAULT: { torso: { x: 0, y: 0, z: 0 }, leftArm: { x: 0, y: 0, z: 0.2 }, rightArm: { x: 0, y: 0, z: -0.2 }, leftForeArm: { x: -0.1, y: 0, z: 0 }, rightForeArm: { x: -0.1, y: 0, z: 0 }, leftLeg: { x: 0, y: 0, z: 0 }, rightLeg: { x: 0, y: 0, z: 0 }, leftShin: { x: 0, y: 0, z: 0 }, rightShin: { x: 0, y: 0, z: 0 } },
     REST_SIMPLE: { torso: { x: 0.3, y: 0, z: 0 }, leftArm: { x: -0.5, y: 0, z: 0.3 }, rightArm: { x: -0.5, y: 0, z: -0.3 }, leftForeArm: { x: -1.0, y: 0, z: 0 }, rightForeArm: { x: -1.0, y: 0, z: 0 }, leftLeg: { x: -1.5, y: 0.2, z: 0 }, rightLeg: { x: -1.5, y: -0.2, z: 0 }, leftShin: { x: 1.0, y: 0, z: 0 }, rightShin: { x: 1.0, y: 0, z: 0 } },
     FIST_WINDUP: { torso: { x: 0, y: 0.5, z: 0 }, leftArm: { x: -1.5, y: 0.5, z: 0 }, rightArm: { x: -0.5, y: -0.5, z: 0 }, leftForeArm: { x: -1.0, y: 0, z: 0 }, rightForeArm: { x: -1.0, y: 0, z: 0 }, leftLeg: { x: 0, y: 0, z: 0 }, rightLeg: { x: 0, y: 0, z: 0 }, leftShin: { x: 0, y: 0, z: 0 }, rightShin: { x: 0, y: 0, z: 0 } },

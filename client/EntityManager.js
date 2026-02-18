@@ -178,6 +178,12 @@ const EntityManager = {
         const me = packet.me; 
         this.myID = packet.my_id;
 
+        // O SEGREDO DO DATA-DRIVEN FICA AQUI: O cliente recebe as magias direto do Servidor!
+        if (packet.skills_data) {
+            window.GameSkills = packet.skills_data;
+            console.log("Sistema Data-Driven de Skills Carregado com Sucesso.");
+        }
+
         if(me.loaded == 1 && !this.isCharacterReady) {
             this.playerGroup = CharFactory.createCharacter(me.skin || "FFCCAA", me.cloth || "FF0000"); 
             
