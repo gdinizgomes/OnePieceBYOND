@@ -11,7 +11,7 @@ world/New()
 	world.maxz = 1
 	..()
 	
-	// Carrega a "Fonte Única de Verdade" Data-Driven
+	// Carrega a "Fonte Única de Verdade" Data-Driven EMPACOTADA COM ASPAS SIMPLES
 	var/skills_file = file2text('shared/SkillDefinitions.json')
 	if(skills_file)
 		try
@@ -164,7 +164,7 @@ datum/game_controller
 					"evts" = M.pending_visuals
 				)
 				
-				// ENVIO DATA-DRIVEN: Só manda as skills se o mob acabou de logar
+				// ENVIO DE SKILLS VIA REDE (Apenas 1 vez por login para não pesar)
 				if(M.needs_skill_sync)
 					my_stats["skills_data"] = GlobalSkillsData
 					M.needs_skill_sync = 0
@@ -181,6 +181,7 @@ datum/game_controller
 var/list/global_npcs = list()
 var/list/global_players_list = list()
 var/list/global_ground_items = list()
+
 
 obj/item
 	var/id_visual = ""
@@ -328,7 +329,7 @@ mob
 	var/deaths = 0
 	var/lethality_mode = 0
 
-	var/needs_skill_sync = 1 // FLAG PARA ENVIAR AS SKILLS 1 ÚNICA VEZ
+	var/needs_skill_sync = 1
 
 	var/list/unlocked_skills = list("fireball", "iceball")
 	var/list/skill_cooldowns = list()
@@ -721,7 +722,7 @@ mob
 			GiveStarterItems()
 			src << output("Novo char!", "map3d:mostrarNotificacao")
 
-		// SEM MAIS INJEÇÃO DE HTML!
+		// SEM MAIS INJEÇÃO DE HTML (Foi essa injeção que gerou os erros antes)
 		var/page = file2text('game.html')
 		page = replacetext(page, "{{BYOND_REF}}", "\ref[src]")
 

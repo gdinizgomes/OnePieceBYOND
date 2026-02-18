@@ -178,10 +178,10 @@ const EntityManager = {
         const me = packet.me; 
         this.myID = packet.my_id;
 
-        // O SEGREDO DO DATA-DRIVEN FICA AQUI: O cliente recebe as magias direto do Servidor!
+        // O SEGREDO DO DATA-DRIVEN FICA AQUI: Recebemos via Rede no Login! (Resolve o Magia Desconhecida)
         if (packet.skills_data) {
             window.GameSkills = packet.skills_data;
-            console.log("Sistema Data-Driven de Skills Carregado com Sucesso.");
+            if(typeof UISystem !== 'undefined') UISystem.addLog("<span style='color:#2ecc71'>[Sistema Data-Driven Carregado com Sucesso]</span>", "log-hit");
         }
 
         if(me.loaded == 1 && !this.isCharacterReady) {
@@ -192,7 +192,8 @@ const EntityManager = {
                 NetworkSystem.lastSentX = me.x; NetworkSystem.lastSentY = me.y; NetworkSystem.lastSentZ = me.z;
             }
 
-            Engine.scene.add(this.playerGroup); this.isCharacterReady = true; 
+            if(typeof Engine !== 'undefined') Engine.scene.add(this.playerGroup); 
+            this.isCharacterReady = true; 
             
             this.playerGroup.userData.lastHead = ""; this.playerGroup.userData.lastBody = ""; 
             this.playerGroup.userData.lastLegs = ""; this.playerGroup.userData.lastFeet = ""; 
@@ -212,17 +213,19 @@ const EntityManager = {
             if(me.mspd) this.currentMoveSpeed = me.mspd;
             if(me.jmp) this.currentJumpForce = me.jmp;
 
-            UISystem.updatePersonalStatus(me);
+            if(typeof UISystem !== 'undefined') UISystem.updatePersonalStatus(me);
 
             if(packet.evts) packet.evts.forEach(evt => { 
-                if(evt.type === "dmg") CombatVisualSystem.spawnDamageNumber(evt.tid, evt.val); 
+                if(evt.type === "dmg" && typeof CombatVisualSystem !== 'undefined') CombatVisualSystem.spawnDamageNumber(evt.tid, evt.val); 
                 if(evt.type === "teleport") {
                     if(this.playerGroup) {
                         this.playerGroup.position.set(evt.x, evt.y, evt.z);
-                        NetworkSystem.lastSentX = evt.x; NetworkSystem.lastSentY = evt.y; NetworkSystem.lastSentZ = evt.z;
+                        if(typeof NetworkSystem !== 'undefined') {
+                            NetworkSystem.lastSentX = evt.x; NetworkSystem.lastSentY = evt.y; NetworkSystem.lastSentZ = evt.z;
+                        }
                     }
                 }
-                if(evt.type === "skill_cast_accept") { CombatSystem.startSkillCooldownUI(evt.skill); }
+                if(evt.type === "skill_cast_accept" && typeof CombatSystem !== 'undefined') CombatSystem.startSkillCooldownUI(evt.skill); 
             });
         }
     },
@@ -317,8 +320,10 @@ const EntityManager = {
             AnimationSystem.animateRig(this.playerGroup, this.charState, false, false, this.isResting, this.isFainted, groundHeight);
         }
 
-        Engine.camera.position.set(this.playerGroup.position.x + Math.sin(Input.camAngle)*7, this.playerGroup.position.y + 5, this.playerGroup.position.z + Math.cos(Input.camAngle)*7);
-        Engine.camera.lookAt(this.playerGroup.position.x, this.playerGroup.position.y + 1.5, this.playerGroup.position.z);
+        if(typeof Engine !== 'undefined') {
+            Engine.camera.position.set(this.playerGroup.position.x + Math.sin(Input.camAngle)*7, this.playerGroup.position.y + 5, this.playerGroup.position.z + Math.cos(Input.camAngle)*7);
+            Engine.camera.lookAt(this.playerGroup.position.x, this.playerGroup.position.y + 1.5, this.playerGroup.position.z);
+        }
         
         NetworkSystem.sendPositionUpdate(now, this.playerGroup, this.isRunning, this.isResting, this.isCharacterReady);
     },
@@ -350,10 +355,12 @@ const EntityManager = {
 
             AnimationSystem.animateRig(mesh, remoteState, isMoving, other.isRunning, other.resting, other.fainted, currentGroundH);
 
-            const tempV = new THREE.Vector3(mesh.position.x, mesh.position.y + 2, mesh.position.z); tempV.project(Engine.camera);
-            other.label.style.display = (Math.abs(tempV.z) > 1) ? 'none' : 'block'; 
-            other.label.style.left = (tempV.x * .5 + .5) * window.innerWidth + 'px'; 
-            other.label.style.top = (-(tempV.y * .5) + .5) * window.innerHeight + 'px';
+            if(typeof Engine !== 'undefined') {
+                const tempV = new THREE.Vector3(mesh.position.x, mesh.position.y + 2, mesh.position.z); tempV.project(Engine.camera);
+                other.label.style.display = (Math.abs(tempV.z) > 1) ? 'none' : 'block'; 
+                other.label.style.left = (tempV.x * .5 + .5) * window.innerWidth + 'px'; 
+                other.label.style.top = (-(tempV.y * .5) + .5) * window.innerHeight + 'px';
+            }
         }
     }
 };

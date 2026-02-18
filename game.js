@@ -3,13 +3,13 @@
 // Pontes de Comunicação do Servidor para o Cliente (Via BYOND)
 window.receberDadosGlobal = function(json) {
     let packet; try { packet = JSON.parse(json); } catch(e) { return; }
-    NetworkSystem.lastPacketTime = Date.now();
-    EntityManager.syncGlobal(packet, performance.now());
+    if(typeof NetworkSystem !== 'undefined') NetworkSystem.lastPacketTime = Date.now();
+    if(typeof EntityManager !== 'undefined') EntityManager.syncGlobal(packet, performance.now());
 };
 
 window.receberDadosPessoal = function(json) {
     let packet; try { packet = JSON.parse(json); } catch(e) { return; }
-    EntityManager.syncPersonal(packet);
+    if(typeof EntityManager !== 'undefined') EntityManager.syncPersonal(packet);
 };
 
 // --- MÓDULO 9: GAME LOOP ORQUESTRADOR ---
@@ -26,21 +26,21 @@ const GameLoop = {
             const timeScale = dt / this.OPTIMAL_FRAME_TIME;
 
             // Delegação estrita de responsabilidades a cada Frame
-            if(window.AnimationSystem) window.AnimationSystem.update(timeScale);
-            if(window.TargetSystem) window.TargetSystem.updateUI();
-            if(window.CombatVisualSystem) window.CombatVisualSystem.update(timeScale); 
+            if (typeof AnimationSystem !== 'undefined') AnimationSystem.update(timeScale);
+            if (typeof TargetSystem !== 'undefined') TargetSystem.updateUI();
+            if (typeof CombatVisualSystem !== 'undefined') CombatVisualSystem.update(timeScale); 
             
-            if(window.EntityManager) {
-                window.EntityManager.updatePlayer(timeScale, now);
-                window.EntityManager.updateOthers(timeScale, now);
+            if (typeof EntityManager !== 'undefined') {
+                EntityManager.updatePlayer(timeScale, now);
+                EntityManager.updateOthers(timeScale, now);
             }
 
-            // Renderiza o visual após todo o processamento
-            if (window.Engine && window.Engine.renderer && window.Engine.scene && window.Engine.camera) {
-                window.Engine.renderer.render(window.Engine.scene, window.Engine.camera);
+            // Renderiza o visual APENAS se a Engine estiver definida (Resolve a Tela Preta)
+            if (typeof Engine !== 'undefined' && Engine.renderer && Engine.scene && Engine.camera) {
+                Engine.renderer.render(Engine.scene, Engine.camera);
             }
 
-            // TRAVA DE SEGURANÇA: Só pede o próximo frame se o atual rodou até o final sem quebrar!
+            // O Loop continua apenas no final (Evita travamento do PC em caso de erro)
             requestAnimationFrame(animate); 
         };
         
@@ -48,9 +48,11 @@ const GameLoop = {
         
         // Watchdog de Desconexão
         setInterval(() => { 
-            if(window.EntityManager && window.EntityManager.isCharacterReady && Date.now() - window.NetworkSystem.lastPacketTime > 4000) { 
-                if(window.UISystem) window.UISystem.addLog("AVISO: Conexão com o servidor perdida.", "log-hit"); 
-                window.EntityManager.isCharacterReady = false; 
+            if(typeof EntityManager !== 'undefined' && EntityManager.isCharacterReady) {
+                if (typeof NetworkSystem !== 'undefined' && Date.now() - NetworkSystem.lastPacketTime > 4000) {
+                    if(typeof UISystem !== 'undefined') UISystem.addLog("AVISO: Conexão com o servidor perdida.", "log-hit"); 
+                    EntityManager.isCharacterReady = false; 
+                }
             } 
         }, 1000);
     }
