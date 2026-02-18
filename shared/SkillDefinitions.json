@@ -1,0 +1,28 @@
+{
+    "fireball": {
+        "id": "fireball",
+        "name": "Bola de Fogo",
+        "energyCost": 15,
+        "cooldown": 3000,
+        "power": 25,
+        "mult": 1.5,
+        "hitboxSize": [0.8, 0.8, 0.8],
+        "speed": 0.4,
+        "range": 40.0,
+        "pierce": 0,
+        "visualDef": "vfx_fireball"
+    },
+    "iceball": {
+        "id": "iceball",
+        "name": "Lança de Gelo",
+        "energyCost": 10,
+        "cooldown": 1500,
+        "power": 15,
+        "mult": 1.0,
+        "hitboxSize": [0.3, 0.3, 1.2],
+        "speed": 0.7,
+        "range": 30.0,
+        "pierce": 1,
+        "visualDef": "vfx_iceball"
+    }
+}

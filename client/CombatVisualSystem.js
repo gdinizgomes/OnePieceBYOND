@@ -117,7 +117,8 @@ const CombatVisualSystem = {
     },
 
     fireSkillProjectile: function(originMesh, skillId, ownerRef) {
-        const def = GameSkills[skillId];
+        // Puxa as definições da raiz
+        const def = window.GameSkills[skillId];
         if(!def || !originMesh) return;
 
         const isMine = (ownerRef === EntityManager.myID);

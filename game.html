@@ -1,6 +1,26 @@
 <!DOCTYPE html>
 <html>
 <head>
+    <script>
+    window.onerror = function(message, source, lineno, colno, error) {
+        let errorBox = document.getElementById('error-debug');
+        if (!errorBox) {
+            errorBox = document.createElement('div');
+            errorBox.id = 'error-debug';
+            errorBox.style.position = 'fixed';
+            errorBox.style.top = '0';
+            errorBox.style.left = '0';
+            errorBox.style.width = '100%';
+            errorBox.style.background = 'red';
+            errorBox.style.color = 'white';
+            errorBox.style.zIndex = '9999';
+            errorBox.style.padding = '10px';
+            errorBox.style.fontFamily = 'monospace';
+            document.body.appendChild(errorBox);
+        }
+        errorBox.innerHTML += "ERRO: " + message + " em " + source + ":" + lineno + "<br>";
+    };
+    </script>
     <meta charset="UTF-8"> <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script>
@@ -35,9 +55,7 @@
             border: 1px solid rgba(255,255,255,0.2);
         }
 
-        .mini-hp-bg {
-            width: 100%; height: 4px; background: #333; margin-top: 2px; border-radius: 2px; overflow: hidden;
-        }
+        .mini-hp-bg { width: 100%; height: 4px; background: #333; margin-top: 2px; border-radius: 2px; overflow: hidden; }
         .mini-hp-fill { height: 100%; background: #e74c3c; width: 100%; transition: width 0.2s; }
 
         .dmg-popup {
@@ -45,14 +63,10 @@
             text-shadow: 2px 2px 0px #000; pointer-events: none;
             animation: floatUp 1s ease-out forwards; z-index: 9000;
         }
-        @keyframes floatUp {
-            0% { transform: translateY(0) scale(1); opacity: 1; }
-            100% { transform: translateY(-50px) scale(1.5); opacity: 0; }
-        }
+        @keyframes floatUp { 0% { transform: translateY(0) scale(1); opacity: 1; } 100% { transform: translateY(-50px) scale(1.5); opacity: 0; } }
 
         .char-info { position: absolute; top: 20px; left: 20px; background: rgba(0,0,0,0.6); padding: 15px; border-radius: 8px; color: white; border: 2px solid #d4af37; pointer-events: auto; min-width: 220px; }
         
-        /* BOTÃO DE LETALIDADE */
         .lethality-btn { position: absolute; top: 15px; right: 15px; background: #333; border: 2px solid #555; border-radius: 50%; width: 30px; height: 30px; display: flex; justify-content: center; align-items: center; cursor: pointer; transition: 0.3s; font-size: 16px; }
         .lethality-btn.on { background: #800000; border-color: #ff3333; box-shadow: 0 0 10px red; }
 
@@ -77,18 +91,11 @@
             padding: 10px; border-radius: 5px; font-size: 11px; font-family: monospace; pointer-events: auto;
         }
 
-        /* --- HOTBAR (SKILLS) --- */
-        #hotbar {
-            position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); display: flex; gap: 8px; pointer-events: auto;
-        }
-        .hotbar-slot {
-            width: 44px; height: 44px; background: rgba(30, 30, 30, 0.8); border: 2px solid #555; border-radius: 5px; display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; box-shadow: 0 4px 6px rgba(0,0,0,0.5); cursor: pointer;
-        }
+        #hotbar { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); display: flex; gap: 8px; pointer-events: auto; }
+        .hotbar-slot { width: 44px; height: 44px; background: rgba(30, 30, 30, 0.8); border: 2px solid #555; border-radius: 5px; display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; box-shadow: 0 4px 6px rgba(0,0,0,0.5); cursor: pointer; }
         .hotbar-key { position: absolute; top: -8px; left: -8px; background: #9b59b6; color: white; font-size: 10px; font-weight: bold; padding: 2px 5px; border-radius: 3px; border: 1px solid black; }
         .cooldown-overlay { position: absolute; bottom: 0; left: 0; width: 100%; height: 0%; background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center; color: white; font-size: 12px; font-weight: bold; overflow: hidden; pointer-events: none; }
 
-
-        /* --- STATUS WINDOW --- */
         #stat-window {
             position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
             width: 480px; background: rgba(20, 20, 30, 0.95); color: white;
@@ -99,28 +106,17 @@
         .stat-col { width: 45%; }
         
         .equip-slots { display: flex; gap: 5px; justify-content: center; flex-wrap: wrap; margin-top: 10px; }
-        .equip-slot {
-            width: 50px; height: 50px; border: 1px solid #777; background: rgba(0,0,0,0.5);
-            display: flex; justify-content: center; align-items: center; 
-            cursor: pointer; position: relative;
-        }
+        .equip-slot { width: 50px; height: 50px; border: 1px solid #777; background: rgba(0,0,0,0.5); display: flex; justify-content: center; align-items: center; cursor: pointer; position: relative; }
         .equip-slot label { position: absolute; font-size: 9px; top: -12px; color: #aaa; width: 100%; text-align: center; }
         .equip-icon { max-width: 90%; max-height: 90%; object-fit: contain; image-rendering: pixelated; }
 
         .stat-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; font-size: 13px; }
-        .stat-btn {
-            background: #d4af37; color: black; border: none; border-radius: 4px;
-            width: 20px; height: 20px; font-weight: bold; cursor: pointer; font-size: 12px; margin-left: 5px;
-        }
+        .stat-btn { background: #d4af37; color: black; border: none; border-radius: 4px; width: 20px; height: 20px; font-weight: bold; cursor: pointer; font-size: 12px; margin-left: 5px; }
         .kd-row { color: #aaa; font-size: 11px; text-align: center; margin-top: -5px; }
 
-        /* --- HABILIDADES WINDOW --- */
         #skills-window {
-            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-            width: 500px; background: rgba(20, 20, 30, 0.95); color: white;
-            border: 2px solid #9b59b6; border-radius: 10px; padding: 0;
-            display: none; pointer-events: auto; z-index: 110; box-shadow: 0 0 20px rgba(0,0,0,0.8);
-            flex-direction: column; max-height: 80vh;
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 500px; background: rgba(20, 20, 30, 0.95); color: white;
+            border: 2px solid #9b59b6; border-radius: 10px; padding: 0; display: none; pointer-events: auto; z-index: 110; box-shadow: 0 0 20px rgba(0,0,0,0.8); flex-direction: column; max-height: 80vh;
         }
         .skills-header { padding: 15px; border-bottom: 1px solid #555; text-align: center; font-weight: bold; color: #9b59b6; letter-spacing: 1px; }
         .tabs-header { display: flex; background: rgba(0,0,0,0.3); }
@@ -130,11 +126,9 @@
         
         .tab-content { padding: 15px; height: 320px; display: none; overflow-y: auto; }
         .tab-content.active { display: block; }
-        
         .tab-content::-webkit-scrollbar { width: 8px; }
         .tab-content::-webkit-scrollbar-track { background: rgba(0,0,0,0.3); border-radius: 4px; }
         .tab-content::-webkit-scrollbar-thumb { background: #9b59b6; border-radius: 4px; }
-        .tab-content::-webkit-scrollbar-thumb:hover { background: #8e44ad; }
         
         .skill-card { background: rgba(255,255,255,0.05); padding: 12px; margin-bottom: 10px; border-radius: 6px; display: flex; align-items: center; border: 1px solid #444; }
         .skill-icon { width: 44px; height: 44px; background: #222; border-radius: 5px; display: flex; justify-content: center; align-items: center; font-size: 24px; margin-right: 15px; border: 1px solid #555; box-shadow: inset 0 0 10px #000; }
@@ -145,22 +139,16 @@
         .skill-bar-fill { height: 100%; background: #2ecc71; width: 0%; transition: width 0.3s; }
         .skill-lvl { font-weight: bold; font-size: 16px; color: white; width: 50px; text-align: right; margin-left: 10px; }
         
-        /* --- INVENTÁRIO & LOOT GRID --- */
         #inventory-window, #loot-window {
             position: absolute; top: 50%; right: 10%; transform: translateY(-50%); width: 320px; background: rgba(20, 20, 30, 0.95);
-            border: 2px solid #3498db; border-radius: 10px; padding: 15px;
-            display: none; pointer-events: auto; color: white; z-index: 100; flex-direction: column;
+            border: 2px solid #3498db; border-radius: 10px; padding: 15px; display: none; pointer-events: auto; color: white; z-index: 100; flex-direction: column;
         }
         #loot-window { border-color: #e74c3c; right: auto; left: 10%; }
         
         .grid-container { display: grid; grid-template-columns: repeat(4, 1fr); grid-template-rows: repeat(3, 1fr); gap: 8px; margin-top: 10px; }
-        .inv-slot {
-            width: 60px; height: 60px; background: rgba(0,0,0,0.5); border: 1px solid #555; border-radius: 4px;
-            position: relative; cursor: pointer; transition: border-color 0.2s; display: flex; justify-content: center; align-items: center;
-        }
+        .inv-slot { width: 60px; height: 60px; background: rgba(0,0,0,0.5); border: 1px solid #555; border-radius: 4px; position: relative; cursor: pointer; transition: border-color 0.2s; display: flex; justify-content: center; align-items: center; }
         .inv-slot:hover { border-color: #f1c40f; }
         .inv-slot.equipped { border-color: #2ecc71; background: rgba(46, 204, 113, 0.1); }
-        
         .inv-icon { max-width: 90%; max-height: 90%; object-fit: contain; image-rendering: pixelated; }
         .inv-qty { position: absolute; bottom: 2px; right: 4px; font-size: 12px; font-weight: bold; color: white; text-shadow: 1px 1px 0 #000; }
         .inv-actions { position: absolute; top: 100%; left: 0; width: 100%; background: #222; border: 1px solid #555; z-index: 10; display: none; flex-direction: column; }
@@ -182,29 +170,16 @@
         .btn-buy { background: #27ae60; color: white; border: none; padding: 5px 10px; cursor: pointer; border-radius: 4px; }
         .btn-buy:hover { background: #2ecc71; }
 
-        #tooltip {
-            position: absolute; background: rgba(0,0,0,0.9); border: 1px solid #aaa; color: #eee; padding: 8px; font-size: 12px; border-radius: 4px;
-            pointer-events: none; display: none; z-index: 2000; max-width: 200px;
-        }
+        #tooltip { position: absolute; background: rgba(0,0,0,0.9); border: 1px solid #aaa; color: #eee; padding: 8px; font-size: 12px; border-radius: 4px; pointer-events: none; display: none; z-index: 2000; max-width: 200px; }
         #tooltip strong { color: #f1c40f; display: block; margin-bottom: 3px; }
         #combat-log { position: absolute; bottom: 80px; right: 20px; width: 300px; height: 150px; background: rgba(0,0,0,0.5); color: #fff; font-size: 12px; overflow-y: auto; padding: 10px; border-radius: 5px; font-family: monospace; pointer-events: auto; }
         .log-hit { color: #e74c3c; font-weight: bold; } 
         #notif-area { position: absolute; bottom: 150px; left: 50%; transform: translateX(-50%); text-align: center; pointer-events: none;}
         
-        #faint-overlay {
-            position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(50, 0, 0, 0.6);
-            display: none; flex-direction: column; align-items: center; justify-content: center; z-index: 1000; pointer-events: none;
-        }
-        #interaction-hint {
-            position: absolute; top: 40%; left: 50%; transform: translate(-50%, -50%); background: rgba(0,0,0,0.7); color: #f1c40f; padding: 10px 20px; border-radius: 20px;
-            font-weight: bold; display: none; pointer-events: none; border: 1px solid #f1c40f;
-        }
+        #faint-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(50, 0, 0, 0.6); display: none; flex-direction: column; align-items: center; justify-content: center; z-index: 1000; pointer-events: none; }
+        #interaction-hint { position: absolute; top: 40%; left: 50%; transform: translate(-50%, -50%); background: rgba(0,0,0,0.7); color: #f1c40f; padding: 10px 20px; border-radius: 20px; font-weight: bold; display: none; pointer-events: none; border: 1px solid #f1c40f; }
 
-        /* MODAL KILL CONFIRM */
-        #kill-modal {
-            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(50, 0, 0, 0.95);
-            border: 2px solid #ff3333; border-radius: 10px; padding: 20px; display: none; pointer-events: auto; color: white; z-index: 3000; text-align: center;
-        }
+        #kill-modal { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(50, 0, 0, 0.95); border: 2px solid #ff3333; border-radius: 10px; padding: 20px; display: none; pointer-events: auto; color: white; z-index: 3000; text-align: center; }
         .modal-btn { background: #333; color: white; border: 1px solid #555; padding: 10px 20px; margin: 10px; cursor: pointer; border-radius: 5px; font-weight: bold;}
         .modal-btn.yes { background: #c0392b; border-color: #e74c3c; }
         .modal-btn.yes:hover { background: #e74c3c; }
@@ -256,24 +231,18 @@
         </div>
 
         <div id="hotbar">
-            <div class="hotbar-slot" onclick="castSkill('fireball')">
+            <div class="hotbar-slot" onclick="window.CombatSystem.castSkill('fireball')">
                 <div class="hotbar-key">1</div>
                 <div style="color:#f39c12; font-size:10px;">Fogo</div>
                 <div class="cooldown-overlay" id="cd-fireball"></div>
             </div>
-            <div class="hotbar-slot" onclick="castSkill('iceball')">
+            <div class="hotbar-slot" onclick="window.CombatSystem.castSkill('iceball')">
                 <div class="hotbar-key">2</div>
                 <div style="color:#00ffff; font-size:10px;">Gelo</div>
                 <div class="cooldown-overlay" id="cd-iceball"></div>
             </div>
-            <div class="hotbar-slot">
-                <div class="hotbar-key">3</div>
-                <div class="cooldown-overlay"></div>
-            </div>
-            <div class="hotbar-slot">
-                <div class="hotbar-key">4</div>
-                <div class="cooldown-overlay"></div>
-            </div>
+            <div class="hotbar-slot"><div class="hotbar-key">3</div><div class="cooldown-overlay"></div></div>
+            <div class="hotbar-slot"><div class="hotbar-key">4</div><div class="cooldown-overlay"></div></div>
         </div>
 
         <div id="stat-window">
@@ -283,16 +252,10 @@
                     <div style="font-size: 12px; color: #aaa;" id="stat-class">Civil</div>
                     <div style="font-size: 12px; color: #f1c40f;" id="stat-title">Nenhum</div>
                 </div>
-                <div style="text-align: right;">
-                    <div style="font-size: 24px; font-weight: bold;" id="stat-lvl">1</div>
-                    <div style="font-size: 10px;">NÍVEL</div>
-                </div>
+                <div style="text-align: right;"><div style="font-size: 24px; font-weight: bold;" id="stat-lvl">1</div><div style="font-size: 10px;">NÍVEL</div></div>
             </div>
 
-            <div class="kd-row">
-                Kills: <span id="stat-kills" style="color:#e74c3c; font-weight:bold;">0</span> | 
-                Deaths: <span id="stat-deaths" style="color:#e74c3c; font-weight:bold;">0</span>
-            </div>
+            <div class="kd-row">Kills: <span id="stat-kills" style="color:#e74c3c; font-weight:bold;">0</span> | Deaths: <span id="stat-deaths" style="color:#e74c3c; font-weight:bold;">0</span></div>
             <br>
 
             <div style="display: flex; gap: 20px;">
@@ -326,10 +289,7 @@
                 <div class="equip-slot" id="slot-legs" title="Pernas"><label>Pernas</label></div>
                 <div class="equip-slot" id="slot-feet" title="Pés"><label>Pés</label></div>
             </div>
-
-            <div style="text-align: center; margin-top: 15px;">
-                <button onclick="toggleStats()" style="padding: 5px 20px;">Fechar</button>
-            </div>
+            <div style="text-align: center; margin-top: 15px;"><button onclick="toggleStats()" style="padding: 5px 20px;">Fechar</button></div>
         </div>
 
         <div id="skills-window">
@@ -342,90 +302,32 @@
             </div>
             
             <div id="tab-combate" class="tab-content active">
-                <div class="skill-card">
-                    <div class="skill-icon">👊</div>
-                    <div class="skill-info">
-                        <div class="skill-name">Combate Corpo-a-Corpo</div>
-                        <div class="skill-desc">Melhora os danos e combos usando os punhos.</div>
-                        <div class="skill-bar-bg"><div class="skill-bar-fill" id="bar-punch"></div></div>
-                    </div>
-                    <div class="skill-lvl">Lv.<span id="prof-punch">1</span></div>
-                </div>
-
-                <div class="skill-card">
-                    <div class="skill-icon">🦵</div>
-                    <div class="skill-info">
-                        <div class="skill-name">Artes Marciais (Chute)</div>
-                        <div class="skill-desc">Refina os movimentos e impactos com os pés.</div>
-                        <div class="skill-bar-bg"><div class="skill-bar-fill" id="bar-kick"></div></div>
-                    </div>
-                    <div class="skill-lvl">Lv.<span id="prof-kick">1</span></div>
-                </div>
-
-                <div class="skill-card">
-                    <div class="skill-icon">⚔️</div>
-                    <div class="skill-info">
-                        <div class="skill-name">Esgrima</div>
-                        <div class="skill-desc">Proficiência em ataques cortantes e combos com espadas.</div>
-                        <div class="skill-bar-bg"><div class="skill-bar-fill" id="bar-sword"></div></div>
-                    </div>
-                    <div class="skill-lvl">Lv.<span id="prof-sword">1</span></div>
-                </div>
-
-                <div class="skill-card">
-                    <div class="skill-icon">🔫</div>
-                    <div class="skill-info">
-                        <div class="skill-name">Artilharia</div>
-                        <div class="skill-desc">Manuseio avançado, aumentando danos com armas de fogo.</div>
-                        <div class="skill-bar-bg"><div class="skill-bar-fill" id="bar-gun"></div></div>
-                    </div>
-                    <div class="skill-lvl">Lv.<span id="prof-gun">1</span></div>
-                </div>
+                <div class="skill-card"><div class="skill-icon">👊</div><div class="skill-info"><div class="skill-name">Combate Corpo-a-Corpo</div><div class="skill-desc">Melhora os danos e combos usando os punhos.</div><div class="skill-bar-bg"><div class="skill-bar-fill" id="bar-punch"></div></div></div><div class="skill-lvl">Lv.<span id="prof-punch">1</span></div></div>
+                <div class="skill-card"><div class="skill-icon">🦵</div><div class="skill-info"><div class="skill-name">Artes Marciais (Chute)</div><div class="skill-desc">Refina os movimentos e impactos com os pés.</div><div class="skill-bar-bg"><div class="skill-bar-fill" id="bar-kick"></div></div></div><div class="skill-lvl">Lv.<span id="prof-kick">1</span></div></div>
+                <div class="skill-card"><div class="skill-icon">⚔️</div><div class="skill-info"><div class="skill-name">Esgrima</div><div class="skill-desc">Proficiência em ataques cortantes e combos com espadas.</div><div class="skill-bar-bg"><div class="skill-bar-fill" id="bar-sword"></div></div></div><div class="skill-lvl">Lv.<span id="prof-sword">1</span></div></div>
+                <div class="skill-card"><div class="skill-icon">🔫</div><div class="skill-info"><div class="skill-name">Artilharia</div><div class="skill-desc">Manuseio avançado, aumentando danos com armas de fogo.</div><div class="skill-bar-bg"><div class="skill-bar-fill" id="bar-gun"></div></div></div><div class="skill-lvl">Lv.<span id="prof-gun">1</span></div></div>
             </div>
-
-            <div style="text-align: center; padding: 15px; border-top: 1px solid #444; background: rgba(0,0,0,0.2);">
-                <button onclick="toggleSkills()" style="padding: 5px 20px; cursor: pointer;">Fechar</button>
-            </div>
+            <div style="text-align: center; padding: 15px; border-top: 1px solid #444; background: rgba(0,0,0,0.2);"><button onclick="toggleSkills()" style="padding: 5px 20px; cursor: pointer;">Fechar</button></div>
         </div>
 
         <div id="shop-window">
-            <div style="text-align: center; border-bottom: 1px solid #e67e22; padding-bottom: 5px; font-weight: bold; color: #e67e22;">
-                LOJA DO ARMEIRO
-            </div>
-            <div id="shop-list" style="overflow-y: auto; max-height: 300px; margin-top: 10px;">
-            </div>
-            <div style="text-align: center; margin-top: 15px;">
-                <button onclick="toggleShop()" style="padding: 5px 15px; cursor: pointer;">Sair</button>
-            </div>
+            <div style="text-align: center; border-bottom: 1px solid #e67e22; padding-bottom: 5px; font-weight: bold; color: #e67e22;">LOJA DO ARMEIRO</div>
+            <div id="shop-list" style="overflow-y: auto; max-height: 300px; margin-top: 10px;"></div>
+            <div style="text-align: center; margin-top: 15px;"><button onclick="toggleShop()" style="padding: 5px 15px; cursor: pointer;">Sair</button></div>
         </div>
 
         <div id="inventory-window">
-            <div style="text-align: center; border-bottom: 1px solid #3498db; padding-bottom: 5px; font-weight: bold;">
-                MOCHILA (12 Slots)
-            </div>
+            <div style="text-align: center; border-bottom: 1px solid #3498db; padding-bottom: 5px; font-weight: bold;">MOCHILA (12 Slots)</div>
             <div id="inv-grid" class="grid-container"></div>
-            <div style="text-align: center; margin-top: 15px;">
-                <button onclick="toggleInventory()" style="padding: 5px 15px; cursor: pointer;">Fechar</button>
-            </div>
+            <div style="text-align: center; margin-top: 15px;"><button onclick="toggleInventory()" style="padding: 5px 15px; cursor: pointer;">Fechar</button></div>
         </div>
 
         <div id="loot-window">
-            <div style="text-align: center; border-bottom: 1px solid #e74c3c; padding-bottom: 5px; font-weight: bold; color: #e74c3c;">
-                SAQUEANDO: <span id="loot-target-name">Alvo</span>
-            </div>
-            
-            <div style="margin-top:10px; text-align:center;">
-                <button onclick="robGold()" style="width: 100%; padding: 8px; background: #f1c40f; color: black; border:none; font-weight:bold; cursor:pointer; border-radius:4px;">
-                    Roubar 💰 <span id="loot-gold">0</span> Berries
-                </button>
-            </div>
-
+            <div style="text-align: center; border-bottom: 1px solid #e74c3c; padding-bottom: 5px; font-weight: bold; color: #e74c3c;">SAQUEANDO: <span id="loot-target-name">Alvo</span></div>
+            <div style="margin-top:10px; text-align:center;"><button onclick="robGold()" style="width: 100%; padding: 8px; background: #f1c40f; color: black; border:none; font-weight:bold; cursor:pointer; border-radius:4px;">Roubar 💰 <span id="loot-gold">0</span> Berries</button></div>
             <div style="font-size: 11px; color:#aaa; margin-top:10px; text-align:center;">Itens (Clique para jogar no chão)</div>
             <div id="loot-grid" class="grid-container"></div>
-            
-            <div style="text-align: center; margin-top: 15px;">
-                <button onclick="closeLoot()" style="padding: 5px 15px; cursor: pointer;">Fechar Saque</button>
-            </div>
+            <div style="text-align: center; margin-top: 15px;"><button onclick="closeLoot()" style="padding: 5px 15px; cursor: pointer;">Fechar Saque</button></div>
         </div>
 
         <div id="notif-area"></div>

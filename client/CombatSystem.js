@@ -12,7 +12,8 @@ const CombatSystem = {
     castSkill: function(skillId) {
         if(EntityManager.isFainted || EntityManager.isResting || this.isAttacking || !EntityManager.isCharacterReady) return;
         
-        const skillDef = GameSkills[skillId];
+        // Puxa as definições diretamente da raiz (injetada pelo BYOND)
+        const skillDef = window.GameSkills[skillId];
         if(!skillDef) return;
 
         const now = Date.now();
@@ -40,7 +41,7 @@ const CombatSystem = {
     },
 
     startSkillCooldownUI: function(skillId) {
-        const skillDef = GameSkills[skillId];
+        const skillDef = window.GameSkills[skillId];
         if(!skillDef) return;
 
         this.localSkillCooldowns[skillId] = Date.now() + skillDef.cooldown;
