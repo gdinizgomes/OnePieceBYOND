@@ -12,9 +12,12 @@ const CombatSystem = {
     castSkill: function(skillId) {
         if(EntityManager.isFainted || EntityManager.isResting || this.isAttacking || !EntityManager.isCharacterReady) return;
         
-        // Puxa as definições diretamente da raiz (injetada pelo BYOND)
-        const skillDef = window.GameSkills[skillId];
-        if(!skillDef) return;
+        // Failsafe de leitura
+        const skillDef = window.GameSkills ? window.GameSkills[skillId] : null;
+        if(!skillDef) {
+            UISystem.addLog("<span style='color:red'>Erro de Servidor: Magia Desconhecida.</span>", "log-miss");
+            return;
+        }
 
         const now = Date.now();
         if (this.localSkillCooldowns[skillId] && this.localSkillCooldowns[skillId] > now) {
@@ -41,7 +44,7 @@ const CombatSystem = {
     },
 
     startSkillCooldownUI: function(skillId) {
-        const skillDef = window.GameSkills[skillId];
+        const skillDef = window.GameSkills ? window.GameSkills[skillId] : null;
         if(!skillDef) return;
 
         this.localSkillCooldowns[skillId] = Date.now() + skillDef.cooldown;

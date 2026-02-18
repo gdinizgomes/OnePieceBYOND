@@ -1,8 +1,10 @@
 #define SAVE_DIR "saves/"
 
+// --- CONTROLADOR GLOBAL DO SERVIDOR ---
 var/global/datum/game_controller/SSserver
 var/global/list/GlobalSkillsData = list()
 
+// Inicialização Global
 world/New()
 	world.maxx = 1
 	world.maxy = 1
@@ -29,6 +31,7 @@ world/New()
 	new /mob/npc/nurse()
 	new /mob/npc/prop/log()
 
+// --- CLASSE DO CONTROLADOR ---
 datum/game_controller
 	var/tick_rate = 1 
 	var/running = 1
@@ -715,9 +718,11 @@ mob
 		var/page = file2text('game.html')
 		page = replacetext(page, "{{BYOND_REF}}", "\ref[src]")
 		
-		// USA ASPAS SIMPLES PARA COMPILAR O ARQUIVO NO RECURSO DO BYOND
-		var/skills_text = file2text('shared/SkillDefinitions.json')
-		if(!skills_text) skills_text = "{}"
+		// INJEÇÃO SEGURA: Busca a tag exata no HTML e injeta os dados sem congelar o servidor
+		var/skills_text = "{}"
+		if(GlobalSkillsData && GlobalSkillsData.len > 0)
+			skills_text = json_encode(GlobalSkillsData)
+		
 		page = replacetext(page, "", "<script>window.GameSkills = [skills_text];</script>")
 
 		src << browse_rsc(file("definitions.js"), "definitions.js")
@@ -996,14 +1001,12 @@ mob
 			var/s_id = href_list["skill_id"]
 			if(!(s_id in unlocked_skills)) return 
 			
-			// Leitura do novo JSON Compartilhado
 			var/list/skill_data = GlobalSkillsData[s_id]
 			if(!skill_data) return
 			
 			if(skill_cooldowns[s_id] && skill_cooldowns[s_id] > world.time) return 
 			if(!ConsumeEnergy(skill_data["energyCost"])) return 
 			
-			// O cooldown no JSON está em ms (ex: 3000), o BYOND lê o mundo em deciseconds.
 			skill_cooldowns[s_id] = world.time + round(skill_data["cooldown"] / 100)
 			src.pending_visuals += list(list("type"="skill_cast_accept", "skill"=s_id))
 			
@@ -1032,7 +1035,6 @@ mob
 			already_hit += target
 			active_skill_hits["[s_id]"] = already_hit
 			
-			// Usa a matemática do JSON Compartilhado
 			var/base_dmg = skill_data["power"]
 			var/mult = skill_data["mult"]
 			var/damage = round(base_dmg + (src.willpower * mult) + rand(0, 5))
