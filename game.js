@@ -1,4 +1,4 @@
-// game.js - Lógica Principal com TRAJETÓRIA DE PROJÉTIL + PLANO ZERO + SISTEMA RAGNAROK + LIVRO DE HABILIDADES + LETHALITY/PVP
+// game.js - Lógica Principal com ANTI-STUCK SPAWN, TELEPORT FIX E LOOT AUTO-CLOSE
 
 // --- VARIÁVEIS GLOBAIS ---
 let playerGroup = null; 
@@ -54,7 +54,7 @@ let lethalityMode = false;
 let killTargetRef = null; 
 let lootTargetRef = null; 
 
-// Cache UI
+// Cache UI Expandido
 let cachedHP = -1; let cachedMaxHP = -1; 
 let cachedEn = -1; let cachedMaxEn = -1;
 let cachedGold = -1; let cachedLvl = -1; let cachedName = "";
@@ -636,6 +636,10 @@ function checkPlayerCollision(nextX, nextY, nextZ) {
     const size = new THREE.Vector3(0.4, 1.8, 0.4); 
     futureBox.setFromCenterAndSize(center, size);
     
+    // Caixa atual para permitir o desengate (fuga)
+    const currentBox = new THREE.Box3();
+    currentBox.setFromCenterAndSize(new THREE.Vector3(playerGroup.position.x, playerGroup.position.y + 0.9, playerGroup.position.z), size);
+
     for (let id in otherPlayers) {
         const other = otherPlayers[id];
         if (!other.mesh) continue;
@@ -645,7 +649,24 @@ function checkPlayerCollision(nextX, nextY, nextZ) {
         const otherBox = new THREE.Box3().setFromObject(other.mesh);
         otherBox.expandByScalar(-0.15); 
         
-        if (futureBox.intersectsBox(otherBox)) { return true; }
+        if (futureBox.intersectsBox(otherBox)) { 
+            // --- SISTEMA ANTI-STUCK (Permite o jogador sair se já estiver encavalado) ---
+            if (currentBox.intersectsBox(otherBox)) {
+                const dxCur = playerGroup.position.x - other.mesh.position.x;
+                const dzCur = playerGroup.position.z - other.mesh.position.z;
+                const currentDistSq = dxCur*dxCur + dzCur*dzCur;
+
+                const dxFut = nextX - other.mesh.position.x;
+                const dzFut = nextZ - other.mesh.position.z;
+                const futureDistSq = dxFut*dxFut + dzFut*dzFut;
+
+                // Permite o movimento se afastar do centro (ou se a distância for zero absoluto)
+                if (futureDistSq > currentDistSq || currentDistSq < 0.001) {
+                    continue; 
+                }
+            }
+            return true; 
+        }
     }
     return false;
 }
@@ -656,6 +677,7 @@ window.addEventListener('game-action', function(e) {
     else if(k === 'p' && !blockSync) { blockSync = true; window.location.href = "byond://?src=" + BYOND_REF + "&action=force_save"; addLog("Salvando...", "log-miss"); setTimeout(function() { blockSync = false; }, 500); }
 });
 
+// --- LÓGICA DE PROJÉTEIS (ATUALIZADA PARA 3D VECTOR Y-AXIS) ---
 function fireProjectile(projectileDef, isMine) {
     const geo = new THREE.BoxGeometry(1, 1, 1); 
     const mat = new THREE.MeshBasicMaterial({ color: projectileDef.color }); 
@@ -1106,7 +1128,7 @@ function receberDadosPessoal(json) {
             }
         }
 
-        // --- ATUALIZAÇÃO FORÇADA DE COORDENADAS E DANO ---
+        // --- ATUALIZAÇÃO FORÇADA DE COORDENADAS (EVENTO DE TELEPORT) ---
         if(packet.evts) packet.evts.forEach(evt => { 
             if(evt.type === "dmg") spawnDamageNumber(evt.tid, evt.val); 
             if(evt.type === "teleport") {

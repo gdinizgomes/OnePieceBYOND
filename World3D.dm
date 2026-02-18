@@ -635,9 +635,9 @@ mob
 		current_hp = max_hp
 		current_energy = max_energy
 		
-		// Respawn em frente à Enfermeira (Ela está em 8, 8, então colocamos o Z no 5)
-		real_x = 8
-		real_z = 5 
+		// Respawn em frente à Enfermeira com micro-offset para não empilhar bonecos
+		real_x = 8 + (rand(-50, 50) / 100)
+		real_z = 5 + (rand(-50, 50) / 100) 
 		real_y = 0
 		
 		// FORÇA O JAVASCRIPT A PUXAR O BONECO PRA CÁ IMEDIATAMENTE (Limpa Desync!)
@@ -678,7 +678,11 @@ mob
 			src << output("Carregado!", "map3d:mostrarNotificacao")
 			GiveStarterItems() 
 		else
-			real_x = 0; real_y = 0; real_z = 0
+			// Novo personagem: Spawn randomizado com micro-offset
+			real_x = rand(-50, 50) / 100 
+			real_y = 0
+			real_z = rand(-50, 50) / 100
+
 			level = 1; experience = 0; req_experience = 100; stat_points = 0; gold = 0
 			kills = 0; deaths = 0; lethality_mode = 0
 			strength = 5; vitality = 5; agility = 5; dexterity = 5; willpower = 5; luck = 5
@@ -694,7 +698,6 @@ mob
 		src << browse_rsc(file("engine.js"), "engine.js")
 		src << browse_rsc(file("game.js"), "game.js")
 
-		// Load imgs...
 		if(fexists("weapon_sword_wood_img.png")) src << browse_rsc(file("weapon_sword_wood_img.png"), "weapon_sword_wood_img.png")
 		if(fexists("weapon_sword_iron_img.png")) src << browse_rsc(file("weapon_sword_iron_img.png"), "weapon_sword_iron_img.png")
 		if(fexists("weapon_sword_silver_img.png")) src << browse_rsc(file("weapon_sword_silver_img.png"), "weapon_sword_silver_img.png")
@@ -777,7 +780,7 @@ mob
 		active_item_visual = ""
 		if(slot_hand) active_item_visual = slot_hand.id_visual
 		RecalculateStats()
-		lethality_mode = 0 
+		lethality_mode = 0 // Sempre reseta o modo letal ao logar
 		return 1
 
 	proc/R2(n) return round(n * 100) / 100
@@ -977,7 +980,6 @@ mob
 			if(hit_type == "projectile") { if(world.time > projectile_window) return }
 			else { if(world.time > attack_window) return }
 			
-			// FIX DE TIPAGEM: Define especificamente que o alvo é da classe MOB para acessar is_fainted e Die()
 			var/mob/target = locate(target_ref)
 			if(!target) return
 
