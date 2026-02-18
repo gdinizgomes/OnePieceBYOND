@@ -719,6 +719,10 @@ mob
 		src << browse_rsc(file("client/TargetSystem.js"), "TargetSystem.js")
 		src << browse_rsc(file("client/CombatVisualSystem.js"), "CombatVisualSystem.js")
 		src << browse_rsc(file("client/CombatSystem.js"), "CombatSystem.js")
+		src << browse_rsc(file("client/PhysicsSystem.js"), "PhysicsSystem.js")
+		src << browse_rsc(file("client/AnimationSystem.js"), "AnimationSystem.js")
+		src << browse_rsc(file("client/EntityManager.js"), "EntityManager.js")
+		src << browse_rsc(file("client/InputSystem.js"), "InputSystem.js")
 		
 		src << browse_rsc(file("game.js"), "game.js")
 
