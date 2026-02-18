@@ -1,24 +1,70 @@
 // game.js - Lógica Principal com ANTI-STUCK SPAWN, TELEPORT FIX E LOOT AUTO-CLOSE
 
+// --- MÓDULO 1: NETWORK SYSTEM ---
+// Responsável exclusivo pela comunicação com o servidor BYOND.
+const NetworkSystem = {
+    commandQueue: [],
+    lastPacketTime: Date.now(),
+    blockSync: false,
+    
+    // Configurações de Sync de Posição
+    POSITION_SYNC_INTERVAL: 100,
+    POSITION_EPSILON: 0.01,
+    lastSentTime: 0,
+    lastSentX: null, 
+    lastSentY: null, 
+    lastSentZ: null, 
+    lastSentRot: null,
+
+    init: function() {
+        // Processa no máximo 1 comando a cada 50ms para prevenir congelamento de Browser
+        setInterval(() => {
+            if (this.commandQueue.length > 0 && typeof BYOND_REF !== 'undefined') {
+                const cmd = this.commandQueue.shift();
+                window.location.href = `byond://?src=${BYOND_REF}&${cmd}`;
+            }
+        }, 50);
+    },
+
+    queueCommand: function(cmdString) {
+        this.commandQueue.push(cmdString);
+    },
+
+    shouldSendPosition: function(x, y, z, rot, now) {
+        if (now - this.lastSentTime < this.POSITION_SYNC_INTERVAL) return false;
+        if (Math.abs(x - this.lastSentX) < this.POSITION_EPSILON && 
+            Math.abs(y - this.lastSentY) < this.POSITION_EPSILON && 
+            Math.abs(z - this.lastSentZ) < this.POSITION_EPSILON && 
+            Math.abs(rot - this.lastSentRot) < this.POSITION_EPSILON) return false;
+        return true;
+    },
+
+    sendPositionUpdate: function(now, playerGroup, isRunning, isResting, isCharacterReady) { 
+        if (!isCharacterReady || this.blockSync || typeof BYOND_REF === 'undefined' || !playerGroup) return; 
+        
+        const x = round2(playerGroup.position.x); 
+        const y = round2(playerGroup.position.y); 
+        const z = round2(playerGroup.position.z); 
+        const rot = round2(playerGroup.rotation.y); 
+        
+        if (!this.shouldSendPosition(x, y, z, rot, now)) return; 
+        
+        this.lastSentTime = now; 
+        this.lastSentX = x; this.lastSentY = y; this.lastSentZ = z; this.lastSentRot = rot; 
+        
+        let runFlag = (isRunning && !isResting) ? 1 : 0; 
+        this.queueCommand(`action=update_pos&x=${x}&y=${y}&z=${z}&rot=${rot}&run=${runFlag}`); 
+    }
+};
+
+// Inicializa o subsistema de rede
+NetworkSystem.init();
+
 // --- VARIÁVEIS GLOBAIS ---
 let playerGroup = null; 
 const otherPlayers = {}; 
 let myID = null; 
 let isCharacterReady = false;
-let lastPacketTime = Date.now();
-let blockSync = false;
-
-// --- TOPIC THROTTLING (Fila de Comandos) ---
-const commandQueue = [];
-function queueCommand(cmdString) {
-    commandQueue.push(cmdString);
-}
-setInterval(() => {
-    if (commandQueue.length > 0 && typeof BYOND_REF !== 'undefined') {
-        const cmd = commandQueue.shift();
-        window.location.href = `byond://?src=${BYOND_REF}&${cmd}`;
-    }
-}, 50); // Processa no máximo 1 comando a cada 50ms para prevenir congelamento de Browser
 
 // --- TARGET SYSTEM VARS ---
 let currentTargetID = null; 
@@ -82,7 +128,6 @@ function releaseProjectile(m) {
     projectilePool.push(m);
 }
 
-
 // Estado do Jogo
 let charState = "DEFAULT"; 
 let isResting = false; 
@@ -122,11 +167,6 @@ let cachedExp = -1; let cachedReqExp = -1; let cachedPts = -1;
 let cachedStats = { str: -1, agi: -1, vit: -1, dex: -1, von: -1, sor: -1, atk: -1, ratk: -1, def: -1, hit: -1, flee: -1, crit: -1, kills: -1, deaths: -1 };
 let cachedProfs = { pp: -1, pp_x: -1, pk: -1, pk_x: -1, ps: -1, ps_x: -1, pg: -1, pg_x: -1 };
 
-const POSITION_SYNC_INTERVAL = 100;
-const POSITION_EPSILON = 0.01;
-let lastSentTime = 0;
-let lastSentX = null; let lastSentY = null; let lastSentZ = null; let lastSentRot = null;
-
 const MAP_LIMIT = 29; 
 
 // --- CONTROLE DE SKILLS (HOTBAR) ---
@@ -154,7 +194,7 @@ function castSkill(skillId) {
     lastCombatActionTime = now;
     charState = "SWORD_WINDUP"; 
     
-    queueCommand(`action=cast_skill&skill_id=${skillId}`);
+    NetworkSystem.queueCommand(`action=cast_skill&skill_id=${skillId}`);
     
     setTimeout(() => {
         charState = "FIST_COMBO_1"; 
@@ -225,12 +265,12 @@ function toggleStats() {
     if(isStatWindowOpen) {
         isInvWindowOpen = false; document.getElementById('inventory-window').style.display = 'none';
         isSkillsWindowOpen = false; document.getElementById('skills-window').style.display = 'none';
-        queueCommand(`action=request_status`);
+        NetworkSystem.queueCommand(`action=request_status`);
     }
 }
 
 function toggleInventory() {
-    if(blockSync) return;
+    if(NetworkSystem.blockSync) return;
     if(isShopOpen) { toggleShop(); return; }
     if(isLootWindowOpen) { closeLoot(); return; }
 
@@ -239,7 +279,7 @@ function toggleInventory() {
     if(isInvWindowOpen) {
         isStatWindowOpen = false; document.getElementById('stat-window').style.display = 'none';
         isSkillsWindowOpen = false; document.getElementById('skills-window').style.display = 'none';
-        queueCommand(`action=request_inventory`);
+        NetworkSystem.queueCommand(`action=request_inventory`);
     }
 }
 
@@ -270,8 +310,8 @@ function switchTab(tabId, btnElement) {
 
 // --- PVP: LETHALITY & EXECUTION ---
 function toggleLethal() {
-    if(blockSync) return;
-    blockSync = true;
+    if(NetworkSystem.blockSync) return;
+    NetworkSystem.blockSync = true;
     lethalityMode = !lethalityMode;
     const btn = document.getElementById('lethality-toggle');
     if(lethalityMode) {
@@ -281,8 +321,8 @@ function toggleLethal() {
         btn.classList.remove('on');
         btn.title = "Modo Letalidade: OFF (Desmaiar jogadores)";
     }
-    queueCommand(`action=toggle_lethal`);
-    setTimeout(() => { blockSync = false; }, 300);
+    NetworkSystem.queueCommand(`action=toggle_lethal`);
+    setTimeout(() => { NetworkSystem.blockSync = false; }, 300);
 }
 
 function askKillConfirm(targetRef) {
@@ -293,7 +333,7 @@ function askKillConfirm(targetRef) {
 function confirmKill(choice) {
     document.getElementById('kill-modal').style.display = 'none';
     if(choice && killTargetRef) {
-        queueCommand(`action=confirm_kill&target=${killTargetRef}`);
+        NetworkSystem.queueCommand(`action=confirm_kill&target=${killTargetRef}`);
     }
     killTargetRef = null;
 }
@@ -366,17 +406,17 @@ function closeLoot() {
 }
 
 function robItem(itemRef) {
-    if(blockSync || !lootTargetRef) return;
-    blockSync = true;
-    queueCommand(`action=rob_item&target=${lootTargetRef}&ref=${itemRef}`);
-    setTimeout(() => { blockSync = false; }, 300);
+    if(NetworkSystem.blockSync || !lootTargetRef) return;
+    NetworkSystem.blockSync = true;
+    NetworkSystem.queueCommand(`action=rob_item&target=${lootTargetRef}&ref=${itemRef}`);
+    setTimeout(() => { NetworkSystem.blockSync = false; }, 300);
 }
 
 function robGold() {
-    if(blockSync || !lootTargetRef) return;
-    blockSync = true;
-    queueCommand(`action=rob_gold&target=${lootTargetRef}`);
-    setTimeout(() => { blockSync = false; }, 300);
+    if(NetworkSystem.blockSync || !lootTargetRef) return;
+    NetworkSystem.blockSync = true;
+    NetworkSystem.queueCommand(`action=rob_gold&target=${lootTargetRef}`);
+    setTimeout(() => { NetworkSystem.blockSync = false; }, 300);
 }
 
 // --- LOJA E INVENTÁRIO COMUM ---
@@ -396,27 +436,27 @@ function openShop(json) {
 }
 
 function buyItem(typepath) {
-    if(blockSync) return;
-    blockSync = true;
-    queueCommand(`action=buy_item&type=${typepath}`);
-    setTimeout(() => { blockSync = false; }, 200);
+    if(NetworkSystem.blockSync) return;
+    NetworkSystem.blockSync = true;
+    NetworkSystem.queueCommand(`action=buy_item&type=${typepath}`);
+    setTimeout(() => { NetworkSystem.blockSync = false; }, 200);
 }
 
 function sellItem(ref) {
-    if(blockSync) return;
+    if(NetworkSystem.blockSync) return;
     if(confirm("Vender este item?")) {
-        blockSync = true;
-        queueCommand(`action=sell_item&ref=${ref}`);
-        setTimeout(() => { blockSync = false; }, 200);
+        NetworkSystem.blockSync = true;
+        NetworkSystem.queueCommand(`action=sell_item&ref=${ref}`);
+        setTimeout(() => { NetworkSystem.blockSync = false; }, 200);
     }
 }
 
 function trashItem(ref) {
-    if(blockSync) return;
+    if(NetworkSystem.blockSync) return;
     if(confirm("Tem certeza? O item será DESTRUÍDO para sempre.")) {
-        blockSync = true;
-        queueCommand(`action=trash_item&ref=${ref}`);
-        setTimeout(() => { blockSync = false; }, 200);
+        NetworkSystem.blockSync = true;
+        NetworkSystem.queueCommand(`action=trash_item&ref=${ref}`);
+        setTimeout(() => { NetworkSystem.blockSync = false; }, 200);
     }
 }
 
@@ -499,10 +539,10 @@ function updateStatusMenu(json) {
     updateSlot('feet', data.equip.feet);
 }
 
-function equipItem(ref) { if(blockSync) return; hideTooltip(); blockSync = true; queueCommand(`action=equip_item&ref=${ref}`); setTimeout(() => { blockSync = false; }, 200); }
-function unequipItem(slotName) { if(blockSync) return; blockSync = true; queueCommand(`action=unequip_item&slot=${slotName}`); setTimeout(() => { blockSync = false; }, 200); }
-function dropItem(ref, maxAmount) { if(blockSync) return; hideTooltip(); let qty = 1; if(maxAmount > 1) { let input = prompt(`Quantos? (Máx: ${maxAmount})`, "1"); if(input===null) return; qty = parseInt(input); if(isNaN(qty) || qty <= 0) return; if(qty > maxAmount) qty = maxAmount; } blockSync = true; queueCommand(`action=drop_item&ref=${ref}&amount=${qty}`); setTimeout(() => { blockSync = false; }, 200); }
-function addStat(statName) { if(blockSync) return; blockSync = true; queueCommand(`action=add_stat&stat=${statName}`); setTimeout(function() { blockSync = false; }, 200); }
+function equipItem(ref) { if(NetworkSystem.blockSync) return; hideTooltip(); NetworkSystem.blockSync = true; NetworkSystem.queueCommand(`action=equip_item&ref=${ref}`); setTimeout(() => { NetworkSystem.blockSync = false; }, 200); }
+function unequipItem(slotName) { if(NetworkSystem.blockSync) return; NetworkSystem.blockSync = true; NetworkSystem.queueCommand(`action=unequip_item&slot=${slotName}`); setTimeout(() => { NetworkSystem.blockSync = false; }, 200); }
+function dropItem(ref, maxAmount) { if(NetworkSystem.blockSync) return; hideTooltip(); let qty = 1; if(maxAmount > 1) { let input = prompt(`Quantos? (Máx: ${maxAmount})`, "1"); if(input===null) return; qty = parseInt(input); if(isNaN(qty) || qty <= 0) return; if(qty > maxAmount) qty = maxAmount; } NetworkSystem.blockSync = true; NetworkSystem.queueCommand(`action=drop_item&ref=${ref}&amount=${qty}`); setTimeout(() => { NetworkSystem.blockSync = false; }, 200); }
+function addStat(statName) { if(NetworkSystem.blockSync) return; NetworkSystem.blockSync = true; NetworkSystem.queueCommand(`action=add_stat&stat=${statName}`); setTimeout(function() { NetworkSystem.blockSync = false; }, 200); }
 
 // --- TARGET SYSTEM LOGIC ESTABILIZADA ---
 function cycleTarget() {
@@ -629,8 +669,8 @@ window.addEventListener('keydown', function(e) {
     if(k === 'k') toggleSkills();
     if(k === 'x') interact();
     
-    if(k === 'e' && !blockSync) { blockSync = true; lastActionTime = Date.now(); queueCommand(`action=pick_up`); setTimeout(function() { blockSync = false; }, 300); }
-    if(k === 'r' && !blockSync) { blockSync = true; lastActionTime = Date.now(); queueCommand(`action=toggle_rest`); setTimeout(function() { blockSync = false; }, 500); }
+    if(k === 'e' && !NetworkSystem.blockSync) { NetworkSystem.blockSync = true; lastActionTime = Date.now(); NetworkSystem.queueCommand(`action=pick_up`); setTimeout(function() { NetworkSystem.blockSync = false; }, 300); }
+    if(k === 'r' && !NetworkSystem.blockSync) { NetworkSystem.blockSync = true; lastActionTime = Date.now(); NetworkSystem.queueCommand(`action=toggle_rest`); setTimeout(function() { NetworkSystem.blockSync = false; }, 500); }
     if(e.key === 'Shift') isRunning = true;
 
     // HOTKEYS DE SKILL
@@ -645,13 +685,13 @@ function interact() {
     if (currentTargetID && otherPlayers[currentTargetID]) {
         let dist = playerGroup.position.distanceTo(otherPlayers[currentTargetID].mesh.position);
         if (dist < 3.0) {
-            queueCommand(`action=interact_npc&ref=${currentTargetID}`);
+            NetworkSystem.queueCommand(`action=interact_npc&ref=${currentTargetID}`);
             return;
         }
     }
 
     let targetRef = ""; for(let id in otherPlayers) { let dist = playerGroup.position.distanceTo(otherPlayers[id].mesh.position); if(dist < 3.0) { targetRef = id; break; } }
-    if(targetRef !== "") queueCommand(`action=interact_npc&ref=${targetRef}`);
+    if(targetRef !== "") NetworkSystem.queueCommand(`action=interact_npc&ref=${targetRef}`);
 }
 
 // --- SISTEMA DE COLISÃO DO AMBIENTE (FÍSICA GEOMÉTRICA EXATA + PLANO ZERO) ---
@@ -761,7 +801,6 @@ function checkPlayerCollision(nextX, nextY, nextZ) {
     const size = new THREE.Vector3(0.4, 1.8, 0.4); 
     futureBox.setFromCenterAndSize(center, size);
     
-    // Caixa atual para permitir o desengate (fuga)
     const currentBox = new THREE.Box3();
     currentBox.setFromCenterAndSize(new THREE.Vector3(playerGroup.position.x, playerGroup.position.y + 0.9, playerGroup.position.z), size);
 
@@ -775,7 +814,6 @@ function checkPlayerCollision(nextX, nextY, nextZ) {
         otherBox.expandByScalar(-0.15); 
         
         if (futureBox.intersectsBox(otherBox)) { 
-            // --- SISTEMA ANTI-STUCK (Permite o jogador sair se já estiver encavalado) ---
             if (currentBox.intersectsBox(otherBox)) {
                 const dxCur = playerGroup.position.x - other.mesh.position.x;
                 const dzCur = playerGroup.position.z - other.mesh.position.z;
@@ -785,7 +823,6 @@ function checkPlayerCollision(nextX, nextY, nextZ) {
                 const dzFut = nextZ - other.mesh.position.z;
                 const futureDistSq = dxFut*dxFut + dzFut*dzFut;
 
-                // Permite o movimento se afastar do centro (ou se a distância for zero absoluto)
                 if (futureDistSq > currentDistSq || currentDistSq < 0.001) {
                     continue; 
                 }
@@ -799,10 +836,10 @@ function checkPlayerCollision(nextX, nextY, nextZ) {
 window.addEventListener('game-action', function(e) {
     if(isFainted) return; const k = e.detail;
     if(k === 'd') performAttack("sword"); else if(k === 'f') performAttack("gun"); else if(k === 'a') performAttack("fist"); else if(k === 's') performAttack("kick");
-    else if(k === 'p' && !blockSync) { blockSync = true; queueCommand("action=force_save"); addLog("Salvando...", "log-miss"); setTimeout(function() { blockSync = false; }, 500); }
+    else if(k === 'p' && !NetworkSystem.blockSync) { NetworkSystem.blockSync = true; NetworkSystem.queueCommand("action=force_save"); addLog("Salvando...", "log-miss"); setTimeout(function() { NetworkSystem.blockSync = false; }, 500); }
 });
 
-// --- LÓGICA DE PROJÉTEIS (ATUALIZADA PARA O POOL DE OBJETOS) ---
+// --- LÓGICA DE PROJÉTEIS ---
 function fireProjectile(projectileDef, isMine) {
     const s = projectileDef.scale || [0.1, 0.1, 0.1];
     const bullet = getProjectile(projectileDef.color, s);
@@ -873,17 +910,15 @@ function fireSkillProjectile(skillId, ownerRef) {
     const origin = isMine ? playerGroup : (otherPlayers[ownerRef] ? otherPlayers[ownerRef].mesh : null);
     if(!origin) return;
 
-    // 1. Cria a Caixa FÍSICA Invisível (O Hitbox) - Cor verde para Debug
     const hitboxMesh = getProjectile(0x00FF00, def.hitboxSize);
     hitboxMesh.material.wireframe = true;
     hitboxMesh.material.transparent = true;
-    hitboxMesh.material.opacity = 0.5; // 0.0 deixa invisível, mude para 0.5 para ver as hitboxes
+    hitboxMesh.material.opacity = 0.5; 
 
-    // 2. Cria a SKIN/VISUAL e atrela (Parent-Child) à Hitbox
     if (def.visualDef && GameDefinitions[def.visualDef]) {
         const skinData = GameDefinitions[def.visualDef];
         const skinMesh = CharFactory.createFromDef(def.visualDef, skinData.visual);
-        hitboxMesh.add(skinMesh); // A skin agora viaja junto com o Hitbox!
+        hitboxMesh.add(skinMesh); 
     }
 
     const bodyRot = origin.rotation.y;
@@ -897,7 +932,6 @@ function fireSkillProjectile(skillId, ownerRef) {
 
     let dX = sin; let dY = 0; let dZ = cos;
     
-    // Auto-Aim
     if (isMine && currentTargetID && otherPlayers[currentTargetID] && otherPlayers[currentTargetID].mesh) {
         const targetMesh = otherPlayers[currentTargetID].mesh;
         const targetPos = new THREE.Vector3(targetMesh.position.x, targetMesh.position.y + 0.9, targetMesh.position.z);
@@ -917,7 +951,7 @@ function fireSkillProjectile(skillId, ownerRef) {
         isMine: isMine,
         dirX: dX, dirY: dY, dirZ: dZ,
         distTraveled: 0,
-        hasHit: [] // Para skills pierce
+        hasHit: [] 
     });
 }
 
@@ -938,7 +972,6 @@ function updateCombatHitboxes(timeScale) {
         if (p.distTraveled >= p.maxDist) { releaseProjectile(p.mesh); activeProjectiles.splice(i, 1); }
     }
 
-    // Projéteis de SKILLS (DATA-DRIVEN)
     for (let i = activeSkillProjectiles.length - 1; i >= 0; i--) {
         const p = activeSkillProjectiles[i]; 
         const moveStep = p.def.speed * timeScale;
@@ -948,7 +981,6 @@ function updateCombatHitboxes(timeScale) {
         p.mesh.position.z += p.dirZ * moveStep; 
         p.distTraveled += moveStep;
         
-        // Se eu sou o dono do projétil, eu verifico colisão
         if (p.isMine) { 
             tempBoxAttacker.setFromObject(p.mesh); 
             
@@ -957,23 +989,21 @@ function updateCombatHitboxes(timeScale) {
                 
                 tempBoxTarget.setFromObject(otherPlayers[id].mesh);
                 if (tempBoxAttacker.intersectsBox(tempBoxTarget)) {
-                    // Notifica o Servidor usando o novo Topic seguro
                     if(typeof BYOND_REF !== 'undefined') {
-                        queueCommand(`action=register_skill_hit&skill_id=${p.skillId}&target_ref=${id}`);
+                        NetworkSystem.queueCommand(`action=register_skill_hit&skill_id=${p.skillId}&target_ref=${id}`);
                     }
                     
                     p.hasHit.push(id);
                     
                     if (!p.def.pierce) {
                         releaseProjectile(p.mesh); 
-                        p.distTraveled = 99999; // Força destruição na mesma frame
+                        p.distTraveled = 99999; 
                         break; 
                     }
                 }
             }
         }
         
-        // Destruição por Distância
         if (p.distTraveled >= p.def.range) { 
             releaseProjectile(p.mesh); 
             activeSkillProjectiles.splice(i, 1); 
@@ -1001,7 +1031,7 @@ function checkCollisions(attackerBox, type, objRef) {
         if (attackerBox.intersectsBox(tempBoxTarget)) {
             let extra = "";
             if(type === "melee" && objRef.data && objRef.data.step) extra = `&combo=${objRef.data.step}`;
-            if(typeof BYOND_REF !== 'undefined') queueCommand(`action=register_hit&target_ref=${id}&hit_type=${type}${extra}`);
+            if(typeof BYOND_REF !== 'undefined') NetworkSystem.queueCommand(`action=register_hit&target_ref=${id}&hit_type=${type}${extra}`);
             
             if(type === "projectile") { 
                 releaseProjectile(objRef.mesh); 
@@ -1080,9 +1110,9 @@ function performAttack(type) {
         }
         
         if(typeof BYOND_REF !== 'undefined') { 
-            blockSync = true; 
-            queueCommand(`action=attack&type=${type}&step=${currentComboStep}`); 
-            setTimeout(function(){blockSync=false}, 200); 
+            NetworkSystem.blockSync = true; 
+            NetworkSystem.queueCommand(`action=attack&type=${type}&step=${currentComboStep}`); 
+            setTimeout(function(){NetworkSystem.blockSync=false}, 200); 
         }
         setTimeout(function() { charState = idleStance; isAttacking = false; }, 300);
     }, 100); 
@@ -1091,7 +1121,7 @@ function performAttack(type) {
 // --- NETWORK HANDLERS ---
 function receberDadosGlobal(json) {
     let packet; try { packet = JSON.parse(json); } catch(e) { return; }
-    lastPacketTime = Date.now();
+    NetworkSystem.lastPacketTime = Date.now();
     const now = performance.now();
 
     let closestDist = 999;
@@ -1187,7 +1217,6 @@ function receberDadosGlobal(json) {
             other.comboStep = pData.cs; 
             other.resting = pData.rest; 
             
-            // --- FECHADOR DE LOOT (Alvo acordou) ---
             if(isLootWindowOpen && lootTargetRef === id && pData.ft === 0) {
                 closeLoot();
                 addLog("<span style='color:orange'>O alvo acordou! Saque interrompido.</span>", "log-miss");
@@ -1228,7 +1257,6 @@ function receberDadosGlobal(json) {
         } 
     }
 
-    // EVENTOS VISUAIS DE SKILLS
     if(packet.t && packet.evts) {
         packet.evts.forEach(evt => {
             if (evt.type === "skill_cast") {
@@ -1260,7 +1288,7 @@ function receberDadosPessoal(json) {
         
         if(me.x !== undefined) {
             playerGroup.position.set(me.x, me.y, me.z);
-            lastSentX = me.x; lastSentY = me.y; lastSentZ = me.z;
+            NetworkSystem.lastSentX = me.x; NetworkSystem.lastSentY = me.y; NetworkSystem.lastSentZ = me.z;
         }
 
         Engine.scene.add(playerGroup); isCharacterReady = true; 
@@ -1372,28 +1400,17 @@ function receberDadosPessoal(json) {
             }
         }
 
-        // --- ATUALIZAÇÃO FORÇADA DE COORDENADAS (EVENTO DE TELEPORT E SKILL CD) ---
         if(packet.evts) packet.evts.forEach(evt => { 
             if(evt.type === "dmg") spawnDamageNumber(evt.tid, evt.val); 
             if(evt.type === "teleport") {
                 if(playerGroup) {
                     playerGroup.position.set(evt.x, evt.y, evt.z);
-                    lastSentX = evt.x; lastSentY = evt.y; lastSentZ = evt.z;
+                    NetworkSystem.lastSentX = evt.x; NetworkSystem.lastSentY = evt.y; NetworkSystem.lastSentZ = evt.z;
                 }
             }
             if(evt.type === "skill_cast_accept") { startSkillCooldownUI(evt.skill); }
         });
     }
-}
-
-function shouldSendPosition(x, y, z, rot, now) { if (now - lastSentTime < POSITION_SYNC_INTERVAL) return false; if (Math.abs(x - lastSentX) < POSITION_EPSILON && Math.abs(y - lastSentY) < POSITION_EPSILON && Math.abs(z - lastSentZ) < POSITION_EPSILON && Math.abs(rot - lastSentRot) < POSITION_EPSILON) return false; return true; }
-function sendPositionUpdate(now) { 
-    if (!isCharacterReady || blockSync || typeof BYOND_REF === 'undefined') return; 
-    const x = round2(playerGroup.position.x); const y = round2(playerGroup.position.y); const z = round2(playerGroup.position.z); const rot = round2(playerGroup.rotation.y); 
-    if (!shouldSendPosition(x, y, z, rot, now)) return; 
-    lastSentTime = now; lastSentX = x; lastSentY = y; lastSentZ = z; lastSentRot = rot; 
-    let runFlag = (isRunning && !isResting) ? 1 : 0; 
-    queueCommand(`action=update_pos&x=${x}&y=${y}&z=${z}&rot=${rot}&run=${runFlag}`); 
 }
 
 // --- FUNÇÃO UNIFICADA DE ANIMAÇÃO EM CAMADAS ---
@@ -1550,7 +1567,9 @@ function animate() {
 
         Engine.camera.position.set(playerGroup.position.x + Math.sin(Input.camAngle)*7, playerGroup.position.y + 5, playerGroup.position.z + Math.cos(Input.camAngle)*7);
         Engine.camera.lookAt(playerGroup.position.x, playerGroup.position.y + 1.5, playerGroup.position.z);
-        sendPositionUpdate(now);
+        
+        // Chamada da nova estrutura isolada de rede
+        NetworkSystem.sendPositionUpdate(now, playerGroup, isRunning, isResting, isCharacterReady);
     }
     
     for(const id in otherPlayers) {
@@ -1589,4 +1608,11 @@ function animate() {
 }
 
 animate();
-setInterval(function() { if(isCharacterReady && Date.now() - lastPacketTime > 4000) { addLog("AVISO: Conexão com o servidor perdida.", "log-hit"); isCharacterReady = false; } }, 1000);
+
+// Alerta de Desconexão atualizado para usar o NetworkSystem
+setInterval(function() { 
+    if(isCharacterReady && Date.now() - NetworkSystem.lastPacketTime > 4000) { 
+        addLog("AVISO: Conexão com o servidor perdida.", "log-hit"); 
+        isCharacterReady = false; 
+    } 
+}, 1000);
