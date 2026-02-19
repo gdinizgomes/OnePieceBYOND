@@ -29,6 +29,7 @@ world/New()
 		SSserver = new()
 		spawn(5) SSserver.Heartbeat()
 
+	// RESTAURADO: O nascimento dos NPCs no servidor!
 	new /mob/npc/dummy() 
 	new /mob/npc/vendor()
 	new /mob/npc/nurse()
@@ -47,7 +48,7 @@ datum/game_controller
 		while(running)
 			server_tick++
 			
-			// COFRE DE SEGURANÇA: Impede que o servidor caia se ocorrer um erro matemático grave!
+			// COFRE DE SEGURANÇA
 			try
 				var/full_sync = (server_tick % 20 == 0) 
 				
@@ -201,7 +202,7 @@ mob
 	var/deaths = 0
 	var/lethality_mode = 0
 
-	var/needs_skill_sync = 1 // FLAG PARA ENVIAR AS SKILLS 1 ÚNICA VEZ
+	var/needs_skill_sync = 1 
 
 	var/list/unlocked_skills = list("fireball", "iceball")
 	var/list/skill_cooldowns = list()
@@ -558,6 +559,20 @@ mob
 	proc/ToggleRest()
 		if(is_attacking || is_fainted) return
 		is_resting = !is_resting
+
+	proc/RestLoop()
+		while(src && in_game)
+			if(is_resting && !is_fainted)
+				var/hp_regen = max_hp * 0.05
+				var/en_regen = max_energy * 0.05
+				if(current_hp < max_hp) current_hp = min(max_hp, current_hp + hp_regen)
+				if(current_energy < max_energy) current_energy = min(max_energy, current_energy + en_regen)
+			if(is_running && !is_resting && !is_fainted)
+				var/run_cost = max_energy * 0.01
+				if(current_energy > 0)
+					current_energy -= run_cost
+					if(current_energy <= 0) { current_energy = 0; GoFaint() }
+			sleep(10)
 
 	proc/ShowCharacterMenu()
 		var/page = file2text('menu.html')
