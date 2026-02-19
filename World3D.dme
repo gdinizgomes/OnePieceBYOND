@@ -16,5 +16,7 @@
 // BEGIN_INCLUDE
 #include "World3D.dm"
 #include "interface.dmf"
+#include "server\Items.dm"
+#include "server\NPCs.dm"
 // END_INCLUDE
 

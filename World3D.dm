@@ -4,6 +4,10 @@
 var/global/datum/game_controller/SSserver
 var/global/list/GlobalSkillsData = list()
 
+var/list/global_npcs = list()
+var/list/global_players_list = list()
+var/list/global_ground_items = list()
+
 // Inicialização Global
 world/New()
 	world.maxx = 1
@@ -43,7 +47,6 @@ datum/game_controller
 		while(running)
 			server_tick++
 			
-			// COFRE DE SEGURANÇA: Impede que o servidor caia se ocorrer um erro matemático grave!
 			try
 				var/full_sync = (server_tick % 20 == 0) 
 				
@@ -180,140 +183,7 @@ datum/game_controller
 			sleep(tick_rate)
 
 
-var/list/global_npcs = list()
-var/list/global_players_list = list()
-var/list/global_ground_items = list()
-
-obj/item
-	var/id_visual = ""
-	var/slot = "none" 
-	var/atk = 0
-	var/ratk = 0
-	var/def = 0
-	var/crit_bonus = 0
-	var/price = 0
-	var/description = ""
-	var/amount = 1
-	var/max_stack = 5 
-	var/shop_tags = "" 
-	var/real_x = 0
-	var/real_y = 0
-	var/real_z = 0
-
-obj/item/weapon
-	slot = "hand"
-	max_stack = 1
-	var/range = 1.0 
-	var/projectile_speed = 0 
-
-obj/item/weapon/sword_wood
-	name = "Espada de Treino"
-	id_visual = "weapon_sword_wood"
-	description = "Uma espada de madeira para treinar."
-	atk = 8
-	price = 50
-	range = 3.0
-	shop_tags = "armorer"
-
-obj/item/weapon/sword_iron
-	name = "Espada de Ferro"
-	id_visual = "weapon_sword_iron"
-	description = "Lâmina afiada e resistente."
-	atk = 16
-	price = 100
-	range = 3.0
-	shop_tags = "armorer"
-
-obj/item/weapon/sword_silver
-	name = "Espada de Prata"
-	id_visual = "weapon_sword_silver"
-	description = "Brilha com a luz da lua. Crítico alto."
-	atk = 25
-	crit_bonus = 5 
-	price = 500
-	range = 3.5
-	shop_tags = "armorer"
-
-obj/item/weapon/gun_wood
-	name = "Pistola de Brinquedo"
-	id_visual = "weapon_gun_wood"
-	description = "Dispara rolhas."
-	ratk = 12
-	price = 80
-	range = 10.0 
-	projectile_speed = 0.6 
-	shop_tags = "armorer"
-
-obj/item/weapon/gun_flintlock
-	name = "Pistola Velha"
-	id_visual = "weapon_gun_flintlock"
-	description = "Cheira a pólvora queimada."
-	ratk = 25
-	price = 250
-	range = 14.0
-	projectile_speed = 3.6 
-	shop_tags = "armorer"
-
-obj/item/weapon/gun_silver
-	name = "Pistola de Combate"
-	id_visual = "weapon_gun_silver"
-	description = "Alta precisão."
-	ratk = 40
-	crit_bonus = 10 
-	price = 800
-	range = 22.0
-	projectile_speed = 7.2 
-	shop_tags = "armorer"
-
-obj/item/armor
-	max_stack = 1
-
-obj/item/armor/head_bandana
-	name = "Bandana Vermelha"
-	id_visual = "armor_head_bandana"
-	slot = "head"
-	description = "Um pano simples para a cabeça."
-	price = 30
-	def = 1 
-	shop_tags = "armorer"
-
-obj/item/armor/head_bandana_black
-	name = "Bandana Preta"
-	id_visual = "armor_head_bandana_black"
-	slot = "head"
-	description = "Estilo pirata clássico."
-	price = 35
-	def = 1
-	shop_tags = "armorer"
-
-obj/item/armor/body_shirt
-	name = "Camisa de Marinheiro"
-	id_visual = "armor_body_shirt"
-	slot = "body"
-	description = "Uniforme padrão."
-	price = 50
-	def = 4
-	shop_tags = "armorer"
-
-obj/item/armor/legs_pants
-	name = "Calça de Linho"
-	id_visual = "armor_legs_pants"
-	slot = "legs"
-	description = "Confortável para correr."
-	price = 40
-	def = 2
-	shop_tags = "armorer"
-
-obj/item/armor/feet_boots
-	name = "Botas de Couro"
-	id_visual = "armor_feet_boots"
-	slot = "feet"
-	description = "Protege os pés."
-	price = 60
-	def = 2
-	shop_tags = "armorer"
-
-
+// --- ENTIDADE DO JOGADOR (MOB) ---
 mob
 	var/current_slot = 0
 	var/char_loaded = 0
@@ -330,7 +200,7 @@ mob
 	var/deaths = 0
 	var/lethality_mode = 0
 
-	var/needs_skill_sync = 1 
+	var/needs_skill_sync = 1
 
 	var/list/unlocked_skills = list("fireball", "iceball")
 	var/list/skill_cooldowns = list()
@@ -575,8 +445,6 @@ mob
 		
 		calc_move_speed = 0.08 + (agility * 0.002)
 		if(calc_move_speed > 0.20) calc_move_speed = 0.20 
-		
-		// CORREÇÃO: Limite de pulo para não voar para o infinito
 		calc_jump_power = 0.18 + (agility * 0.002)
 		if(calc_jump_power > 0.40) calc_jump_power = 0.40
 
@@ -609,9 +477,8 @@ mob
 	proc/LevelUp()
 		level++
 		experience -= req_experience
-		if(experience < 0) experience = 0 // Trava de segurança
+		if(experience < 0) experience = 0 
 		
-		// CORREÇÃO DA MATEMÁTICA: Escalonamento Polinomial Seguro (Evita que o Level 50 trave o servidor)
 		req_experience = round(100 * (level ** 2))
 		if(req_experience < 100) req_experience = 100
 		
@@ -764,7 +631,7 @@ mob
 		char_loaded = 1; in_game = 1; is_resting = 0; is_fainted = 0; is_running = 0
 		UpdateVisuals()
 		
-		src << browse(page, "window=map3d")
+		src << browse(page, "window=map3d") 
 		
 		spawn(600) AutoSaveLoop()
 		spawn(10) RestLoop()
@@ -822,7 +689,6 @@ mob
 		if(F["kills"]) F["kills"] >> src.kills; else src.kills = 0
 		if(F["deaths"]) F["deaths"] >> src.deaths; else src.deaths = 0
 
-		// FORÇA O RECALCULO PARA A NOVA FÓRMULA DE MMO, CORRIGINDO SAVES ANTIGOS "QUEBRADOS"
 		src.req_experience = round(100 * (src.level ** 2))
 		if(src.req_experience < 100) src.req_experience = 100
 		
@@ -1254,96 +1120,3 @@ mob
 
 	proc/get_dist_euclid(x1, z1, x2, z2)
 		return sqrt((x1-x2)**2 + (z1-z2)**2)
-
-mob/npc
-	in_game = 1
-	char_loaded = 1
-	var/npc_type = "base"
-	var/wanders = 1 
-	char_gender = "Female"
-	New()
-		..()
-		real_y = 0
-		global_npcs += src
-		if(wanders) spawn(5) AI_Loop()
-
-	Del()
-		global_npcs -= src
-		..()
-
-	proc/AI_Loop()
-		while(src)
-			var/dir = pick(0, 90, 180, 270)
-			real_rot = (dir * 3.14159 / 180)
-			for(var/i=1 to 10)
-				if(dir==0) real_z-=0.1; if(dir==180) real_z+=0.1
-				if(dir==90) real_x+=0.1; if(dir==270) real_x-=0.1
-				sleep(1)
-			sleep(rand(20, 50))
-
-mob/npc/prop
-	npc_type = "prop"
-	wanders = 0
-	var/prop_id = "prop_tree_log"
-
-mob/npc/prop/log
-	name = "Tronco de Treino"
-	skin_color = "8B4513" 
-	hit_radius = 0.8 
-	New()
-		..()
-		real_x = 5
-		real_z = 5
-		real_y = 0
-		real_rot = 0
-		max_hp = 9999
-		current_hp = 9999
-
-mob/npc/vendor
-	name = "Armeiro"
-	npc_type = "vendor"
-	skin_color = "FFE0BD"
-	cloth_color = "555555"
-	wanders = 0 
-	char_gender = "Male"
-	var/list/stock = list()
-	
-	New()
-		..()
-		real_x = 2
-		real_z = 2
-		real_y = 0
-		real_rot = 3.14
-		
-		for(var/T in typesof(/obj/item))
-			var/obj/item/temp = new T()
-			if(temp.shop_tags == "armorer")
-				stock += T
-			del(temp)
-
-mob/npc/nurse
-	name = "Enfermeira"
-	npc_type = "nurse"
-	skin_color = "FFE0BD"
-	cloth_color = "FF69B4"
-	wanders = 0 
-	char_gender = "Female"
-	New()
-		..()
-		real_x = 8
-		real_z = 8
-		real_y = 0.1
-		real_rot = 3.14
-
-mob/npc/dummy
-	name = "Pirata de Teste"
-	npc_type = "enemy"
-	skin_color = "00FF00"
-	cloth_color = "0000FF"
-	level = 5 
-	wanders = 1
-	New()
-		..()
-		real_x = rand(-10, 10); real_z = rand(-10, 10)
-		max_hp = 150
-		current_hp = 150
