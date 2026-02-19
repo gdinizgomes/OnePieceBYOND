@@ -16,7 +16,10 @@
 // BEGIN_INCLUDE
 #include "World3D.dm"
 #include "interface.dmf"
+#include "server\Combat.dm"
+#include "server\Inventory.dm"
 #include "server\Items.dm"
+#include "server\Network.dm"
 #include "server\NPCs.dm"
 #include "server\Persistence.dm"
 // END_INCLUDE
