@@ -33,13 +33,20 @@ const GameLoop = {
     start: function() {
         const animate = () => {
             const now = performance.now();
-            const dt = Math.min((now - this.lastFrameTime), 100); 
+            const rawDt = now - this.lastFrameTime;
+            // Clampa o DeltaTime a 100ms. Evita o pulo de tempo absurdo 
+            // se o usuário sair da aba por 30 minutos e voltar.
+            const dt = Math.min(rawDt, 100); 
             this.lastFrameTime = now;
+            
             const timeScale = dt / this.OPTIMAL_FRAME_TIME;
 
             if (typeof AnimationSystem !== 'undefined') AnimationSystem.update(timeScale);
             if (typeof TargetSystem !== 'undefined') TargetSystem.updateUI();
             if (typeof CombatVisualSystem !== 'undefined') CombatVisualSystem.update(timeScale); 
+            
+            // NOVIDADE: A Máquina de Estados agora pulsa pelo coração da Engine (Milissegundos puros)
+            if (typeof CombatSystem !== 'undefined') CombatSystem.update(dt);
             
             if (typeof EntityManager !== 'undefined') {
                 EntityManager.updatePlayer(timeScale, now);
