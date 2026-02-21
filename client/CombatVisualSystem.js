@@ -13,7 +13,6 @@ const CombatVisualSystem = {
             m = this.hitboxPool.pop();
         } else {
             const geo = new THREE.BoxGeometry(1, 1, 1);
-            // NOVIDADE: A propriedade 'visible' agora obedece o modo Produção/Debug
             const mat = new THREE.MeshBasicMaterial({ 
                 color: 0xFF0000, 
                 wireframe: true, 
@@ -82,9 +81,13 @@ const CombatVisualSystem = {
         const cos = Math.cos(bodyRot);
         
         bullet.position.copy(originMesh.position); 
-        bullet.position.y += 1.3; 
-        bullet.position.x += sin * 0.5 - cos * 0.4; 
-        bullet.position.z += cos * 0.5 + sin * 0.4; 
+        
+        // CORREÇÃO CRÍTICA (Alinhamento do Cano da Arma):
+        // Ajustado para sair da altura do peito/braço (1.05) e projetado para a ponta do cano 
+        // baseando-se no vetor Forward e Right do personagem.
+        bullet.position.y += 1.05; 
+        bullet.position.x += sin * 0.8 - cos * 0.25; 
+        bullet.position.z += cos * 0.8 + sin * 0.25; 
         
         let dX = sin; let dY = 0; let dZ = cos;
         
@@ -130,7 +133,6 @@ const CombatVisualSystem = {
         const isMine = (ownerRef === EntityManager.myID);
 
         const hitboxMesh = this.getProjectile(0x00FF00, def.hitboxSize);
-        // Mesmo projétil de skill deve respeitar debug
         hitboxMesh.material.wireframe = true;
         hitboxMesh.material.transparent = true;
         hitboxMesh.material.opacity = 0.5; 
@@ -172,9 +174,6 @@ const CombatVisualSystem = {
     },
 
     checkAccurateCollision: function(objRef, targetMesh) {
-        // CORREÇÃO CRÍTICA (Tolerância Zero): 
-        // O Raio original era 0.6. Reduzido para 0.3. Isso força a hitbox a transpassar
-        // de forma muito mais profunda no alvo para validar o acerto.
         const TARGET_RADIUS = 0.3; 
         const TARGET_HALF_HEIGHT = 1.0;
 

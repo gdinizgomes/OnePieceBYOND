@@ -7,8 +7,7 @@ const Config = {
     FOG_FAR:   60,
     MAP_SIZE:  58,   // = 29 * 2, alinhado com MAP_LIMIT do servidor ([-29, 29])
     
-    // NOVIDADE: Controle de Produção. Coloque 'true' se quiser voltar a ver os quadrados vermelhos para testar.
-    DEBUG_HITBOXES: true 
+    DEBUG_HITBOXES: false 
 };
 
 const RENDER_HEIGHT = Config.RENDER_HEIGHT;  // Alias de compatibilidade
@@ -105,7 +104,8 @@ const Engine = {
     },
     createGround: function() {
         const MAP_SIZE = Config.MAP_SIZE;
-        const road = new THREE.Mesh(new THREE.PlaneGeometry(MAP_SIZE, MAP_SIZE), new THREE.MeshPhongMaterial({ color: 0x333333 }));
+        // CORREÇÃO (Desempenho Visual): O chão agora usa Lambert, alinhando com a fábrica de malhas
+        const road = new THREE.Mesh(new THREE.PlaneGeometry(MAP_SIZE, MAP_SIZE), new THREE.MeshLambertMaterial({ color: 0x333333 }));
         road.rotation.x = -Math.PI / 2; 
         
         road.position.y = 0; 
