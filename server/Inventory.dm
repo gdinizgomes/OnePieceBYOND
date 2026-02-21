@@ -2,7 +2,6 @@
 #define INVENTORY_MAX 12  // Tamanho máximo da mochila — altere aqui para refletir em todo o servidor
 
 mob
-	// Serializa um item para JSON — evita duplicação entre RequestInventoryUpdate e SendLootWindow
 	proc/SerializeItem(obj/item/I, equipped = 0)
 		var/desc_txt = I.description ? I.description : "Sem descrição"
 		var/p_str = ""
@@ -12,6 +11,7 @@ mob
 		if(I.crit_bonus > 0) p_str += "CRIT: +[I.crit_bonus]% "
 		if(p_str == "")      p_str = "Visual"
 		return list("name"=I.name, "desc"=desc_txt, "ref"="\ref[I]", "amount"=I.amount, "id"=I.id_visual, "power"=p_str, "price"=I.price, "equipped"=equipped)
+
 	proc/GiveStarterItems()
 		var/has_weapon = 0
 		var/has_bandana = 0
@@ -26,7 +26,6 @@ mob
 
 	proc/EquipItem(obj/item/I)
 		if(!I || !(I in contents)) return
-		// Troca direta: item antigo ocupa o lugar do novo na mochila (sem verificar espaço)
 		var/obj/item/old_item = null
 		var/success = 0
 		if(I.slot == "hand")       { old_item = slot_hand; slot_hand = I; active_item_visual = I.id_visual; success = 1 }
@@ -36,8 +35,8 @@ mob
 		else if(I.slot == "feet")  { old_item = slot_feet; slot_feet = I; success = 1 }
 
 		if(success)
-			contents -= I            // Remove novo item da mochila
-			if(old_item) contents += old_item  // Devolve item antigo para a mochila (swap direto)
+			contents -= I
+			if(old_item) contents += old_item
 			if(slot_hand == I) active_item_visual = I.id_visual
 			src << output("Equipou [I.name].", "map3d:mostrarNotificacao")
 			RecalculateStats()
@@ -71,33 +70,48 @@ mob
 	proc/DropItem(obj/item/I, amount_to_drop)
 		if(!I || I == slot_hand || I == slot_head || I == slot_body || I == slot_legs || I == slot_feet) return
 		if(!(I in contents)) return
+		
+		var/obj/item/dropped_item = null
+
 		if(amount_to_drop >= I.amount)
-			I.loc = locate(1,1,1)
+			// CORREÇÃO CRÍTICA: Remoção explícita para o BYOND soltar o vínculo de memória
+			src.contents -= I 
+			I.loc = null
 			I.real_x = src.real_x
 			I.real_z = src.real_z
 			I.real_y = 0
 			global_ground_items |= I
-			if(SSserver) SSserver.ground_dirty_tick = SSserver.server_tick
+			dropped_item = I
 		else
 			I.amount -= amount_to_drop
-			var/obj/item/NewI = new I.type(locate(1,1,1))
+			var/obj/item/NewI = new I.type()
 			NewI.amount = amount_to_drop
 			NewI.real_x = src.real_x
 			NewI.real_z = src.real_z
 			NewI.real_y = 0
 			global_ground_items |= NewI
-			if(SSserver) SSserver.ground_dirty_tick = SSserver.server_tick
+			dropped_item = NewI
+			
+		if(SSserver) SSserver.ground_dirty_tick = SSserver.server_tick
 		RequestInventoryUpdate()
+
+		// NOVIDADE: Sistema de Despawn (Limpeza de VRAM e Mundo) após X minutos
+		if(dropped_item && dropped_item.despawn_time > 0)
+			spawn(dropped_item.despawn_time)
+				if(dropped_item && (dropped_item in global_ground_items))
+					global_ground_items -= dropped_item
+					if(SSserver) SSserver.ground_dirty_tick = SSserver.server_tick
+					del(dropped_item)
 
 	proc/TrashItem(obj/item/I)
 		if(!I || I == slot_hand || I == slot_head || I == slot_body || I == slot_legs || I == slot_feet) return
-		if(I in contents) { del(I); RequestInventoryUpdate() }
+		if(I in contents) { src.contents -= I; del(I); RequestInventoryUpdate() }
 
 	proc/PickUpNearestItem()
 		var/obj/item/target = null
 		var/min_dist = 2.0
 		for(var/obj/item/I in global_ground_items)
-			if(I.loc == null || !isturf(I.loc)) { global_ground_items -= I; continue }
+			if(!I) { global_ground_items -= I; continue } 
 			var/dx = I.real_x - src.real_x
 			var/dz = I.real_z - src.real_z
 			var/dist = sqrt(dx*dx + dz*dz)
@@ -119,6 +133,7 @@ mob
 				global_ground_items -= target
 				if(SSserver) SSserver.ground_dirty_tick = SSserver.server_tick
 				target.loc = src
+				src.contents |= target // Garante que o item entra na mochila
 				src << output("Pegou item!", "map3d:mostrarNotificacao")
 			RequestInventoryUpdate()
 
@@ -141,7 +156,6 @@ mob
 		src << output(json_encode(stat_data), "map3d:updateStatusMenu")
 
 	proc/SendLootWindow(mob/robber)
-		// Reutiliza SerializeItem para evitar duplicação com RequestInventoryUpdate
 		var/list/inv_data = list()
 		for(var/obj/item/I in contents)
 			if(!I) continue

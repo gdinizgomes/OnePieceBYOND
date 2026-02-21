@@ -16,6 +16,7 @@ obj/item
 	var/real_x = 0
 	var/real_y = 0
 	var/real_z = 0
+	var/despawn_time = 6000 // Padrão: 10 minutos (6000 ticks) antes de autodestruir do chão
 
 obj/item/weapon
 	slot = "hand"
@@ -50,6 +51,7 @@ obj/item/weapon/sword_silver
 	price = 500
 	range = 3.5
 	shop_tags = "armorer"
+	despawn_time = 12000 // EXCEÇÃO: 20 minutos por ser um item mais valioso
 
 obj/item/weapon/gun_wood
 	name = "Pistola de Brinquedo"
