@@ -82,7 +82,7 @@ mob
 
 		if(amount_to_drop >= I.amount)
 			src.contents -= I 
-			I.loc = global.ground_holder // CORREÇÃO: Dá um local virtual pro item não sumir no sync do servidor
+			I.loc = global.ground_holder 
 			I.real_x = src.real_x
 			I.real_z = src.real_z
 			I.real_y = 0
@@ -92,7 +92,7 @@ mob
 			I.amount -= amount_to_drop
 			var/obj/item/NewI = new I.type()
 			NewI.amount = amount_to_drop
-			NewI.loc = global.ground_holder // Aplica a mesma proteção ao item particionado
+			NewI.loc = global.ground_holder 
 			NewI.real_x = src.real_x
 			NewI.real_z = src.real_z
 			NewI.real_y = 0
@@ -100,6 +100,10 @@ mob
 			dropped_item = NewI
 			
 		if(SSserver) SSserver.ground_dirty_tick = SSserver.server_tick
+		
+		// CORREÇÃO CRÍTICA (ATOMICIDADE): Salva o mundo no disco instantaneamente após dropar
+		SaveWorldState() 
+		
 		RequestInventoryUpdate()
 
 		if(dropped_item && dropped_item.despawn_time > 0)
@@ -107,6 +111,7 @@ mob
 				if(dropped_item && (dropped_item in global_ground_items))
 					global_ground_items -= dropped_item
 					if(SSserver) SSserver.ground_dirty_tick = SSserver.server_tick
+					SaveWorldState() // Salva o mundo no disco ao deletar o item expirado
 					del(dropped_item)
 
 	proc/TrashItem(obj/item/I)
@@ -131,6 +136,7 @@ mob
 						invItem.amount += target.amount
 						global_ground_items -= target
 						if(SSserver) SSserver.ground_dirty_tick = SSserver.server_tick
+						SaveWorldState() // CORREÇÃO: Grava a remoção do item do chão instantaneamente
 						del(target)
 						stacked = 1
 						break
@@ -138,7 +144,8 @@ mob
 				if(contents.len >= INVENTORY_MAX) { src << output("Mochila cheia!", "map3d:mostrarNotificacao"); return }
 				global_ground_items -= target
 				if(SSserver) SSserver.ground_dirty_tick = SSserver.server_tick
-				target.loc = src // Tira do ground_holder e joga pro char
+				SaveWorldState() // CORREÇÃO: Grava a remoção do item do chão instantaneamente
+				target.loc = src 
 				src.contents |= target 
 				src << output("Pegou item!", "map3d:mostrarNotificacao")
 			RequestInventoryUpdate()
