@@ -27,6 +27,9 @@ world/New()
 			world.log << "ERRO de Formatação no JSON: [e.name]"
 	else
 		world.log << "ERRO CRITICO: shared/SkillDefinitions.json nao encontrado no pacote!"
+	
+	// NOVIDADE: O mundo acorda, lembra do que estava no chão na última sessão e recarrega.
+	LoadWorldState()
 		
 	if(!SSserver)
 		SSserver = new()
@@ -36,6 +39,11 @@ world/New()
 	new /mob/npc/vendor()
 	new /mob/npc/nurse()
 	new /mob/npc/prop/log()
+
+// NOVIDADE: Ação de encerramento. Salva os itens do chão antes do servidor desligar oficialmente.
+world/Del()
+	SaveWorldState()
+	..()
 
 datum/game_controller
 	var/tick_rate = 1
@@ -58,6 +66,11 @@ datum/game_controller
 		set background = 1
 		while(running)
 			server_tick++
+			
+			// NOVIDADE: Auto-save preventivo do chão a cada 600 ticks (~60 segundos)
+			// Garante que o progresso da economia não seja perdido em caso de crash (falta de luz) do host.
+			if(server_tick % 600 == 0)
+				SaveWorldState()
 			
 			try
 				var/full_sync = (server_tick % SYNC_FREQ == 0)
@@ -93,7 +106,6 @@ datum/game_controller
 				var/list/ground_data = list()
 				if(send_ground)
 					for(var/obj/item/I in global_ground_items)
-						// CORREÇÃO: Permite itens que estejam no nosso cofre virtual (ground_holder) ou turfs.
 						if(I && (I.loc == global.ground_holder || isturf(I.loc))) 
 							ground_data += list(list("ref" = "\ref[I]", "id" = I.id_visual, "x" = I.real_x, "y" = I.real_y, "z" = I.real_z))
 						else 

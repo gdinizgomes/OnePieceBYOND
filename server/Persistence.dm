@@ -4,6 +4,51 @@
 // Incremente este número ao mudar qualquer campo de save para detectar migração necessária
 #define SAVE_VERSION 2
 
+// --- NOVIDADE: FUNÇÕES GLOBAIS DE PERSISTÊNCIA DO MUNDO ---
+proc/SaveWorldState()
+	var/savefile/F = new("[SAVE_DIR]world_state.sav")
+	var/list/items_data = list()
+	for(var/obj/item/I in global_ground_items)
+		if(!I) continue
+		var/list/idata = list(
+			"type" = I.type,
+			"x" = I.real_x,
+			"y" = I.real_y,
+			"z" = I.real_z,
+			"amount" = I.amount
+		)
+		items_data += list(idata)
+	F["ground_items"] << items_data
+
+proc/LoadWorldState()
+	if(!fexists("[SAVE_DIR]world_state.sav")) return
+	var/savefile/F = new("[SAVE_DIR]world_state.sav")
+	var/list/items_data
+	F["ground_items"] >> items_data
+	if(!items_data || !istype(items_data, /list)) return
+
+	if(!global.ground_holder) global.ground_holder = new /obj()
+
+	for(var/list/idata in items_data)
+		var/typepath = idata["type"]
+		if(ispath(typepath, /obj/item))
+			var/obj/item/I = new typepath()
+			I.loc = global.ground_holder
+			I.real_x = idata["x"]
+			I.real_y = idata["y"]
+			I.real_z = idata["z"]
+			if(idata["amount"]) I.amount = idata["amount"]
+			global_ground_items |= I
+			
+			// Retoma a contagem de autodestruição do item após relogar
+			if(I.despawn_time > 0)
+				spawn(I.despawn_time)
+					if(I && (I in global_ground_items))
+						global_ground_items -= I
+						if(SSserver) SSserver.ground_dirty_tick = SSserver.server_tick
+						del(I)
+
+
 mob
 	var/received_starters = 0 // Flag de segurança para o sistema de itens
 
