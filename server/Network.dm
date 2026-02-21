@@ -1,6 +1,5 @@
 // server/Network.dm
 
-// Proc global reutilizável — elimina duplicação em Combat/Inventory/World3D
 proc/get_dist_euclid(x1, z1, x2, z2)
 	return sqrt((x1-x2)**2 + (z1-z2)**2)
 
@@ -11,20 +10,20 @@ mob
 	Topic(href, href_list[])
 		..()
 		var/action = href_list["action"]
-
+		
 		if(action == "request_skills")
 			var/skills_text = "{}"
 			if(GlobalSkillsData && GlobalSkillsData.len > 0)
 				skills_text = json_encode(GlobalSkillsData)
 			src << output(skills_text, "map3d:receberSkills")
-
+		
 		if(action == "request_slots")
 			var/list/slots_data = list()
 			for(var/i=1 to 3)
 				if(fexists("[SAVE_DIR][src.ckey]_slot[i].sav"))
 					var/savefile/F = new("[SAVE_DIR][src.ckey]_slot[i].sav")
 					var/n; var/l; var/g; var/ge
-					F["name"] >> n; F["level"] >> l; F["gold"] >> g;
+					F["name"] >> n; F["level"] >> l; F["gold"] >> g; 
 					if(F["gender"]) F["gender"] >> ge; else ge = "Male"
 					slots_data["slot[i]"] = list("name"=n, "lvl"=l, "gold"=g, "gender"=ge)
 				else slots_data["slot[i]"] = null
@@ -43,8 +42,8 @@ mob
 			src.name = href_list["name"]
 			src.skin_color = href_list["skin"]
 			src.cloth_color = href_list["cloth"]
-			src.char_gender = href_list["gender"]
-			src.level = 1; src.gold = 10000
+			src.char_gender = href_list["gender"] 
+			src.level = 1; src.gold = 10000 
 			src.real_x = 0; src.real_y = 0; src.real_z = 0
 			current_slot = slot
 			SaveCharacter()
@@ -65,9 +64,9 @@ mob
 
 				var/dist = get_dist_euclid(src.real_x, src.real_z, new_x, new_z)
 				var/max_allowed = (calc_move_speed * 1.5) * 30
-				if(max_allowed < 3.0) max_allowed = 3.0
-				if(dist > max_allowed) return
-
+				if(max_allowed < 3.0) max_allowed = 3.0 
+				if(dist > max_allowed) return 
+				
 				real_x = new_x; real_y = new_y; real_z = new_z; real_rot = new_rot
 				if(real_x > 29) real_x = 29; if(real_x < -29) real_x = -29
 				if(real_z > 29) real_z = 29; if(real_z < -29) real_z = -29
@@ -111,7 +110,7 @@ mob
 					for(var/path in V.stock)
 						var/obj/item/tmpI = new path()
 						shop_items += list(list("name"=tmpI.name, "id"=tmpI.id_visual, "price"=tmpI.price, "desc"=tmpI.description, "typepath"=path))
-						del(tmpI)
+						del(tmpI) 
 					src << output(json_encode(shop_items), "map3d:openShop")
 					RequestInventoryUpdate()
 				else if(istype(M, /mob/npc/nurse))
@@ -120,7 +119,7 @@ mob
 					src.is_fainted = 0
 					src.faint_end_time = 0
 					src << output("Enfermeira: Você foi curado!", "map3d:mostrarNotificacao")
-
+				
 				else if(M.client && M.is_fainted)
 					M.SendLootWindow(src)
 
@@ -160,7 +159,7 @@ mob
 				if(get_dist_euclid(src.real_x, src.real_z, V.real_x, V.real_z) <= 4.0)
 					nearby_vendor = V
 					break
-			if(!nearby_vendor) return
+			if(!nearby_vendor) return  
 
 			var/typepath = text2path(href_list["type"])
 			if(!typepath || !ispath(typepath, /obj/item)) return
@@ -190,273 +189,190 @@ mob
 					del(I)
 					RequestInventoryUpdate()
 
-		if(action == "cast_skill" && in_game)
-			var/s_id = href_list["skill_id"]
-			if(!(s_id in unlocked_skills)) return
 
-			var/list/skill_data = GlobalSkillsData[s_id]
-			if(!skill_data) return
-
-			if(skill_cooldowns[s_id] && skill_cooldowns[s_id] > world.time) return
-			if(!ConsumeEnergy(skill_data["energyCost"])) return
-
-			skill_cooldowns[s_id] = world.time + round(skill_data["cooldown"] / 100)
-			src.pending_visuals += list(list("type"="skill_cast_accept", "skill"=s_id))
-
-			if(SSserver)
-				SSserver.global_events += list(list("type" = "skill_cast", "skill" = s_id, "caster" = "\ref[src]", "x" = src.real_x, "z" = src.real_z))
-
-			active_skill_hits["[s_id]"] = list()
-
-
-		if(action == "register_skill_hit" && in_game)
-			var/s_id = href_list["skill_id"]
-			var/mob/target = locate(href_list["target_ref"])
-
-			if(!target || !(s_id in unlocked_skills) || target == src) return
-
-			if(istype(target, /mob/npc))
-				var/mob/npc/N = target
-				if(N.npc_type == "vendor" || N.npc_type == "nurse") return
-
-			var/list/skill_data = GlobalSkillsData[s_id]
-			if(!skill_data) return
-
-			var/max_skill_range = skill_data["range"] ? skill_data["range"] : 15.0
-			var/dist = get_dist_euclid(src.real_x, src.real_z, target.real_x, target.real_z)
-			if(dist > max_skill_range + 5.0) return
-
-			var/list/already_hit = active_skill_hits["[s_id]"]
-			if(already_hit && (target in already_hit)) return
-			if(!already_hit) already_hit = list()
-			already_hit += target
-			active_skill_hits["[s_id]"] = already_hit
-
-			var/base_dmg = skill_data["power"]
-			var/mult = skill_data["mult"]
-			var/damage = round(base_dmg + (src.willpower * mult) + rand(0, 5))
-
-			var/target_def = 0
-			if(istype(target, /mob/npc))
-				var/mob/npc/N = target; target_def = N.level * 2
-			else
-				var/mob/T = target; target_def = T.calc_def
-
-			var/def_reduction = round(target_def * 0.4)
-			damage -= def_reduction
-			if(damage < 1) damage = 1
-
-			var/is_crit = 0
-			if(rand(1, 100) <= calc_crit) { is_crit = 1; damage = round(damage * 1.5) }
-			var/crit_txt = ""
-			if(is_crit) crit_txt = " <b style='color:#f1c40f'>CRÍTICO MAG!</b>"
-
-			src.pending_visuals += list(list("type"="dmg", "val"=damage, "tid"="\ref[target]"))
-
-			if(istype(target, /mob/npc))
-				var/mob/npc/N = target
-				if(N.npc_type == "prop")
-					src << output("<span class='log-hit' style='color:#e74c3c'>[N.name]: [damage] dmg[crit_txt]</span>", "map3d:addLog")
-					GainExperience(5)
-				else
-					src << output("<span class='log-hit'>HIT MÁGICO em [N.name]! Dano: [damage][crit_txt]</span>", "map3d:addLog")
-					N.current_hp -= damage
-					if(N.current_hp <= 0)
-						src << output("<span class='log-hit' style='color:red'>[N.name] eliminado!</span>", "map3d:addLog")
-						N.current_hp = N.max_hp; N.real_x = rand(-10, 10); N.real_z = rand(-10, 10)
-					GainExperience(10)
-			else
-				var/mob/T = target
-				src << output("<span class='log-hit'>HIT MÁGICO em [T.name]! Dano: [damage][crit_txt]</span>", "map3d:addLog")
-				T << output("<span class='log-hit' style='color:red'>Você recebeu [damage] de dano mágico de [src.name]![crit_txt]</span>", "map3d:addLog")
-				T.current_hp -= damage
-
-				if(T.current_hp <= 0)
-					if(src.lethality_mode == 1) T.Die(src)
-					else { src << output("<span class='log-hit' style='color:orange'>Você derrotou [T.name]! Ele está desmaiado.</span>", "map3d:addLog"); T.GoFaint() }
-				GainExperience(10)
-				T.UpdateVisuals()
-
-		if(action == "attack" && in_game)
+		// --- A REFATORAÇÃO DEFINITIVA DE ATAQUES E MAGIAS (DATA-DRIVEN) ---
+		if(action == "execute_skill" && in_game)
 			if(is_resting || is_fainted) return
-			var/base_cost = max_energy * 0.03
-			if(ConsumeEnergy(base_cost))
-				is_attacking = 1; attack_type = href_list["type"]; combo_step = text2num(href_list["step"])
-				if(!combo_step) combo_step = 1
-
-				// CORREÇÃO CRÍTICA: Aplica a rotação que o cliente enviou NO INSTANTE do ataque!
-				if(href_list["rot"]) src.real_rot = text2num(href_list["rot"])
-
-				hit_targets_this_swing = list()
-				if(attack_type == "gun") { max_targets_per_swing = 1; projectile_window = world.time + 30 }
-				else { if(attack_type == "sword") max_targets_per_swing = 3; else max_targets_per_swing = 1; attack_window = world.time + 10 }
-
-				spawn(3) is_attacking = 0
+			var/s_id = href_list["skill_id"]
+			
+			var/list/skill_data = GlobalSkillsData[s_id]
+			if(!skill_data) return
+			
+			if(skill_cooldowns[s_id] && skill_cooldowns[s_id] > world.time) return
+			var/cost = skill_data["energyCost"]
+			if(!cost) cost = 0
+			if(!ConsumeEnergy(cost)) return
+			
+			if(skill_data["cooldown"]) skill_cooldowns[s_id] = world.time + round(skill_data["cooldown"] / 100)
+			
+			is_attacking = 1
+			attack_type = s_id
+			combo_step = text2num(href_list["step"])
+			if(!combo_step) combo_step = 1
+			
+			if(href_list["rot"]) src.real_rot = text2num(href_list["rot"])
+			
+			hit_targets_this_swing = list()
+			
+			if(skill_data["type"] == "projectile") 
+				max_targets_per_swing = skill_data["pierce"] ? 10 : 1
+				projectile_window = world.time + 30 
+				if(skill_data["visualDef"])
+					if(SSserver) SSserver.global_events += list(list("type" = "skill_cast", "skill" = s_id, "caster" = "\ref[src]", "x" = src.real_x, "z" = src.real_z))
+			else 
+				max_targets_per_swing = 3
+				attack_window = world.time + 10 
+				
+			active_skill_hits["[s_id]"] = list()
+			spawn(3) is_attacking = 0
 
 		if(action == "register_hit" && in_game)
+			var/s_id = href_list["skill_id"]
+			var/list/skill_data = GlobalSkillsData[s_id]
+			if(!skill_data) return
+			
 			var/target_ref = href_list["target_ref"]
-			var/hit_type = href_list["hit_type"]
-
-			var/c_step = text2num(href_list["combo"])
+			var/c_step = text2num(href_list["step"])
 			if(!c_step) c_step = 1
-
-			if(hit_type == "projectile") { if(world.time > projectile_window) return }
+			
+			if(skill_data["type"] == "projectile") { if(world.time > projectile_window) return }
 			else { if(world.time > attack_window) return }
-
+			
 			var/mob/target = locate(target_ref)
-			if(!target) return
+			if(!target || target == src) return
 
 			if(istype(target, /mob/npc))
 				var/mob/npc/N = target
-				if(N.npc_type == "vendor" || N.npc_type == "nurse") return
+				if(N.npc_type == "vendor" || N.npc_type == "nurse") return 
 
 			if(target.client && target.is_fainted)
 				if(get_dist_euclid(src.real_x, src.real_z, target.real_x, target.real_z) < 4.0)
-					if(src.lethality_mode == 1)
-						target.Die(src)
-					else
-						src << output("\ref[target]", "map3d:askKillConfirm")
-				return
+					if(src.lethality_mode == 1) target.Die(src) 
+					else src << output("\ref[target]", "map3d:askKillConfirm")
+				return 
 
-			if(target in hit_targets_this_swing) return
-			if(hit_targets_this_swing.len >= max_targets_per_swing) return
+			if(target in hit_targets_this_swing) return 
+			if(hit_targets_this_swing.len >= max_targets_per_swing) return 
 
-			// CORREÇÃO: Broad-phase relaxado. Quem faz o corte rigoroso é a OBB.
-			var/max_dist = 6.0
-			var/skill_exp_type = ""
-
-			if(hit_type == "projectile")
-				if(slot_hand && istype(slot_hand, /obj/item/weapon)) { max_dist = slot_hand:range + 5; skill_exp_type = "gun" }
-				else return
-			else if(hit_type == "melee")
-				if(attack_type == "sword") skill_exp_type = "sword"
-				else if(attack_type == "kick") skill_exp_type = "kick"
-				else skill_exp_type = "fist"
-
+			var/max_dist = skill_data["range"]
+			if(!max_dist) max_dist = 5.0
+			
 			var/dist = get_dist_euclid(src.real_x, src.real_z, target.real_x, target.real_z)
-			if(dist > max_dist) return
+			if(dist > max_dist + 5.0) return 
 
-			if(dist > 0.1 && hit_type == "melee")
-				var/box_len = 1.0
-				var/box_wid = 1.0
-				var/fwd_off = 1.0
+			if(dist > 0.1 && skill_data["type"] == "melee") 
+				var/list/combos = skill_data["combos"]
+				if(combos && c_step <= combos.len)
+					var/list/combo = combos[c_step] 
+					var/list/hb = combo["hitbox"]
+					
+					var/box_wid = hb["x"]
+					var/box_len = hb["z"]
+					var/fwd_off = combo["offset"]
 
-				if(attack_type == "sword")
-					if(c_step == 3) { box_wid = 1.0; box_len = 4.0; fwd_off = 2.5 }
-					else { box_wid = 2.5; box_len = 2.0; fwd_off = 1.5 }
-				else if(attack_type == "kick")
-					if(c_step == 1) { box_wid = 1.2; box_len = 1.2; fwd_off = 1.0 }
-					else if(c_step == 2) { box_wid = 1.2; box_len = 1.2; fwd_off = 1.2 }
-					else { box_wid = 1.5; box_len = 1.5; fwd_off = 1.4 }
-				else // fist
-					if(c_step == 3) { box_wid = 1.5; box_len = 1.5; fwd_off = 1.5 }
-					else { box_wid = 1.0; box_len = 1.0; fwd_off = 1.0 }
+					var/dx = target.real_x - src.real_x
+					var/dz = target.real_z - src.real_z
 
-				var/dx = target.real_x - src.real_x
-				var/dz = target.real_z - src.real_z
+					var/rot_deg = src.real_rot * 57.2957795
+					var/s = sin(rot_deg)
+					var/c = cos(rot_deg)
 
-				var/rot_deg = src.real_rot * 57.2957795
-				var/s = sin(rot_deg)
-				var/c = cos(rot_deg)
+					var/local_z = (dx * s) + (dz * c)
+					var/local_x = (dx * c) - (dz * s)
 
-				var/local_z = (dx * s) + (dz * c)
-				var/local_x = (dx * c) - (dz * s)
+					var/pad = 1.0 
+					var/half_l = (box_len / 2) + pad
+					var/half_w = (box_wid / 2) + pad
 
-				// LAG COMPENSATION (Favor the Shooter):
-				// O padding do servidor sobe para 1.0 (corpo 0.3 + 0.7 margem de internet)
-				var/pad = 1.0
-				var/half_l = (box_len / 2) + pad
-				var/half_w = (box_wid / 2) + pad
+					if(abs(local_z - fwd_off) > half_l || abs(local_x) > half_w)
+						src << output("<span style='color:red'><b>Servidor:</b> Hit Negado - OBB Matemática.</span>", "map3d:addLog")
+						return 
+				else return
 
-				if(abs(local_z - fwd_off) > half_l || abs(local_x) > half_w)
-					src << output("<span style='color:red'><b>Servidor:</b> Hit Negado - Fora da Hitbox (Combo [c_step]).</span>", "map3d:addLog")
-					return
+			var/list/already_hit = active_skill_hits["[s_id]"]
+			if(already_hit && (target in already_hit)) return 
+			if(!already_hit) already_hit = list()
+			already_hit += target
+			active_skill_hits["[s_id]"] = already_hit
+			hit_targets_this_swing += target
 
 			var/target_flee = 0
 			var/target_def = 0
 			if(istype(target, /mob/npc))
-				var/mob/npc/N = target
-				target_flee = N.level * 2
-				target_def = N.level * 2
+				var/mob/npc/N = target; target_flee = N.level * 2; target_def = N.level * 2
 			else
-				var/mob/T = target
-				target_flee = T.calc_flee
-				target_def = T.calc_def
+				var/mob/T = target; target_flee = T.calc_flee; target_def = T.calc_def
+			
+			if(skill_data["scaling"] == "physical" || skill_data["scaling"] == "ranged")
+				var/hit_chance = calc_hit - target_flee
+				if(hit_chance < 5) hit_chance = 5
+				if(hit_chance > 100) hit_chance = 100
+				if(rand(1, 100) > hit_chance)
+					src << output("<span class='log-hit' style='color:#95a5a6'>Errou o alvo! (Esquiva)</span>", "map3d:addLog")
+					return 
 
-			var/hit_chance = calc_hit - target_flee
-			if(hit_chance < 5) hit_chance = 5
-			if(hit_chance > 100) hit_chance = 100
-
-			if(rand(1, 100) > hit_chance)
-				src << output("<span class='log-hit' style='color:#95a5a6'>Errou o alvo! (Esquiva)</span>", "map3d:addLog")
-				return
-
-			hit_targets_this_swing += target
-
-			var/prof_bonus = 0
-			if(skill_exp_type == "sword") prof_bonus = prof_sword_lvl * 2
-			else if(skill_exp_type == "gun") prof_bonus = prof_gun_lvl * 2
-			else if(skill_exp_type == "kick") prof_bonus = prof_kick_lvl * 2
-			else prof_bonus = prof_punch_lvl * 2
-
-			var/base_dmg = 0
-			if(skill_exp_type == "gun") base_dmg = calc_ratk
-			else base_dmg = calc_atk
-
-			var/damage = base_dmg + prof_bonus + rand(0, 3)
-			var/damage_mult = 1.0
-
-			if(c_step == 3) damage_mult = 1.2
-
+			// --- O CÁLCULO DE DANO UNIVERSAL (AGORA INCLUI A VAR DE "POWER") ---
+			var/base_dmg = skill_data["power"]
+			if(!base_dmg) base_dmg = 0
+			
 			var/is_crit = 0
+			var/damage_mult = 1.0
+			var/stat_scale = 0
+
+			if(skill_data["type"] == "melee")
+				var/list/combos = skill_data["combos"]
+				if(combos && c_step <= combos.len)
+					var/list/combo = combos[c_step]
+					damage_mult = combo["damageMult"]
+
+			if(skill_data["scaling"] == "physical")
+				base_dmg += calc_atk
+				if(s_id == "basic_sword") stat_scale = prof_sword_lvl * 2
+				else if(s_id == "basic_kick") stat_scale = prof_kick_lvl * 2
+				else stat_scale = prof_punch_lvl * 2
+			else if(skill_data["scaling"] == "ranged")
+				base_dmg += calc_ratk
+				stat_scale = prof_gun_lvl * 2
+			else if(skill_data["scaling"] == "magical")
+				stat_scale = src.willpower * skill_data["mult"]
+
+			var/damage = round((base_dmg + stat_scale + rand(0, 3)) * damage_mult)
+			
 			if(rand(1, 100) <= calc_crit)
 				is_crit = 1
-				damage_mult += 0.5
-
-			damage = round(damage * damage_mult)
-
-			var/def_reduction = round(target_def * 0.5)
+				damage = round(damage * 1.5) 
+				
+			var/def_reduction = round(target_def * (skill_data["scaling"] == "magical" ? 0.4 : 0.5))
 			damage -= def_reduction
 			if(damage < 1) damage = 1
-
-			var/crit_txt = ""
-			if(is_crit) crit_txt = " <b style='color:#f1c40f'>CRÍTICO!</b>"
+			
+			var/crit_txt = is_crit ? " <b style='color:#f1c40f'>CRÍTICO!</b>" : ""
 
 			src.pending_visuals += list(list("type"="dmg", "val"=damage, "tid"=target_ref))
 
 			if(istype(target, /mob/npc))
 				var/mob/npc/N = target
 				if(N.npc_type == "prop")
-					var/msg = "TREINO: [damage] dmg[crit_txt]"
-					if(c_step == 3) msg = "COMBO: [damage] dmg[crit_txt]!"
-					src << output("<span class='log-hit' style='color:orange'>[msg]</span>", "map3d:addLog")
+					src << output("<span class='log-hit' style='color:orange'>TREINO: [damage] dmg[crit_txt]</span>", "map3d:addLog")
 					GainExperience(5)
-					if(skill_exp_type) GainWeaponExp(skill_exp_type, 3)
 				else
 					src << output("<span class='log-hit'>HIT em [N.name]! Dano: [damage][crit_txt]</span>", "map3d:addLog")
 					N.current_hp -= damage
 					if(N.current_hp <= 0)
 						src << output("<span class='log-hit' style='color:red'>[N.name] eliminado!</span>", "map3d:addLog")
-						N.current_hp = N.max_hp
-						N.real_x = rand(-10, 10)
-						N.real_z = rand(-10, 10)
+						N.current_hp = N.max_hp; N.real_x = rand(-10, 10); N.real_z = rand(-10, 10)
 					GainExperience(10)
-					if(skill_exp_type) GainWeaponExp(skill_exp_type, 5)
-			else
+			else 
 				var/mob/T = target
 				src << output("<span class='log-hit'>HIT em [T.name]! Dano: [damage][crit_txt]</span>", "map3d:addLog")
 				T << output("<span class='log-hit' style='color:red'>Você recebeu [damage] de dano de [src.name]![crit_txt]</span>", "map3d:addLog")
 				T.current_hp -= damage
-
+				
 				if(T.current_hp <= 0)
-					if(src.lethality_mode == 1)
-						T.Die(src)
-					else
-						src << output("<span class='log-hit' style='color:orange'>Você derrotou [T.name]! Ele está desmaiado.</span>", "map3d:addLog")
-						T.GoFaint()
-
+					if(src.lethality_mode == 1) T.Die(src)
+					else { src << output("<span class='log-hit' style='color:orange'>Você derrotou [T.name]! Ele está desmaiado.</span>", "map3d:addLog"); T.GoFaint() }
+				
 				GainExperience(10)
-				if(skill_exp_type) GainWeaponExp(skill_exp_type, 5)
 				T.UpdateVisuals()
 
 		if(action == "add_stat" && in_game)

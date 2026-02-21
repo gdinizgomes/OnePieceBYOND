@@ -33,8 +33,9 @@ const InputSystem = {
         if(k === 'r' && !NetworkSystem.blockSync) { NetworkSystem.blockSync = true; EntityManager.lastActionTime = Date.now(); NetworkSystem.queueCommand(`action=toggle_rest`); setTimeout(() => { NetworkSystem.blockSync = false; }, 500); }
         if(e.key === 'Shift') EntityManager.isRunning = true;
 
-        if(k === '1') CombatSystem.castSkill("fireball");
-        if(k === '2') CombatSystem.castSkill("iceball");
+        // CORREÇÃO: O InputSystem agora obedece cegamente ao JSON Universal
+        if(k === '1') CombatSystem.executeSkill("fireball");
+        if(k === '2') CombatSystem.executeSkill("iceball");
     },
 
     handleKeyUp: function(e) {
@@ -44,10 +45,12 @@ const InputSystem = {
     handleGameAction: function(e) {
         if(EntityManager.isFainted) return; 
         const k = e.detail;
-        if(k === 'd') CombatSystem.performAttack("sword"); 
-        else if(k === 'f') CombatSystem.performAttack("gun"); 
-        else if(k === 'a') CombatSystem.performAttack("fist"); 
-        else if(k === 's') CombatSystem.performAttack("kick");
+        
+        // CORREÇÃO: O InputSystem agora obedece cegamente ao JSON Universal
+        if(k === 'd') CombatSystem.executeSkill("basic_sword"); 
+        else if(k === 'f') CombatSystem.executeSkill("basic_gun"); 
+        else if(k === 'a') CombatSystem.executeSkill("basic_fist"); 
+        else if(k === 's') CombatSystem.executeSkill("basic_kick");
         else if(k === 'p' && !NetworkSystem.blockSync) { 
             NetworkSystem.blockSync = true; 
             NetworkSystem.queueCommand("action=force_save"); 

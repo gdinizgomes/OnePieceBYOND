@@ -12,9 +12,9 @@ const CombatSystem = {
     syncBlockTimer: 0,
     pendingAction: null,
     
-    fistComboStep: 0, lastFistAttackTime: 0,
-    kickComboStep: 0, lastKickAttackTime: 0,
-    swordComboStep: 0, lastSwordAttackTime: 0,
+    comboStep: 1, 
+    lastComboTime: 0,
+    lastSkillUsed: "",
 
     update: function(dt) {
         if (typeof EntityManager !== 'undefined' && (EntityManager.isFainted || EntityManager.isResting)) {
@@ -74,48 +74,9 @@ const CombatSystem = {
         }
     },
 
-    castSkill: function(skillId) {
-        if(EntityManager.isFainted || EntityManager.isResting || this.isAttacking || !EntityManager.isCharacterReady) return;
-        
-        const skillDef = window.GameSkills ? window.GameSkills[skillId] : null;
-        if(!skillDef) {
-            UISystem.addLog("<span style='color:red'>Erro de Servidor: Magia Desconhecida.</span>", "log-miss");
-            return;
-        }
-
-        const now = Date.now();
-        if (this.localSkillCooldowns[skillId] && this.localSkillCooldowns[skillId] > now) {
-            UISystem.addLog(`<span style='color:orange'>A habilidade ${skillDef.name} está em recarga.</span>`, "log-miss");
-            return;
-        }
-
-        if (UISystem.cache.en < skillDef.energyCost) {
-            UISystem.addLog("<span style='color:red'>Energia insuficiente!</span>", "log-miss");
-            return;
-        }
-
-        this.isAttacking = true;
-        EntityManager.lastActionTime = now;
-        this.lastCombatActionTime = now;
-
-        const windupAnim = skillDef.animation || "FIST_WINDUP";
-        const castAnim   = skillDef.castAnimation || "FIST_COMBO_1";
-        
-        NetworkSystem.queueCommand(`action=cast_skill&skill_id=${skillId}`);
-
-        EntityManager.charState = windupAnim;
-        this.combatState = "WINDUP";
-        this.stateTimer = 100;
-        this.pendingAction = {
-            atkStance: castAnim,
-            idleStance: "DEFAULT",
-            execute: null 
-        };
-    },
-
     startSkillCooldownUI: function(skillId) {
         const skillDef = window.GameSkills ? window.GameSkills[skillId] : null;
-        if(!skillDef) return;
+        if(!skillDef || !skillDef.cooldown || skillDef.cooldown <= 0) return;
 
         this.localSkillCooldowns[skillId] = Date.now() + skillDef.cooldown;
         
@@ -133,27 +94,51 @@ const CombatSystem = {
         }
     },
 
-    performAttack: function(type) {
-        if(this.isAttacking || !EntityManager.isCharacterReady || EntityManager.isResting || EntityManager.isFainted) return; 
+    executeSkill: function(skillId) {
+        if(this.isAttacking || !EntityManager.isCharacterReady || EntityManager.isResting || EntityManager.isFainted) return;
         
-        const equippedItem = EntityManager.playerGroup.userData.lastItem;
-        let hasSword = false; let hasGun = false; let projectileData = null;
-        
-        // NOVIDADE: Leitura elegante e segura do novo Schema Padrão
-        if(equippedItem && GameDefinitions[equippedItem]) {
-            const def = GameDefinitions[equippedItem]; 
-            const tags = def.tags || [];
-            
-            if(tags.includes("sword")) hasSword = true; 
-            if(tags.includes("gun")) { 
-                hasGun = true; 
-                projectileData = def.gameplay ? def.gameplay.projectile : null; 
+        const skillDef = window.GameSkills ? window.GameSkills[skillId] : null;
+        if(!skillDef) {
+            console.warn("Skill não encontrada no JSON:", skillId);
+            return;
+        }
+
+        const now = Date.now();
+        if (this.localSkillCooldowns[skillId] && this.localSkillCooldowns[skillId] > now) return;
+
+        if (skillDef.energyCost && UISystem.cache.en < skillDef.energyCost) {
+            UISystem.addLog("<span style='color:red'>Energia insuficiente!</span>", "log-miss");
+            return;
+        }
+
+        if(skillDef.requiresWeaponTag) {
+            const equippedItem = EntityManager.playerGroup.userData.lastItem;
+            let hasReq = false;
+            if(equippedItem && GameDefinitions[equippedItem]) {
+                const tags = GameDefinitions[equippedItem].tags || [];
+                if(tags.includes(skillDef.requiresWeaponTag)) hasReq = true;
+            }
+            if(!hasReq) {
+                UISystem.addLog(`Requer arma: ${skillDef.requiresWeaponTag}!`, "log-miss");
+                return;
             }
         }
+
+        // Lógica Genérica de Combo
+        if (skillId !== this.lastSkillUsed || now - this.lastComboTime > 600) {
+            this.comboStep = 1;
+        } else {
+            this.comboStep++;
+            const maxCombos = skillDef.combos ? skillDef.combos.length : 1;
+            if (this.comboStep > maxCombos) this.comboStep = 1;
+        }
         
-        if(type === "sword" && !hasSword) { UISystem.addLog("Sem espada!", "log-miss"); return; }
-        if(type === "gun" && !hasGun) { UISystem.addLog("Sem arma!", "log-miss"); return; }
-        
+        this.lastComboTime = now;
+        this.lastSkillUsed = skillId;
+        this.isAttacking = true;
+        this.lastCombatActionTime = now;
+        EntityManager.lastActionTime = now;
+
         if (TargetSystem.currentTargetID && EntityManager.otherPlayers[TargetSystem.currentTargetID]) {
             const targetMesh = EntityManager.otherPlayers[TargetSystem.currentTargetID].mesh;
             const dx = targetMesh.position.x - EntityManager.playerGroup.position.x;
@@ -161,67 +146,62 @@ const CombatSystem = {
             EntityManager.playerGroup.rotation.y = Math.atan2(dx, dz);
         }
 
-        this.isAttacking = true; 
-        this.lastCombatActionTime = Date.now();
-        EntityManager.lastActionTime = Date.now(); 
-        let windupStance = "SWORD_WINDUP"; let atkStance = "SWORD_ATK_1"; let idleStance = "SWORD_IDLE";
-        let currentComboStep = 1;
+        let windupAnim = skillDef.animation || "DEFAULT";
+        let castAnim = skillDef.castAnimation || "DEFAULT";
+        let idleAnim = "DEFAULT"; 
+        
+        // Mantém a estética das posições de descanso da arma
+        if(skillId === "basic_sword") idleAnim = "SWORD_IDLE";
+        if(skillId === "basic_fist" || skillId === "basic_kick") idleAnim = "FIST_IDLE";
+        if(skillId === "basic_gun") idleAnim = "GUN_IDLE";
 
-        if(type === "fist") {
-            if(Date.now() - this.lastFistAttackTime > 600) this.fistComboStep = 0;
-            this.fistComboStep++; if(this.fistComboStep > 3) this.fistComboStep = 1; 
-            this.lastFistAttackTime = Date.now();
-            currentComboStep = this.fistComboStep;
-            windupStance = "FIST_WINDUP"; atkStance = "FIST_COMBO_" + this.fistComboStep; idleStance = "FIST_IDLE";
+        let hitboxData = null;
+        let hitboxOffset = 1.0;
+
+        if(skillDef.type === "melee" && skillDef.combos) {
+            const comboData = skillDef.combos[this.comboStep - 1]; 
+            if(comboData) {
+                windupAnim = comboData.animation || windupAnim;
+                castAnim = comboData.castAnimation || castAnim;
+                hitboxData = comboData.hitbox;
+                hitboxOffset = comboData.offset || 1.0;
+            }
         }
-        else if(type === "kick") { 
-            if(Date.now() - this.lastKickAttackTime > 600) this.kickComboStep = 0;
-            this.kickComboStep++; if(this.kickComboStep > 3) this.kickComboStep = 1;
-            this.lastKickAttackTime = Date.now();
-            currentComboStep = this.kickComboStep;
-            windupStance = "KICK_WINDUP"; atkStance = "KICK_COMBO_" + this.kickComboStep; idleStance = "FIST_IDLE";
-        }
-        else if(type === "sword") {
-            if(Date.now() - this.lastSwordAttackTime > 600) this.swordComboStep = 0;
-            this.swordComboStep++; if(this.swordComboStep > 3) this.swordComboStep = 1;
-            this.lastSwordAttackTime = Date.now();
-            currentComboStep = this.swordComboStep;
-            windupStance = "SWORD_WINDUP"; atkStance = "SWORD_COMBO_" + this.swordComboStep; idleStance = "SWORD_IDLE";
-        }
-        else if(type === "gun") { windupStance = "GUN_IDLE"; atkStance = "GUN_ATK"; idleStance = "GUN_IDLE"; }
-        
-        EntityManager.charState = windupStance; 
+
+        EntityManager.charState = windupAnim;
         this.combatState = "WINDUP";
-        this.stateTimer = 100; 
-        
+        this.stateTimer = 100;
+
         this.pendingAction = {
-            atkStance: atkStance,
-            idleStance: idleStance,
+            atkStance: castAnim,
+            idleStance: idleAnim,
             execute: () => {
-                if(type === "gun" && projectileData) CombatVisualSystem.fireProjectile(EntityManager.playerGroup, projectileData, true);
-                else if (type === "fist") {
-                    if(this.fistComboStep === 3) CombatVisualSystem.spawnHitbox(EntityManager.playerGroup, {x:1.5, y:1.5, z:1.5}, 1.5, 200, {step: 3}); 
-                    else CombatVisualSystem.spawnHitbox(EntityManager.playerGroup, {x:1, y:1, z:1}, 1.0, 200, {step: this.fistComboStep}); 
-                }
-                else if (type === "kick") {
-                    if(this.kickComboStep === 1) CombatVisualSystem.spawnHitbox(EntityManager.playerGroup, {x:1.2, y:0.8, z:1.2}, 1.0, 300, {step: 1}, 0.5); 
-                    else if(this.kickComboStep === 2) CombatVisualSystem.spawnHitbox(EntityManager.playerGroup, {x:1.2, y:1.0, z:1.2}, 1.2, 300, {step: 2}, 1.0); 
-                    else CombatVisualSystem.spawnHitbox(EntityManager.playerGroup, {x:1.5, y:1.2, z:1.5}, 1.4, 300, {step: 3}, 1.7); 
-                }
-                else if (type === "sword") {
-                    if(this.swordComboStep === 3) CombatVisualSystem.spawnHitbox(EntityManager.playerGroup, {x:1.0, y:1.0, z:4.0}, 2.5, 300, {step: 3}); 
-                    else CombatVisualSystem.spawnHitbox(EntityManager.playerGroup, {x:2.5, y:1.0, z:2.0}, 1.5, 300, {step: this.swordComboStep}); 
+                if (skillDef.type === "projectile") {
+                    if(skillDef.visualDef) {
+                        CombatVisualSystem.fireSkillProjectile(EntityManager.playerGroup, skillId, EntityManager.myID);
+                    } else if (skillDef.requiresWeaponTag === "gun") {
+                        const equippedItem = EntityManager.playerGroup.userData.lastItem;
+                        let projData = null;
+                        if(equippedItem && GameDefinitions[equippedItem] && GameDefinitions[equippedItem].gameplay) {
+                            projData = GameDefinitions[equippedItem].gameplay.projectile;
+                        }
+                        if(projData) CombatVisualSystem.fireProjectile(EntityManager.playerGroup, projData, true);
+                    }
+                } 
+                else if (skillDef.type === "melee" && hitboxData) {
+                    CombatVisualSystem.spawnHitbox(EntityManager.playerGroup, hitboxData, hitboxOffset, 300, {skillId: skillId, step: this.comboStep});
                 }
                 
-                if(typeof BYOND_REF !== 'undefined') { 
-                    NetworkSystem.blockSync = true; 
-                    this.syncBlockTimer = 200; 
-                    
+                if(typeof BYOND_REF !== 'undefined') {
+                    NetworkSystem.blockSync = true;
+                    this.syncBlockTimer = 200;
                     const currentRot = EntityManager.playerGroup.rotation.y.toFixed(3);
-                    NetworkSystem.queueCommand(`action=attack&type=${type}&step=${currentComboStep}&rot=${currentRot}`); 
+                    NetworkSystem.queueCommand(`action=execute_skill&skill_id=${skillId}&step=${this.comboStep}&rot=${currentRot}`);
                 }
             }
         };
+        
+        if(skillDef.cooldown > 0) this.startSkillCooldownUI(skillId);
     }
 };
 
