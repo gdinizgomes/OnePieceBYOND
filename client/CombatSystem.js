@@ -33,7 +33,6 @@ const CombatSystem = {
         EntityManager.lastActionTime = now;
         this.lastCombatActionTime = now;
 
-        // Usa a animação definida no JSON da skill ao invés de hardcoded SWORD_WINDUP
         const windupAnim = skillDef.animation || "FIST_WINDUP";
         const castAnim   = skillDef.castAnimation || "FIST_COMBO_1";
         EntityManager.charState = windupAnim;
@@ -74,7 +73,6 @@ const CombatSystem = {
     },
 
     performAttack: function(type) {
-        // CORREÇÃO: Verifica se o jogador está descansando antes de agir visualmente
         if(this.isAttacking || !EntityManager.isCharacterReady || EntityManager.isResting || EntityManager.isFainted) return; 
         
         const equippedItem = EntityManager.playerGroup.userData.lastItem;
@@ -142,7 +140,9 @@ const CombatSystem = {
             
             if(typeof BYOND_REF !== 'undefined') { 
                 NetworkSystem.blockSync = true; 
-                NetworkSystem.queueCommand(`action=attack&type=${type}&step=${currentComboStep}`); 
+                // CORREÇÃO CRÍTICA (Desync de Combate): Envia a rotação atualizada pro servidor validar a OBB com perfeição matemática!
+                const currentRot = EntityManager.playerGroup.rotation.y.toFixed(3);
+                NetworkSystem.queueCommand(`action=attack&type=${type}&step=${currentComboStep}&rot=${currentRot}`); 
                 setTimeout(()=>{NetworkSystem.blockSync=false}, 200); 
             }
             setTimeout(() => { EntityManager.charState = idleStance; this.isAttacking = false; }, 300);
