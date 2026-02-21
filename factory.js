@@ -32,6 +32,8 @@ const CharFactory = {
             if (this.matCacheOrder.length >= this.MAT_CACHE_MAX) {
                 const oldest = this.matCacheOrder.shift();
                 if (this.matCache[oldest]) {
+                    // NOVIDADE CRÍTICA (VRAM Leak Fix): Limpa a textura alocada na placa de vídeo
+                    if (this.matCache[oldest].map) this.matCache[oldest].map.dispose(); 
                     this.matCache[oldest].dispose();
                     delete this.matCache[oldest];
                 }
@@ -51,6 +53,20 @@ const CharFactory = {
         return mesh;
     },
 
+    // NOVIDADE CRÍTICA (Memory Management): Função segura para descartar instâncias de tela
+    disposeEntity: function(entity) {
+        if (!entity) return;
+        if (entity.parent) entity.parent.remove(entity);
+        
+        // Limpa referências locais para forçar o Garbage Collector da RAM.
+        // O descarte de VRAM é protegido e deixado para o matCache (evita apagar material em uso).
+        entity.traverse((child) => {
+            if (child.isMesh) {
+                child.userData = {};
+            }
+        });
+    },
+
     createFromDef: function(defId, overrides = {}) {
         const def = GameDefinitions[defId];
         if (!def) {
@@ -58,30 +74,29 @@ const CharFactory = {
             return new THREE.Mesh(this.geoCache.box, new THREE.MeshBasicMaterial({color: 0xFF00FF})); 
         }
 
+        // NOVIDADE (Padronização e ECS): Schema universal para todos os objetos do jogo
+        const stdUserData = {
+            id: def.id || defId,
+            name: def.name || "Unknown",
+            type: def.type || "generic",
+            tags: def.tags || (def.data ? def.data.tags : []) || [], // Corrige o bug de leitura de tags
+            gameplay: def.data || {},
+            physics: def.physics || null
+        };
+        if (def.physics && def.physics.standable) stdUserData.standable = true;
+
         if (def.visual.model === "group" && def.visual.parts) {
             const group = new THREE.Group();
             def.visual.parts.forEach(partDef => {
                 const mesh = this.createMesh(partDef);
                 group.add(mesh);
             });
-            group.userData = { id: def.id, type: def.type, tags: def.data?.tags || [] };
-            
-            // TRANSFUSÃO AUTOMÁTICA DE FÍSICA PARA GROUPS
-            if (def.physics) {
-                group.userData.physics = def.physics;
-                if (def.physics.standable) group.userData.standable = true;
-            }
+            group.userData = { ...stdUserData };
             return group;
         } 
 
         const mesh = this.createMesh(def.visual, overrides);
-        mesh.userData = { id: def.id, type: def.type, tags: def.data?.tags || [] };
-        
-        // TRANSFUSÃO AUTOMÁTICA DE FÍSICA PARA MESHES
-        if (def.physics) {
-            mesh.userData.physics = def.physics;
-            if (def.physics.standable) mesh.userData.standable = true;
-        }
+        mesh.userData = { ...stdUserData };
         return mesh;
     },
 
@@ -185,7 +200,8 @@ const CharFactory = {
                         for(let i = targetBone.children.length - 1; i >= 0; i--) {
                             const child = targetBone.children[i];
                             if(child.userData && child.userData.id === oldItemId) {
-                                targetBone.remove(child);
+                                // NOVIDADE: Chama o dispose para limpar memória do item que foi desequipado
+                                CharFactory.disposeEntity(child);
                             }
                         }
                     }
@@ -208,7 +224,7 @@ const CharFactory = {
 
                 if (att.visual) {
                     itemObj = this.createMesh(att.visual);
-                    itemObj.userData = { id: itemId, type: 'equipment' };
+                    itemObj.userData = { id: itemId, type: 'equipment', tags: def.tags || [] };
                 } else {
                     itemObj = this.createFromDef(itemId);
                     itemObj.userData.type = 'equipment'; 

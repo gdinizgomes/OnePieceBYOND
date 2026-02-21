@@ -41,7 +41,8 @@ const EntityManager = {
             });
             for(let ref in this.groundItemsMeshes) {
                 if(!seenItems.has(ref)) {
-                    Engine.scene.remove(this.groundItemsMeshes[ref]);
+                    // NOVIDADE: Chama o disposeEntity ao invés de apenas dar scene.remove
+                    CharFactory.disposeEntity(this.groundItemsMeshes[ref]);
                     delete this.groundItemsMeshes[ref];
                 }
             }
@@ -121,7 +122,6 @@ const EntityManager = {
                 }
                 if(pData.gen !== undefined) other.gender = pData.gen;
 
-                // Refatorado: loop por slot ao invés de 5 blocos idênticos
                 const slotMap = [
                     { key: 'it',   cacheKey: 'lastItem' },
                     { key: 'eq_h', cacheKey: 'lastHead' },
@@ -147,9 +147,13 @@ const EntityManager = {
         
         for (const id in this.otherPlayers) { 
             if (!receivedIds.has(id)) { 
-                Engine.scene.remove(this.otherPlayers[id].mesh); 
-                const colIndex = Engine.collidables.indexOf(this.otherPlayers[id].mesh);
+                const playerMesh = this.otherPlayers[id].mesh;
+                const colIndex = Engine.collidables.indexOf(playerMesh);
                 if(colIndex > -1) Engine.collidables.splice(colIndex, 1);
+                
+                // NOVIDADE: Chama o disposeEntity seguro ao invés do remove simples
+                CharFactory.disposeEntity(playerMesh); 
+                
                 this.otherPlayers[id].label.remove(); 
                 
                 if (TargetSystem.currentTargetID === id) TargetSystem.deselectTarget();
@@ -340,7 +344,6 @@ const EntityManager = {
             
             mesh.position.x = lerp(other.startX, other.targetX, t);
             mesh.position.z = lerp(other.startZ, other.targetZ, t);
-            // Interpola Y assim como X e Z para evitar entidades flutuando em terrenos dinâmicos
             const currentGroundH = lerp(other.startY, other.targetY, t);
             mesh.rotation.y = lerpAngle(other.startRot, other.targetRot, t);
             
