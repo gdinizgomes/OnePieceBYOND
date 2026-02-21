@@ -1,6 +1,8 @@
 // server/Inventory.dm
 #define INVENTORY_MAX 12  // Tamanho máximo da mochila — altere aqui para refletir em todo o servidor
 
+var/obj/ground_holder = null // Recipiente global para itens caídos (Evita que a engine ignore loc = null)
+
 mob
 	proc/SerializeItem(obj/item/I, equipped = 0)
 		var/desc_txt = I.description ? I.description : "Sem descrição"
@@ -13,6 +15,10 @@ mob
 		return list("name"=I.name, "desc"=desc_txt, "ref"="\ref[I]", "amount"=I.amount, "id"=I.id_visual, "power"=p_str, "price"=I.price, "equipped"=equipped)
 
 	proc/GiveStarterItems()
+		// NOVIDADE: Proteção contra itens duplicados. Só ganha o kit na criação do char.
+		if(src.received_starters) return
+		src.received_starters = 1
+		
 		var/has_weapon = 0
 		var/has_bandana = 0
 		for(var/obj/item/I in contents)
@@ -71,12 +77,12 @@ mob
 		if(!I || I == slot_hand || I == slot_head || I == slot_body || I == slot_legs || I == slot_feet) return
 		if(!(I in contents)) return
 		
+		if(!global.ground_holder) global.ground_holder = new /obj()
 		var/obj/item/dropped_item = null
 
 		if(amount_to_drop >= I.amount)
-			// CORREÇÃO CRÍTICA: Remoção explícita para o BYOND soltar o vínculo de memória
 			src.contents -= I 
-			I.loc = null
+			I.loc = global.ground_holder // CORREÇÃO: Dá um local virtual pro item não sumir no sync do servidor
 			I.real_x = src.real_x
 			I.real_z = src.real_z
 			I.real_y = 0
@@ -86,6 +92,7 @@ mob
 			I.amount -= amount_to_drop
 			var/obj/item/NewI = new I.type()
 			NewI.amount = amount_to_drop
+			NewI.loc = global.ground_holder // Aplica a mesma proteção ao item particionado
 			NewI.real_x = src.real_x
 			NewI.real_z = src.real_z
 			NewI.real_y = 0
@@ -95,7 +102,6 @@ mob
 		if(SSserver) SSserver.ground_dirty_tick = SSserver.server_tick
 		RequestInventoryUpdate()
 
-		// NOVIDADE: Sistema de Despawn (Limpeza de VRAM e Mundo) após X minutos
 		if(dropped_item && dropped_item.despawn_time > 0)
 			spawn(dropped_item.despawn_time)
 				if(dropped_item && (dropped_item in global_ground_items))
@@ -132,8 +138,8 @@ mob
 				if(contents.len >= INVENTORY_MAX) { src << output("Mochila cheia!", "map3d:mostrarNotificacao"); return }
 				global_ground_items -= target
 				if(SSserver) SSserver.ground_dirty_tick = SSserver.server_tick
-				target.loc = src
-				src.contents |= target // Garante que o item entra na mochila
+				target.loc = src // Tira do ground_holder e joga pro char
+				src.contents |= target 
 				src << output("Pegou item!", "map3d:mostrarNotificacao")
 			RequestInventoryUpdate()
 

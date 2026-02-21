@@ -5,6 +5,8 @@
 #define SAVE_VERSION 2
 
 mob
+	var/received_starters = 0 // Flag de segurança para o sistema de itens
+
 	proc/AutoSaveLoop()
 		while(src && in_game)
 			SaveCharacter()
@@ -50,6 +52,7 @@ mob
 		F["gender"] << src.char_gender
 		F["kills"] << src.kills
 		F["deaths"] << src.deaths
+		F["starters"] << src.received_starters // Grava a flag
 		src << output("Salvo!", "map3d:mostrarNotificacao")
 
 	proc/LoadCharacter(slot)
@@ -57,31 +60,31 @@ mob
 		var/savefile/F = new("[SAVE_DIR][src.ckey]_slot[slot].sav")
 
 		// Leitura com valores padrão em todas as variáveis (padronizado)
-		if(F["name"])     F["name"]     >> src.name;     else src.name = "Sem nome"
-		if(F["level"])    F["level"]    >> src.level;    else src.level = 1
+		if(F["name"])     F["name"]     >> src.name; else src.name = "Sem nome"
+		if(F["level"])    F["level"]    >> src.level; else src.level = 1
 		if(F["exp"])      F["exp"]      >> src.experience; else src.experience = 0
 		if(F["stat_pts"]) F["stat_pts"] >> src.stat_points; else src.stat_points = 0
-		if(F["gold"])     F["gold"]     >> src.gold;     else src.gold = 0
+		if(F["gold"])     F["gold"]     >> src.gold; else src.gold = 0
 		if(F["hp"])       F["hp"]       >> src.current_hp; else src.current_hp = 50
 		if(F["en"])       F["en"]       >> src.current_energy; else src.current_energy = 50
-		if(F["str"])      F["str"]      >> src.strength;  else src.strength = 5
-		if(F["vit"])      F["vit"]      >> src.vitality;  else src.vitality = 5
-		if(F["agi"])      F["agi"]      >> src.agility;   else src.agility = 5
+		if(F["str"])      F["str"]      >> src.strength; else src.strength = 5
+		if(F["vit"])      F["vit"]      >> src.vitality; else src.vitality = 5
+		if(F["agi"])      F["agi"]      >> src.agility; else src.agility = 5
 		if(F["dex"])      F["dex"]      >> src.dexterity; else src.dexterity = 5
 		if(F["von"])      F["von"]      >> src.willpower; else src.willpower = 5
-		if(F["sor"])      F["sor"]      >> src.luck;      else src.luck = 5
+		if(F["sor"])      F["sor"]      >> src.luck; else src.luck = 5
 		if(F["p_punch"])  F["p_punch"]  >> prof_punch_lvl;  else prof_punch_lvl = 1
 		if(F["exp_punch"]) F["exp_punch"] >> prof_punch_exp; else prof_punch_exp = 0
 		if(F["p_kick"])   F["p_kick"]   >> prof_kick_lvl;   else prof_kick_lvl = 1
-		if(F["exp_kick"]) F["exp_kick"] >> prof_kick_exp;   else prof_kick_exp = 0
+		if(F["exp_kick"]) F["exp_kick"] >> prof_kick_exp; else prof_kick_exp = 0
 		if(F["p_sword"])  F["p_sword"]  >> prof_sword_lvl;  else prof_sword_lvl = 1
 		if(F["exp_sword"]) F["exp_sword"] >> prof_sword_exp; else prof_sword_exp = 0
-		if(F["p_gun"])    F["p_gun"]    >> prof_gun_lvl;    else prof_gun_lvl = 1
+		if(F["p_gun"])    F["p_gun"]    >> prof_gun_lvl; else prof_gun_lvl = 1
 		if(F["exp_gun"])  F["exp_gun"]  >> prof_gun_exp;    else prof_gun_exp = 0
-		if(F["pos_x"])    F["pos_x"]    >> src.real_x;  else src.real_x = 0
-		if(F["pos_y"])    F["pos_y"]    >> src.real_y;  else src.real_y = 0
-		if(F["pos_z"])    F["pos_z"]    >> src.real_z;  else src.real_z = 0
-		if(F["skin"])     F["skin"]     >> src.skin_color;  else src.skin_color = "FFD1A3"
+		if(F["pos_x"])    F["pos_x"]    >> src.real_x; else src.real_x = 0
+		if(F["pos_y"])    F["pos_y"]    >> src.real_y; else src.real_y = 0
+		if(F["pos_z"])    F["pos_z"]    >> src.real_z; else src.real_z = 0
+		if(F["skin"])     F["skin"]     >> src.skin_color; else src.skin_color = "FFD1A3"
 		if(F["cloth"])    F["cloth"]    >> src.cloth_color; else src.cloth_color = "3366CC"
 		if(F["inventory"]) F["inventory"] >> src.contents
 		if(F["slot_hand"]) F["slot_hand"] >> src.slot_hand
@@ -90,8 +93,9 @@ mob
 		if(F["slot_legs"]) F["slot_legs"] >> src.slot_legs
 		if(F["slot_feet"]) F["slot_feet"] >> src.slot_feet
 		if(F["gender"])   F["gender"]   >> src.char_gender; else src.char_gender = "Male"
-		if(F["kills"])    F["kills"]    >> src.kills;   else src.kills = 0
-		if(F["deaths"])   F["deaths"]   >> src.deaths;  else src.deaths = 0
+		if(F["kills"])    F["kills"]    >> src.kills; else src.kills = 0
+		if(F["deaths"])   F["deaths"]   >> src.deaths; else src.deaths = 0
+		if(F["starters"]) F["starters"] >> src.received_starters; else src.received_starters = 0
 
 		// Validação de integridade dos dados carregados
 		if(src.level < 1) src.level = 1
