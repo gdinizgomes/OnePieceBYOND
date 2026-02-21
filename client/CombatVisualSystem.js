@@ -13,7 +13,14 @@ const CombatVisualSystem = {
             m = this.hitboxPool.pop();
         } else {
             const geo = new THREE.BoxGeometry(1, 1, 1);
-            const mat = new THREE.MeshBasicMaterial({ color: 0xFF0000, wireframe: true, transparent: true, opacity: 0.3 });
+            // NOVIDADE: A propriedade 'visible' agora obedece o modo Produção/Debug
+            const mat = new THREE.MeshBasicMaterial({ 
+                color: 0xFF0000, 
+                wireframe: true, 
+                transparent: true, 
+                opacity: 0.3,
+                visible: Config.DEBUG_HITBOXES 
+            });
             m = new THREE.Mesh(geo, mat);
         }
         m.scale.set(size.x, size.y, size.z);
@@ -123,9 +130,11 @@ const CombatVisualSystem = {
         const isMine = (ownerRef === EntityManager.myID);
 
         const hitboxMesh = this.getProjectile(0x00FF00, def.hitboxSize);
+        // Mesmo projétil de skill deve respeitar debug
         hitboxMesh.material.wireframe = true;
         hitboxMesh.material.transparent = true;
         hitboxMesh.material.opacity = 0.5; 
+        hitboxMesh.visible = Config.DEBUG_HITBOXES;
 
         if (def.visualDef && GameDefinitions[def.visualDef]) {
             const skinData = GameDefinitions[def.visualDef];
@@ -162,20 +171,18 @@ const CombatVisualSystem = {
         });
     },
 
-    // NOVIDADE TÉCNICA: Checagem por OBB (Oriented Bounding Box) em Espaço Local
     checkAccurateCollision: function(objRef, targetMesh) {
-        // Raio e Altura do cilindro corporal do alvo (Evita que pegar a arma do inimigo gere hit)
-        const TARGET_RADIUS = 0.6; 
+        // CORREÇÃO CRÍTICA (Tolerância Zero): 
+        // O Raio original era 0.6. Reduzido para 0.3. Isso força a hitbox a transpassar
+        // de forma muito mais profunda no alvo para validar o acerto.
+        const TARGET_RADIUS = 0.3; 
         const TARGET_HALF_HEIGHT = 1.0;
 
         const targetPos = targetMesh.position.clone();
-        targetPos.y += TARGET_HALF_HEIGHT; // Move o ponto de verificação para o peito/centro do alvo
+        targetPos.y += TARGET_HALF_HEIGHT; 
 
-        // Força atualização da matriz matemática antes de calcular colisões no frame
         objRef.mesh.updateMatrixWorld();
         
-        // Transforma a posição global do alvo para a visão de Mundo do Hitbox
-        // (Isso anula perfeitamente a rotação, agindo como uma OBB pura)
         const localPos = objRef.mesh.worldToLocal(targetPos);
 
         const sx = objRef.mesh.scale.x || 1;
@@ -186,7 +193,6 @@ const CombatVisualSystem = {
         const paddingY = TARGET_HALF_HEIGHT / sy;
         const paddingZ = TARGET_RADIUS / sz;
 
-        // Limites base da BoxGeometry original é -0.5 a 0.5. 
         if (Math.abs(localPos.x) <= 0.5 + paddingX &&
             Math.abs(localPos.y) <= 0.5 + paddingY &&
             Math.abs(localPos.z) <= 0.5 + paddingZ) {
@@ -202,7 +208,6 @@ const CombatVisualSystem = {
             if(type === "melee" && objRef.hasHit.includes(id)) continue;
             if(!target || !target.mesh) continue;
 
-            // Substitui intersectsBox pela checagem orientada
             if (this.checkAccurateCollision(objRef, target.mesh)) {
                 let extra = "";
                 if(type === "melee" && objRef.data && objRef.data.step) extra = `&combo=${objRef.data.step}`;
@@ -211,10 +216,10 @@ const CombatVisualSystem = {
                 if(type === "projectile") { 
                     this.releaseProjectile(objRef.mesh); 
                     objRef.distTraveled = 99999; 
-                    break; // Segurança: Projétil simples some no primeiro alvo
+                    break; 
                 } else if(type === "melee") { 
                     objRef.hasHit.push(id); 
-                    objRef.mesh.material.color.setHex(0xFFFFFF); 
+                    if(Config.DEBUG_HITBOXES) objRef.mesh.material.color.setHex(0xFFFFFF); 
                 }
             }
         }

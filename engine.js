@@ -6,6 +6,9 @@ const Config = {
     FOG_NEAR:  15,
     FOG_FAR:   60,
     MAP_SIZE:  58,   // = 29 * 2, alinhado com MAP_LIMIT do servidor ([-29, 29])
+    
+    // NOVIDADE: Controle de Produção. Coloque 'true' se quiser voltar a ver os quadrados vermelhos para testar.
+    DEBUG_HITBOXES: true 
 };
 
 const RENDER_HEIGHT = Config.RENDER_HEIGHT;  // Alias de compatibilidade
@@ -50,7 +53,6 @@ const Input = {
     onKeyDown: function(e) {
         const k = e.key.toLowerCase();
         if(this.keys.hasOwnProperty(k)) this.keys[k] = true;
-        // Restaurado para A, S, D, F, P
         if(['a', 's', 'd', 'f', 'p'].includes(k)) {
             window.dispatchEvent(new CustomEvent('game-action', { detail: k }));
         }
@@ -106,13 +108,12 @@ const Engine = {
         const road = new THREE.Mesh(new THREE.PlaneGeometry(MAP_SIZE, MAP_SIZE), new THREE.MeshPhongMaterial({ color: 0x333333 }));
         road.rotation.x = -Math.PI / 2; 
         
-        // PLANO ZERO ABSOLUTO APLICADO AQUI
         road.position.y = 0; 
         road.receiveShadow = true;
         this.scene.add(road); 
         
         const grid = new THREE.GridHelper(MAP_SIZE, MAP_SIZE);
-        grid.position.y = 0.01; // Evita textura piscando no chão
+        grid.position.y = 0.01; 
         this.scene.add(grid);
     }
 };
