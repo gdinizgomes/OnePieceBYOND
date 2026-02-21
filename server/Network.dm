@@ -1,7 +1,13 @@
 // server/Network.dm
+
+// Proc global reutilizável — elimina duplicação em Combat/Inventory/World3D
+proc/get_dist_euclid(x1, z1, x2, z2)
+	return sqrt((x1-x2)**2 + (z1-z2)**2)
+
 mob
+	// Alias de instância para compatibilidade com chamadas existentes
 	proc/get_dist_euclid(x1, z1, x2, z2)
-		return sqrt((x1-x2)**2 + (z1-z2)**2)
+		return ::get_dist_euclid(x1, z1, x2, z2)
 
 	Topic(href, href_list[])
 		..()
@@ -122,18 +128,20 @@ mob
 		if(action == "rob_item" && in_game)
 			var/mob/target = locate(href_list["target"])
 			var/obj/item/I = locate(href_list["ref"])
-			if(target && target.client && target.is_fainted && get_dist_euclid(src.real_x, src.real_z, target.real_x, target.real_z) < 3.0)
-				if(I)
-					if(I == target.slot_hand) target.UnequipItem("hand")
-					else if(I == target.slot_head) target.UnequipItem("head")
-					else if(I == target.slot_body) target.UnequipItem("body")
-					else if(I == target.slot_legs) target.UnequipItem("legs")
-					else if(I == target.slot_feet) target.UnequipItem("feet")
-					
-					if(I in target.contents)
-						target.DropItem(I, I.amount)
-						src << output("Você roubou/dropou [I.name].", "map3d:mostrarNotificacao")
-						target.SendLootWindow(src) 
+			// Revalida que alvo ainda está desmaiado no momento do processamento (evita race condition de lag)
+			if(!target || !target.client || !target.is_fainted) return
+			if(get_dist_euclid(src.real_x, src.real_z, target.real_x, target.real_z) >= 3.0) return
+			if(!I) return
+			// Item precisa estar no inventário (equipado ou na bolsa) do alvo
+			if(I == target.slot_hand)       target.UnequipItem("hand")
+			else if(I == target.slot_head)  target.UnequipItem("head")
+			else if(I == target.slot_body)  target.UnequipItem("body")
+			else if(I == target.slot_legs)  target.UnequipItem("legs")
+			else if(I == target.slot_feet)  target.UnequipItem("feet")
+			if(I in target.contents)
+				target.DropItem(I, I.amount)
+				src << output("Você roubou/dropou [I.name].", "map3d:mostrarNotificacao")
+				target.SendLootWindow(src)
 
 		if(action == "rob_gold" && in_game)
 			var/mob/target = locate(href_list["target"])
@@ -150,17 +158,30 @@ mob
 				target.Die(src)
 
 		if(action == "buy_item" && in_game)
+			// Segurança: verificar se há vendor próximo antes de processar compra
+			var/mob/npc/vendor/nearby_vendor = null
+			for(var/mob/npc/vendor/V in global_npcs)
+				if(get_dist_euclid(src.real_x, src.real_z, V.real_x, V.real_z) <= 4.0)
+					nearby_vendor = V
+					break
+			if(!nearby_vendor) return  // Sem vendor próximo — possível exploit
+
+			// Segurança: whitelist — somente subtipos de /obj/item são válidos
 			var/typepath = text2path(href_list["type"])
-			if(typepath)
-				var/obj/item/temp = new typepath()
-				if(src.gold >= temp.price)
-					if(contents.len >= 12) { src << output("Mochila cheia!", "map3d:mostrarNotificacao"); del(temp) }
-					else
-						src.gold -= temp.price
-						temp.loc = src
-						src << output("Comprou [temp.name]!", "map3d:mostrarNotificacao")
-						RequestInventoryUpdate()
-				else { src << output("Ouro insuficiente!", "map3d:mostrarNotificacao"); del(temp) }
+			if(!typepath || !ispath(typepath, /obj/item)) return
+
+			// Segurança: verificar que o item está no estoque do vendor
+			if(!(typepath in nearby_vendor.stock)) return
+
+			var/obj/item/temp = new typepath()
+			if(src.gold >= temp.price)
+				if(contents.len >= INVENTORY_MAX) { src << output("Mochila cheia!", "map3d:mostrarNotificacao"); del(temp) }
+				else
+					src.gold -= temp.price
+					temp.loc = src
+					src << output("Comprou [temp.name]!", "map3d:mostrarNotificacao")
+					RequestInventoryUpdate()
+			else { src << output("Ouro insuficiente!", "map3d:mostrarNotificacao"); del(temp) }
 
 		if(action == "sell_item" && in_game)
 			var/ref_id = href_list["ref"]

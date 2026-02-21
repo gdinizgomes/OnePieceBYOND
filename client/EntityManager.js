@@ -121,11 +121,20 @@ const EntityManager = {
                 }
                 if(pData.gen !== undefined) other.gender = pData.gen;
 
-                if(pData.it !== undefined && mesh.userData.lastItem !== pData.it) { CharFactory.equipItem(mesh, pData.it, mesh.userData.lastItem); mesh.userData.lastItem = pData.it; }
-                if(pData.eq_h !== undefined && mesh.userData.lastHead !== pData.eq_h) { CharFactory.equipItem(mesh, pData.eq_h, mesh.userData.lastHead); mesh.userData.lastHead = pData.eq_h; }
-                if(pData.eq_b !== undefined && mesh.userData.lastBody !== pData.eq_b) { CharFactory.equipItem(mesh, pData.eq_b, mesh.userData.lastBody); mesh.userData.lastBody = pData.eq_b; }
-                if(pData.eq_l !== undefined && mesh.userData.lastLegs !== pData.eq_l) { CharFactory.equipItem(mesh, pData.eq_l, mesh.userData.lastLegs); mesh.userData.lastLegs = pData.eq_l; }
-                if(pData.eq_f !== undefined && mesh.userData.lastFeet !== pData.eq_f) { CharFactory.equipItem(mesh, pData.eq_f, mesh.userData.lastFeet); mesh.userData.lastFeet = pData.eq_f; }
+                // Refatorado: loop por slot ao invés de 5 blocos idênticos
+                const slotMap = [
+                    { key: 'it',   cacheKey: 'lastItem' },
+                    { key: 'eq_h', cacheKey: 'lastHead' },
+                    { key: 'eq_b', cacheKey: 'lastBody' },
+                    { key: 'eq_l', cacheKey: 'lastLegs' },
+                    { key: 'eq_f', cacheKey: 'lastFeet' },
+                ];
+                for (const slot of slotMap) {
+                    if (pData[slot.key] !== undefined && mesh.userData[slot.cacheKey] !== pData[slot.key]) {
+                        CharFactory.equipItem(mesh, pData[slot.key], mesh.userData[slot.cacheKey]);
+                        mesh.userData[slot.cacheKey] = pData[slot.key];
+                    }
+                }
                 
                 if(other.hpFill && other.maxHp > 0) other.hpFill.style.width = Math.max(0, Math.min(100, (other.currentHp / other.maxHp) * 100)) + "%";
                 
@@ -329,10 +338,10 @@ const EntityManager = {
             const elapsed = other.lastPacketTime ? (now - other.lastPacketTime) : 0; 
             const t = other.lerpDuration ? Math.min(1, elapsed / other.lerpDuration) : 1;
             
-            mesh.position.x = lerp(other.startX, other.targetX, t); 
-            mesh.position.z = lerp(other.startZ, other.targetZ, t); 
-            
-            const currentGroundH = other.targetY; 
+            mesh.position.x = lerp(other.startX, other.targetX, t);
+            mesh.position.z = lerp(other.startZ, other.targetZ, t);
+            // Interpola Y assim como X e Z para evitar entidades flutuando em terrenos dinâmicos
+            const currentGroundH = lerp(other.startY, other.targetY, t);
             mesh.rotation.y = lerpAngle(other.startRot, other.targetRot, t);
             
             const dist = Math.sqrt(Math.pow(other.targetX - mesh.position.x, 2) + Math.pow(other.targetZ - mesh.position.z, 2)); 

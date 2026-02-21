@@ -1,5 +1,17 @@
 // server/Inventory.dm
+#define INVENTORY_MAX 12  // Tamanho máximo da mochila — altere aqui para refletir em todo o servidor
+
 mob
+	// Serializa um item para JSON — evita duplicação entre RequestInventoryUpdate e SendLootWindow
+	proc/SerializeItem(obj/item/I, equipped = 0)
+		var/desc_txt = I.description ? I.description : "Sem descrição"
+		var/p_str = ""
+		if(I.atk > 0)        p_str += "ATK: [I.atk] "
+		if(I.ratk > 0)       p_str += "RATK: [I.ratk] "
+		if(I.def > 0)        p_str += "DEF: [I.def] "
+		if(I.crit_bonus > 0) p_str += "CRIT: +[I.crit_bonus]% "
+		if(p_str == "")      p_str = "Visual"
+		return list("name"=I.name, "desc"=desc_txt, "ref"="\ref[I]", "amount"=I.amount, "id"=I.id_visual, "power"=p_str, "price"=I.price, "equipped"=equipped)
 	proc/GiveStarterItems()
 		var/has_weapon = 0
 		var/has_bandana = 0
@@ -14,15 +26,19 @@ mob
 
 	proc/EquipItem(obj/item/I)
 		if(!I || !(I in contents)) return
+		// Troca direta: item antigo ocupa o lugar do novo na mochila (sem verificar espaço)
+		var/obj/item/old_item = null
 		var/success = 0
-		if(I.slot == "hand") { if(slot_hand) UnequipItem("hand"); slot_hand = I; active_item_visual = I.id_visual; success = 1 }
-		else if(I.slot == "head") { if(slot_head) UnequipItem("head"); slot_head = I; success = 1 }
-		else if(I.slot == "body") { if(slot_body) UnequipItem("body"); slot_body = I; success = 1 }
-		else if(I.slot == "legs") { if(slot_legs) UnequipItem("legs"); slot_legs = I; success = 1 }
-		else if(I.slot == "feet") { if(slot_feet) UnequipItem("feet"); slot_feet = I; success = 1 }
-			
+		if(I.slot == "hand")       { old_item = slot_hand; slot_hand = I; active_item_visual = I.id_visual; success = 1 }
+		else if(I.slot == "head")  { old_item = slot_head; slot_head = I; success = 1 }
+		else if(I.slot == "body")  { old_item = slot_body; slot_body = I; success = 1 }
+		else if(I.slot == "legs")  { old_item = slot_legs; slot_legs = I; success = 1 }
+		else if(I.slot == "feet")  { old_item = slot_feet; slot_feet = I; success = 1 }
+
 		if(success)
-			contents -= I
+			contents -= I            // Remove novo item da mochila
+			if(old_item) contents += old_item  // Devolve item antigo para a mochila (swap direto)
+			if(slot_hand == I) active_item_visual = I.id_visual
 			src << output("Equipou [I.name].", "map3d:mostrarNotificacao")
 			RecalculateStats()
 			UpdateVisuals()
@@ -38,7 +54,7 @@ mob
 		else if(slot_name == "feet") I = slot_feet
 		
 		if(I)
-			if(contents.len >= 12) { src << output("Mochila cheia!", "map3d:mostrarNotificacao"); return }
+			if(contents.len >= INVENTORY_MAX) { src << output("Mochila cheia!", "map3d:mostrarNotificacao"); return }
 			if(slot_name == "hand") { slot_hand = null; active_item_visual = ""; }
 			else if(slot_name == "head") slot_head = null
 			else if(slot_name == "body") slot_body = null
@@ -99,7 +115,7 @@ mob
 						stacked = 1
 						break
 			if(!stacked)
-				if(contents.len >= 12) { src << output("Mochila cheia!", "map3d:mostrarNotificacao"); return }
+				if(contents.len >= INVENTORY_MAX) { src << output("Mochila cheia!", "map3d:mostrarNotificacao"); return }
 				global_ground_items -= target
 				if(SSserver) SSserver.ground_dirty_tick = SSserver.server_tick
 				target.loc = src
@@ -110,17 +126,7 @@ mob
 		var/list/inv_data = list()
 		for(var/obj/item/I in contents)
 			if(!I) continue
-			var/desc_txt = I.description
-			if(!desc_txt) desc_txt = "Sem descrição"
-			
-			var/p_str = ""
-			if(I.atk > 0) p_str += "ATK: [I.atk] "
-			if(I.ratk > 0) p_str += "RATK: [I.ratk] "
-			if(I.def > 0) p_str += "DEF: [I.def] "
-			if(I.crit_bonus > 0) p_str += "CRIT: +[I.crit_bonus]% "
-			if(p_str == "") p_str = "Visual"
-			
-			inv_data += list(list("name" = I.name, "desc" = desc_txt, "ref" = "\ref[I]", "amount" = I.amount, "id" = I.id_visual, "power" = p_str, "price" = I.price, "equipped" = 0))
+			inv_data += list(SerializeItem(I, 0))
 		src << output(json_encode(inv_data), "map3d:loadInventory")
 
 	proc/RequestStatusUpdate()
@@ -135,17 +141,16 @@ mob
 		src << output(json_encode(stat_data), "map3d:updateStatusMenu")
 
 	proc/SendLootWindow(mob/robber)
+		// Reutiliza SerializeItem para evitar duplicação com RequestInventoryUpdate
 		var/list/inv_data = list()
 		for(var/obj/item/I in contents)
 			if(!I) continue
-			inv_data += list(list("name"=I.name, "ref"="\ref[I]", "amount"=I.amount, "id"=I.id_visual, "equipped"=0))
-		
+			inv_data += list(SerializeItem(I, 0))
+
 		var/list/eq_data = list()
-		if(slot_hand) eq_data += list(list("name"=slot_hand.name, "ref"="\ref[slot_hand]", "amount"=1, "id"=slot_hand.id_visual, "equipped"=1))
-		if(slot_head) eq_data += list(list("name"=slot_head.name, "ref"="\ref[slot_head]", "amount"=1, "id"=slot_head.id_visual, "equipped"=1))
-		if(slot_body) eq_data += list(list("name"=slot_body.name, "ref"="\ref[slot_body]", "amount"=1, "id"=slot_body.id_visual, "equipped"=1))
-		if(slot_legs) eq_data += list(list("name"=slot_legs.name, "ref"="\ref[slot_legs]", "amount"=1, "id"=slot_legs.id_visual, "equipped"=1))
-		if(slot_feet) eq_data += list(list("name"=slot_feet.name, "ref"="\ref[slot_feet]", "amount"=1, "id"=slot_feet.id_visual, "equipped"=1))
-		
-		var/list/loot_payload = list("target_name" = src.name, "target_ref" = "\ref[src]", "gold" = src.gold, "inventory" = inv_data, "equipped" = eq_data)
+		var/list/equipped_slots = list(slot_hand, slot_head, slot_body, slot_legs, slot_feet)
+		for(var/obj/item/I in equipped_slots)
+			if(I) eq_data += list(SerializeItem(I, 1))
+
+		var/list/loot_payload = list("target_name"=src.name, "target_ref"="\ref[src]", "gold"=src.gold, "inventory"=inv_data, "equipped"=eq_data)
 		robber << output(json_encode(loot_payload), "map3d:openLootWindow")

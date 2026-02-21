@@ -11,6 +11,8 @@ mob/npc
 	New()
 		..()
 		real_y = 0
+		patrol_x = real_x  // Salva ponto de origem para limitar patrulha
+		patrol_z = real_z
 		global_npcs += src
 		if(wanders) spawn(5) AI_Loop()
 
@@ -18,13 +20,22 @@ mob/npc
 		global_npcs -= src
 		..()
 
+	var/patrol_x = 0    // Centro da patrulha (definido em New())
+	var/patrol_z = 0
+	var/patrol_radius = 5.0  // Raio máximo de desvio do ponto de origem
+
 	proc/AI_Loop()
 		while(src)
 			var/dir = pick(0, 90, 180, 270)
 			real_rot = (dir * 3.14159 / 180)
 			for(var/i=1 to 10)
-				if(dir==0) real_z-=0.1; if(dir==180) real_z+=0.1
-				if(dir==90) real_x+=0.1; if(dir==270) real_x-=0.1
+				if(dir==0)   real_z-=0.1
+				if(dir==180) real_z+=0.1
+				if(dir==90)  real_x+=0.1
+				if(dir==270) real_x-=0.1
+				// Limita ao raio de patrulha e aos limites do mapa
+				real_x = clamp(real_x, max(patrol_x - patrol_radius, -29), min(patrol_x + patrol_radius, 29))
+				real_z = clamp(real_z, max(patrol_z - patrol_radius, -29), min(patrol_z + patrol_radius, 29))
 				sleep(1)
 			sleep(rand(20, 50))
 
@@ -61,12 +72,13 @@ mob/npc/vendor
 		real_z = 2
 		real_y = 0
 		real_rot = 3.14
-		
+		patrol_x = real_x; patrol_z = real_z  // Vendor não anda, mas inicializa por consistência
+
+		// Usa initial() para ler atributos sem instanciar objetos temporários
 		for(var/T in typesof(/obj/item))
-			var/obj/item/temp = new T()
-			if(temp.shop_tags == "armorer")
+			if(T == /obj/item) continue  // Ignora tipo base
+			if(initial(T:shop_tags) == "armorer")
 				stock += T
-			del(temp)
 
 mob/npc/nurse
 	name = "Enfermeira"

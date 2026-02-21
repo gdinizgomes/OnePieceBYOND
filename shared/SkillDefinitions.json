@@ -10,7 +10,12 @@
         "speed": 0.4,
         "range": 40.0,
         "pierce": 0,
-        "visualDef": "vfx_fireball"
+        "visualDef": "vfx_fireball",
+        "animation": "FIST_WINDUP",
+        "castAnimation": "FIST_COMBO_1",
+        "requirements": { "level": 5, "willpower": 8 },
+        "scaling": { "stat": "willpower", "multiplier": 1.5 },
+        "visual": { "color": "0xff4400", "size": 0.8 }
     },
     "iceball": {
         "id": "iceball",
@@ -23,6 +28,11 @@
         "speed": 0.7,
         "range": 30.0,
         "pierce": 1,
-        "visualDef": "vfx_iceball"
+        "visualDef": "vfx_iceball",
+        "animation": "FIST_WINDUP",
+        "castAnimation": "FIST_COMBO_2",
+        "requirements": { "level": 3, "willpower": 5 },
+        "scaling": { "stat": "willpower", "multiplier": 1.0 },
+        "visual": { "color": "0x66ccff", "size": 0.5 }
     }
 }

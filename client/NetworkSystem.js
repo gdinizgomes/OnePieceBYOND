@@ -7,7 +7,10 @@ const NetworkSystem = {
     commandQueue: [],
     lastPacketTime: Date.now(),
     blockSync: false,
-    
+
+    // Limite da fila: previne acúmulo de comandos em caso de spam ou lag
+    MAX_QUEUE_SIZE: 30,
+
     POSITION_SYNC_INTERVAL: 100,
     POSITION_EPSILON: 0.01,
     lastSentTime: 0,
@@ -17,6 +20,7 @@ const NetworkSystem = {
         setInterval(() => {
             if (this.commandQueue.length > 0 && typeof BYOND_REF !== 'undefined') {
                 const cmd = this.commandQueue.shift();
+                // Parâmetros já vêm encodados por queueCommand
                 window.location.href = `byond://?src=${BYOND_REF}&${cmd}`;
             }
         }, 50);
@@ -26,6 +30,10 @@ const NetworkSystem = {
     },
 
     queueCommand: function(cmdString) {
+        // Descarta comandos mais velhos quando fila está cheia (evita lag exponencial)
+        if (this.commandQueue.length >= this.MAX_QUEUE_SIZE) {
+            this.commandQueue.shift();  // Remove o mais antigo
+        }
         this.commandQueue.push(cmdString);
     },
 

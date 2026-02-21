@@ -1,4 +1,7 @@
 // server/Combat.dm
+#define FAINT_DURATION 150    // 15 segundos (1 tick BYOND = 100ms)
+#define REST_INTERVAL  50     // Regenera a cada 5 segundos
+#define MAX_LEVEL_UPS  20     // Máximo de level-ups por chamada de GainExperience
 mob
 	proc/RecalculateStats()
 		max_hp = 50 + (level * 15) + (vitality * 12)
@@ -30,10 +33,11 @@ mob
 
 	proc/GainExperience(amount)
 		if(!in_game) return
+		if(amount <= 0) return  // Ignora XP negativa ou zero
 		experience += amount
 		src << output("<span class='log-hit' style='color:#aaddff'>+ [amount] EXP</span>", "map3d:addLog")
 		var/safety = 0
-		while(experience >= req_experience && safety < 50)
+		while(experience >= req_experience && safety < MAX_LEVEL_UPS)
 			LevelUp()
 			safety++
 
@@ -42,7 +46,9 @@ mob
 		experience -= req_experience
 		if(experience < 0) experience = 0 
 		
-		req_experience = round(100 * (level ** 2))
+		// Curva logarítmica-linear evita overflow exponencial em níveis altos
+		// Nível 10: ~2300 XP | Nível 50: ~20k XP | Nível 100: ~46k XP
+		req_experience = round(100 * (log(level + 1) / log(2)) * level)
 		if(req_experience < 100) req_experience = 100
 		
 		stat_points += 3
@@ -56,20 +62,25 @@ mob
 	proc/GetProficiencyReq(lvl) return round(50 * (lvl * 1.2))
 
 	proc/GainWeaponExp(type, amount)
-		var/lvl = 1; var/exp = 0; var/req = 100
-		if(type == "fist") { exp = prof_punch_exp; lvl = prof_punch_lvl }
-		else if(type == "kick") { exp = prof_kick_exp; lvl = prof_kick_lvl }
-		else if(type == "sword") { exp = prof_sword_exp; lvl = prof_sword_lvl }
-		else if(type == "gun") { exp = prof_gun_exp; lvl = prof_gun_lvl }
-		req = GetProficiencyReq(lvl)
+		// Mapa de (tipo) -> (exp_var, lvl_var) para evitar if/else duplicados
+		var/lvl = 1; var/exp = 0
+		if(type == "fist")       { exp = prof_punch_exp;  lvl = prof_punch_lvl  }
+		else if(type == "kick")  { exp = prof_kick_exp;   lvl = prof_kick_lvl   }
+		else if(type == "sword") { exp = prof_sword_exp;  lvl = prof_sword_lvl  }
+		else if(type == "gun")   { exp = prof_gun_exp;    lvl = prof_gun_lvl    }
+		else return  // Tipo desconhecido, não processa
+
+		var/req = GetProficiencyReq(lvl)
 		exp += amount
 		if(exp >= req)
 			lvl++; exp -= req
 			src << output("<span class='log-hit' style='color:#00ff00'>Habilidade [type] subiu para [lvl]!</span>", "map3d:addLog")
-		if(type == "fist") { prof_punch_exp = exp; prof_punch_lvl = lvl }
-		else if(type == "kick") { prof_kick_exp = exp; prof_kick_lvl = lvl }
-		else if(type == "sword") { prof_sword_exp = exp; prof_sword_lvl = lvl }
-		else if(type == "gun") { prof_gun_exp = exp; prof_gun_lvl = lvl }
+
+		// Salva de volta nas variáveis correspondentes
+		if(type == "fist")       { prof_punch_exp = exp;  prof_punch_lvl = lvl  }
+		else if(type == "kick")  { prof_kick_exp = exp;   prof_kick_lvl = lvl   }
+		else if(type == "sword") { prof_sword_exp = exp;  prof_sword_lvl = lvl  }
+		else if(type == "gun")   { prof_gun_exp = exp;    prof_gun_lvl = lvl    }
 
 	proc/ConsumeEnergy(amount)
 		if(is_fainted) return 0
@@ -81,9 +92,9 @@ mob
 
 	proc/GoFaint()
 		if(is_fainted) return
-		is_fainted = 1; is_resting = 1; faint_end_time = world.time + 150
+		is_fainted = 1; is_resting = 1; faint_end_time = world.time + FAINT_DURATION
 		src << output("<span class='log-hit' style='color:red;font-size:16px;'>VOCÊ DESMAIOU!</span>", "map3d:addLog")
-		spawn(150) if(src) WakeUp()
+		spawn(FAINT_DURATION) if(src) WakeUp()
 
 	proc/WakeUp()
 		if(!is_fainted) return
@@ -133,4 +144,4 @@ mob
 				if(current_energy > 0)
 					current_energy -= run_cost
 					if(current_energy <= 0) { current_energy = 0; GoFaint() }
-			sleep(10)
+			sleep(REST_INTERVAL)

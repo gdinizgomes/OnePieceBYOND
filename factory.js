@@ -9,7 +9,9 @@ const CharFactory = {
         plane: new THREE.PlaneGeometry(1, 1)
     },
 
-    matCache: {}, // Dicionário para reaproveitamento de materiais (Otimização de Memória)
+    matCache: {},       // Dicionário para reaproveitamento de materiais
+    matCacheOrder: [],  // Ordem de inserção para evicção LRU
+    MAT_CACHE_MAX: 100, // Limite: evita acumular centenas de materiais em memória
 
     createMesh: function(visualData, overrides = {}) {
         const geometry = this.geoCache[visualData.model] || this.geoCache.box;
@@ -21,12 +23,21 @@ const CharFactory = {
         if (!material) {
             if (visualData.texture) {
                 const tex = this.textureLoader.load(visualData.texture);
-                tex.magFilter = THREE.NearestFilter; 
+                tex.magFilter = THREE.NearestFilter;
                 material = new THREE.MeshPhongMaterial({ map: tex, transparent: true, alphaTest: 0.5, color: colorHex });
             } else {
                 material = new THREE.MeshPhongMaterial({ color: colorHex });
             }
+            // Evicção LRU: remove o material mais antigo quando cache está cheio
+            if (this.matCacheOrder.length >= this.MAT_CACHE_MAX) {
+                const oldest = this.matCacheOrder.shift();
+                if (this.matCache[oldest]) {
+                    this.matCache[oldest].dispose();
+                    delete this.matCache[oldest];
+                }
+            }
             this.matCache[cacheKey] = material;
+            this.matCacheOrder.push(cacheKey);
         }
 
         const mesh = new THREE.Mesh(geometry, material);

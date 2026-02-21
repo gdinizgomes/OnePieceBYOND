@@ -38,11 +38,21 @@ const UISystem = {
         window.updateStatusMenu = (json) => this.updateStatusMenu(json);
     },
 
-    addLog: function(msg, css) { 
-        const d = document.getElementById('combat-log'); 
+    addLog: function(msg, css) {
+        const d = document.getElementById('combat-log');
         if(d) {
-            d.innerHTML += `<span class="${css}">${msg}</span><br>`; 
-            d.scrollTop=d.scrollHeight; 
+            // O msg vem do servidor como HTML intencional (spans de cor/estilo)
+            // Para evitar XSS de nomes de jogadores, o servidor deve escapar
+            // nomes antes de inserir no HTML. Aqui aceitamos HTML do servidor confiável.
+            const span = document.createElement('span');
+            span.className = css || '';
+            span.innerHTML = msg;  // HTML intencional do servidor
+            const br = document.createElement('br');
+            d.appendChild(span);
+            d.appendChild(br);
+            // Limita o log a 200 entradas para evitar memory bloat
+            while(d.children.length > 400) d.removeChild(d.firstChild);
+            d.scrollTop = d.scrollHeight;
         }
     },
 
@@ -324,7 +334,20 @@ const UISystem = {
 
     equipItem: function(ref) { if(NetworkSystem.blockSync) return; this.hideTooltip(); NetworkSystem.blockSync = true; NetworkSystem.queueCommand(`action=equip_item&ref=${ref}`); setTimeout(() => { NetworkSystem.blockSync = false; }, 200); },
     unequipItem: function(slotName) { if(NetworkSystem.blockSync) return; NetworkSystem.blockSync = true; NetworkSystem.queueCommand(`action=unequip_item&slot=${slotName}`); setTimeout(() => { NetworkSystem.blockSync = false; }, 200); },
-    dropItem: function(ref, maxAmount) { if(NetworkSystem.blockSync) return; this.hideTooltip(); let qty = 1; if(maxAmount > 1) { let input = prompt(`Quantos? (Máx: ${maxAmount})`, "1"); if(input===null) return; qty = parseInt(input); if(isNaN(qty) || qty <= 0) return; if(qty > maxAmount) qty = maxAmount; } NetworkSystem.blockSync = true; NetworkSystem.queueCommand(`action=drop_item&ref=${ref}&amount=${qty}`); setTimeout(() => { NetworkSystem.blockSync = false; }, 200); },
+    dropItem: function(ref, maxAmount) {
+        if(NetworkSystem.blockSync) return;
+        this.hideTooltip();
+        let qty = 1;
+        if(maxAmount > 1) {
+            const input = prompt(`Quantos? (Máx: ${maxAmount})`, "1");
+            if(input === null) return;
+            // Garante que qty seja inteiro positivo dentro do range permitido
+            qty = Math.min(maxAmount, Math.max(1, Math.floor(Number(input)) || 1));
+        }
+        NetworkSystem.blockSync = true;
+        NetworkSystem.queueCommand(`action=drop_item&ref=${ref}&amount=${qty}`);
+        setTimeout(() => { NetworkSystem.blockSync = false; }, 200);
+    },
     addStat: function(statName) { if(NetworkSystem.blockSync) return; NetworkSystem.blockSync = true; NetworkSystem.queueCommand(`action=add_stat&stat=${statName}`); setTimeout(function() { NetworkSystem.blockSync = false; }, 200); },
 
     updatePersonalStatus: function(me) {

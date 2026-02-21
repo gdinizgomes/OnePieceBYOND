@@ -25,6 +25,8 @@ const CombatVisualSystem = {
 
     releaseHitbox: function(m) {
         Engine.scene.remove(m);
+        // Limpa userData para evitar referências fantasmas entre usos do pool
+        m.userData = {};
         this.hitboxPool.push(m);
     },
 
@@ -45,6 +47,8 @@ const CombatVisualSystem = {
     releaseProjectile: function(m) {
         while(m.children.length > 0){ m.remove(m.children[0]); }
         Engine.scene.remove(m);
+        // Limpa userData para evitar referências fantasmas entre usos do pool
+        m.userData = {};
         this.projectilePool.push(m);
     },
 
@@ -212,8 +216,10 @@ const CombatVisualSystem = {
                 this.tempBoxAttacker.setFromObject(p.mesh); 
                 
                 for (let id in EntityManager.otherPlayers) {
-                    if(p.hasHit.includes(id)) continue; 
-                    
+                    if(p.hasHit.includes(id)) continue;
+                    // Guard: jogador pode ter saído do jogo enquanto o projétil viajava
+                    if(!EntityManager.otherPlayers[id] || !EntityManager.otherPlayers[id].mesh) continue;
+
                     this.tempBoxTarget.setFromObject(EntityManager.otherPlayers[id].mesh);
                     if (this.tempBoxAttacker.intersectsBox(this.tempBoxTarget)) {
                         if(typeof BYOND_REF !== 'undefined') {

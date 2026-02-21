@@ -32,12 +32,16 @@ const CombatSystem = {
         this.isAttacking = true;
         EntityManager.lastActionTime = now;
         this.lastCombatActionTime = now;
-        EntityManager.charState = "SWORD_WINDUP"; 
-        
+
+        // Usa a animação definida no JSON da skill ao invés de hardcoded SWORD_WINDUP
+        const windupAnim = skillDef.animation || "FIST_WINDUP";
+        const castAnim   = skillDef.castAnimation || "FIST_COMBO_1";
+        EntityManager.charState = windupAnim;
+
         NetworkSystem.queueCommand(`action=cast_skill&skill_id=${skillId}`);
-        
+
         setTimeout(() => {
-            EntityManager.charState = "FIST_COMBO_1"; 
+            EntityManager.charState = castAnim;
             setTimeout(() => { EntityManager.charState = "DEFAULT"; this.isAttacking = false; }, 300);
         }, 100);
     },
