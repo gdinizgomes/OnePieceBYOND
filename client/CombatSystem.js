@@ -124,7 +124,6 @@ const CombatSystem = {
             }
         }
 
-        // Lógica Genérica de Combo
         if (skillId !== this.lastSkillUsed || now - this.lastComboTime > 600) {
             this.comboStep = 1;
         } else {
@@ -150,7 +149,6 @@ const CombatSystem = {
         let castAnim = skillDef.castAnimation || "DEFAULT";
         let idleAnim = "DEFAULT"; 
         
-        // Mantém a estética das posições de descanso da arma
         if(skillId === "basic_sword") idleAnim = "SWORD_IDLE";
         if(skillId === "basic_fist" || skillId === "basic_kick") idleAnim = "FIST_IDLE";
         if(skillId === "basic_gun") idleAnim = "GUN_IDLE";
@@ -185,7 +183,8 @@ const CombatSystem = {
                         if(equippedItem && GameDefinitions[equippedItem] && GameDefinitions[equippedItem].gameplay) {
                             projData = GameDefinitions[equippedItem].gameplay.projectile;
                         }
-                        if(projData) CombatVisualSystem.fireProjectile(EntityManager.playerGroup, projData, true);
+                        // CORREÇÃO: Passando o skillId para o construtor do projétil!
+                        if(projData) CombatVisualSystem.fireProjectile(EntityManager.playerGroup, projData, true, skillId);
                     }
                 } 
                 else if (skillDef.type === "melee" && hitboxData) {

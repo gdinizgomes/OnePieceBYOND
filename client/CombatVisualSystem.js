@@ -70,7 +70,8 @@ const CombatVisualSystem = {
         setTimeout(() => { div.remove(); }, 1000);
     },
 
-    fireProjectile: function(originMesh, projectileDef, isMine) {
+    // CORREÇÃO: Recebe e armazena o skillId do tiro da arma
+    fireProjectile: function(originMesh, projectileDef, isMine, skillId) {
         const s = projectileDef.scale || [0.1, 0.1, 0.1];
         const bullet = this.getProjectile(projectileDef.color, s);
         
@@ -81,10 +82,6 @@ const CombatVisualSystem = {
         const cos = Math.cos(bodyRot);
         
         bullet.position.copy(originMesh.position); 
-        
-        // CORREÇÃO CRÍTICA (Alinhamento do Cano da Arma):
-        // Ajustado para sair da altura do peito/braço (1.05) e projetado para a ponta do cano 
-        // baseando-se no vetor Forward e Right do personagem.
         bullet.position.y += 1.05; 
         bullet.position.x += sin * 0.8 - cos * 0.25; 
         bullet.position.z += cos * 0.8 + sin * 0.25; 
@@ -109,7 +106,8 @@ const CombatVisualSystem = {
         this.activeProjectiles.push({ 
             mesh: bullet, dirX: dX, dirY: dY, dirZ: dZ, 
             speed: projectileDef.speed, distTraveled: 0, 
-            maxDist: projectileDef.range || 10, isMine: isMine 
+            maxDist: projectileDef.range || 10, isMine: isMine,
+            skillId: skillId // Guardado para o servidor
         });
     },
 
@@ -136,7 +134,11 @@ const CombatVisualSystem = {
         hitboxMesh.material.wireframe = true;
         hitboxMesh.material.transparent = true;
         hitboxMesh.material.opacity = 0.5; 
-        hitboxMesh.visible = Config.DEBUG_HITBOXES;
+        
+        // CORREÇÃO CRÍTICA (Invisibilidade do Fogo/Gelo):
+        // Aplica o DEBUG apenas ao MATERIAL do contorno, e não ao Grupo inteiro,
+        // garantindo que a "Skin" (partículas ou modelo 3D) seja renderizada.
+        hitboxMesh.material.visible = Config.DEBUG_HITBOXES;
 
         if (def.visualDef && GameDefinitions[def.visualDef]) {
             const skinData = GameDefinitions[def.visualDef];
@@ -208,9 +210,22 @@ const CombatVisualSystem = {
             if(!target || !target.mesh) continue;
 
             if (this.checkAccurateCollision(objRef, target.mesh)) {
-                let extra = "";
-                if(type === "melee" && objRef.data && objRef.data.step) extra = `&combo=${objRef.data.step}`;
-                if(typeof BYOND_REF !== 'undefined') NetworkSystem.queueCommand(`action=register_hit&target_ref=${id}&hit_type=${type}${extra}`);
+                
+                // CORREÇÃO CRÍTICA (Acoplamento de Rede): 
+                // Agora envia rigorosamente os dados Data-Driven exigidos pelo servidor
+                let sId = "";
+                let step = 1;
+
+                if (type === "melee") {
+                    sId = objRef.data.skillId;
+                    step = objRef.data.step;
+                } else if (type === "projectile") {
+                    sId = objRef.skillId;
+                }
+
+                if(typeof BYOND_REF !== 'undefined') {
+                    NetworkSystem.queueCommand(`action=register_hit&target_ref=${id}&skill_id=${sId}&step=${step}`);
+                }
                 
                 if(type === "projectile") { 
                     this.releaseProjectile(objRef.mesh); 
@@ -253,8 +268,10 @@ const CombatVisualSystem = {
                     if(!EntityManager.otherPlayers[id] || !EntityManager.otherPlayers[id].mesh) continue;
 
                     if (this.checkAccurateCollision(p, EntityManager.otherPlayers[id].mesh)) {
+                        
+                        // CORREÇÃO CRÍTICA (Acoplamento de Rede de Magias)
                         if(typeof BYOND_REF !== 'undefined') {
-                            NetworkSystem.queueCommand(`action=register_skill_hit&skill_id=${p.skillId}&target_ref=${id}`);
+                            NetworkSystem.queueCommand(`action=register_hit&target_ref=${id}&skill_id=${p.skillId}&step=1`);
                         }
                         
                         p.hasHit.push(id);

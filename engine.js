@@ -7,7 +7,7 @@ const Config = {
     FOG_FAR:   60,
     MAP_SIZE:  58,   // = 29 * 2, alinhado com MAP_LIMIT do servidor ([-29, 29])
     
-    DEBUG_HITBOXES: false 
+    DEBUG_HITBOXES: true 
 };
 
 const RENDER_HEIGHT = Config.RENDER_HEIGHT;  // Alias de compatibilidade

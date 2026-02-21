@@ -41,7 +41,6 @@ const EntityManager = {
             });
             for(let ref in this.groundItemsMeshes) {
                 if(!seenItems.has(ref)) {
-                    // NOVIDADE: Chama o disposeEntity ao invés de apenas dar scene.remove
                     CharFactory.disposeEntity(this.groundItemsMeshes[ref]);
                     delete this.groundItemsMeshes[ref];
                 }
@@ -103,7 +102,8 @@ const EntityManager = {
                 other.currentHp = pData.hp;
                 other.startX = mesh.position.x; other.startY = mesh.position.y; other.startZ = mesh.position.z; other.startRot = mesh.rotation.y;
                 other.targetX = pData.x; other.targetY = pData.y; other.targetZ = pData.z; other.targetRot = pData.rot; other.lastPacketTime = now;
-                other.attacking = pData.a; other.attackType = pData.at; 
+                other.attacking = pData.a; 
+                other.attackType = pData.at; 
                 other.comboStep = pData.cs; 
                 other.resting = pData.rest; 
                 
@@ -138,9 +138,13 @@ const EntityManager = {
                 
                 if(other.hpFill && other.maxHp > 0) other.hpFill.style.width = Math.max(0, Math.min(100, (other.currentHp / other.maxHp) * 100)) + "%";
                 
-                if (other.attacking && other.attackType === "gun" && !other.hasFiredThisCycle) { 
-                    CombatVisualSystem.fireProjectile(mesh, { speed: 0.6, color: 0xFFFF00, ownerID: id }, false); 
-                    other.hasFiredThisCycle = true; setTimeout(() => { other.hasFiredThisCycle = false; }, 500); 
+                // NOVIDADE: Verifica no JSON se a arma é "ranged" para disparar visual remoto
+                if (other.attacking && other.attackType) {
+                    const sDef = window.GameSkills ? window.GameSkills[other.attackType] : null;
+                    if(sDef && sDef.scaling === "ranged" && !other.hasFiredThisCycle) {
+                        CombatVisualSystem.fireProjectile(mesh, { speed: 0.6, color: 0xFFFF00 }, false, other.attackType); 
+                        other.hasFiredThisCycle = true; setTimeout(() => { other.hasFiredThisCycle = false; }, 500); 
+                    }
                 }
             }
         }
@@ -151,13 +155,9 @@ const EntityManager = {
                 const colIndex = Engine.collidables.indexOf(playerMesh);
                 if(colIndex > -1) Engine.collidables.splice(colIndex, 1);
                 
-                // NOVIDADE: Chama o disposeEntity seguro ao invés do remove simples
                 CharFactory.disposeEntity(playerMesh); 
-                
                 this.otherPlayers[id].label.remove(); 
-                
                 if (TargetSystem.currentTargetID === id) TargetSystem.deselectTarget();
-
                 delete this.otherPlayers[id]; 
             } 
         }
@@ -351,12 +351,18 @@ const EntityManager = {
             const isMoving = dist > 0.02;
 
             let remoteState = "DEFAULT";
-            if(other.attacking) {
-                let step = other.comboStep || 1;
-                if(other.attackType === "sword") remoteState = "SWORD_COMBO_" + step; 
-                else if(other.attackType === "fist") remoteState = "FIST_COMBO_" + step;
-                else if(other.attackType === "kick") remoteState = "KICK_COMBO_" + step; 
-                else if(other.attackType === "gun") remoteState = "GUN_ATK";
+            
+            // CORREÇÃO CRÍTICA (Animações de Remotos Data-Driven)
+            if(other.attacking && other.attackType) {
+                const sDef = window.GameSkills ? window.GameSkills[other.attackType] : null;
+                if(sDef) {
+                    if(sDef.type === "melee" && sDef.combos) {
+                        const cData = sDef.combos[(other.comboStep || 1) - 1];
+                        if(cData) remoteState = cData.castAnimation || "DEFAULT";
+                    } else {
+                        remoteState = sDef.castAnimation || "DEFAULT";
+                    }
+                }
             }
 
             AnimationSystem.animateRig(mesh, remoteState, isMoving, other.isRunning, other.resting, other.fainted, currentGroundH);
