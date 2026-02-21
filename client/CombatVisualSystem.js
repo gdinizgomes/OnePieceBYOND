@@ -6,8 +6,6 @@ const CombatVisualSystem = {
     activeSkillProjectiles: [],
     hitboxPool: [],
     projectilePool: [],
-    tempBoxAttacker: new THREE.Box3(),
-    tempBoxTarget: new THREE.Box3(),
 
     getHitbox: function(size, colorHex) {
         let m;
@@ -25,7 +23,6 @@ const CombatVisualSystem = {
 
     releaseHitbox: function(m) {
         Engine.scene.remove(m);
-        // Limpa userData para evitar referências fantasmas entre usos do pool
         m.userData = {};
         this.hitboxPool.push(m);
     },
@@ -47,7 +44,6 @@ const CombatVisualSystem = {
     releaseProjectile: function(m) {
         while(m.children.length > 0){ m.remove(m.children[0]); }
         Engine.scene.remove(m);
-        // Limpa userData para evitar referências fantasmas entre usos do pool
         m.userData = {};
         this.projectilePool.push(m);
     },
@@ -121,7 +117,6 @@ const CombatVisualSystem = {
     },
 
     fireSkillProjectile: function(originMesh, skillId, ownerRef) {
-        // Failsafe de leitura global
         const def = window.GameSkills ? window.GameSkills[skillId] : null;
         if(!def || !originMesh) return;
 
@@ -167,13 +162,48 @@ const CombatVisualSystem = {
         });
     },
 
-    checkCollisions: function(attackerBox, type, objRef) {
+    // NOVIDADE TÉCNICA: Checagem por OBB (Oriented Bounding Box) em Espaço Local
+    checkAccurateCollision: function(objRef, targetMesh) {
+        // Raio e Altura do cilindro corporal do alvo (Evita que pegar a arma do inimigo gere hit)
+        const TARGET_RADIUS = 0.6; 
+        const TARGET_HALF_HEIGHT = 1.0;
+
+        const targetPos = targetMesh.position.clone();
+        targetPos.y += TARGET_HALF_HEIGHT; // Move o ponto de verificação para o peito/centro do alvo
+
+        // Força atualização da matriz matemática antes de calcular colisões no frame
+        objRef.mesh.updateMatrixWorld();
+        
+        // Transforma a posição global do alvo para a visão de Mundo do Hitbox
+        // (Isso anula perfeitamente a rotação, agindo como uma OBB pura)
+        const localPos = objRef.mesh.worldToLocal(targetPos);
+
+        const sx = objRef.mesh.scale.x || 1;
+        const sy = objRef.mesh.scale.y || 1;
+        const sz = objRef.mesh.scale.z || 1;
+
+        const paddingX = TARGET_RADIUS / sx;
+        const paddingY = TARGET_HALF_HEIGHT / sy;
+        const paddingZ = TARGET_RADIUS / sz;
+
+        // Limites base da BoxGeometry original é -0.5 a 0.5. 
+        if (Math.abs(localPos.x) <= 0.5 + paddingX &&
+            Math.abs(localPos.y) <= 0.5 + paddingY &&
+            Math.abs(localPos.z) <= 0.5 + paddingZ) {
+            return true;
+        }
+        return false;
+    },
+
+    checkCollisions: function(type, objRef) {
         for (let id in EntityManager.otherPlayers) {
             const target = EntityManager.otherPlayers[id]; 
             
             if(type === "melee" && objRef.hasHit.includes(id)) continue;
-            this.tempBoxTarget.setFromObject(target.mesh);
-            if (attackerBox.intersectsBox(this.tempBoxTarget)) {
+            if(!target || !target.mesh) continue;
+
+            // Substitui intersectsBox pela checagem orientada
+            if (this.checkAccurateCollision(objRef, target.mesh)) {
                 let extra = "";
                 if(type === "melee" && objRef.data && objRef.data.step) extra = `&combo=${objRef.data.step}`;
                 if(typeof BYOND_REF !== 'undefined') NetworkSystem.queueCommand(`action=register_hit&target_ref=${id}&hit_type=${type}${extra}`);
@@ -181,6 +211,7 @@ const CombatVisualSystem = {
                 if(type === "projectile") { 
                     this.releaseProjectile(objRef.mesh); 
                     objRef.distTraveled = 99999; 
+                    break; // Segurança: Projétil simples some no primeiro alvo
                 } else if(type === "melee") { 
                     objRef.hasHit.push(id); 
                     objRef.mesh.material.color.setHex(0xFFFFFF); 
@@ -199,7 +230,7 @@ const CombatVisualSystem = {
             p.mesh.position.z += p.dirZ * moveStep; 
             p.distTraveled += moveStep;
             
-            if (p.isMine) { this.tempBoxAttacker.setFromObject(p.mesh); this.checkCollisions(this.tempBoxAttacker, "projectile", p); }
+            if (p.isMine) { this.checkCollisions("projectile", p); }
             if (p.distTraveled >= p.maxDist) { this.releaseProjectile(p.mesh); this.activeProjectiles.splice(i, 1); }
         }
 
@@ -213,15 +244,11 @@ const CombatVisualSystem = {
             p.distTraveled += moveStep;
             
             if (p.isMine) { 
-                this.tempBoxAttacker.setFromObject(p.mesh); 
-                
                 for (let id in EntityManager.otherPlayers) {
                     if(p.hasHit.includes(id)) continue;
-                    // Guard: jogador pode ter saído do jogo enquanto o projétil viajava
                     if(!EntityManager.otherPlayers[id] || !EntityManager.otherPlayers[id].mesh) continue;
 
-                    this.tempBoxTarget.setFromObject(EntityManager.otherPlayers[id].mesh);
-                    if (this.tempBoxAttacker.intersectsBox(this.tempBoxTarget)) {
+                    if (this.checkAccurateCollision(p, EntityManager.otherPlayers[id].mesh)) {
                         if(typeof BYOND_REF !== 'undefined') {
                             NetworkSystem.queueCommand(`action=register_skill_hit&skill_id=${p.skillId}&target_ref=${id}`);
                         }
@@ -251,7 +278,7 @@ const CombatVisualSystem = {
                 this.activeHitboxes.splice(i, 1); 
                 continue; 
             }
-            this.tempBoxAttacker.setFromObject(hb.mesh); this.checkCollisions(this.tempBoxAttacker, "melee", hb);
+            this.checkCollisions("melee", hb);
         }
     }
 };
