@@ -5,7 +5,6 @@ proc/get_dist_euclid(x1, z1, x2, z2)
 	return sqrt((x1-x2)**2 + (z1-z2)**2)
 
 mob
-	// Alias de instância para compatibilidade com chamadas existentes
 	proc/get_dist_euclid(x1, z1, x2, z2)
 		return ::get_dist_euclid(x1, z1, x2, z2)
 
@@ -331,19 +330,40 @@ mob
 			var/dist = get_dist_euclid(src.real_x, src.real_z, target.real_x, target.real_z)
 			if(dist > max_dist) return
 
-			// CORREÇÃO: Remoção dos colchetes em \[Servidor\] para não conflitar com a macro string do BYOND.
+			// --- NOVIDADE MATEMÁTICA: OBB (Oriented Bounding Box) NO SERVIDOR ---
+			// Transforma a posição do inimigo para a visão Local do Atacante, espelhando
+			// a mesma proporção exata desenhada no client.
 			if(dist > 0.1 && hit_type == "melee")
-				var/ndx = (target.real_x - src.real_x) / dist
-				var/ndz = (target.real_z - src.real_z) / dist
+				var/box_len = 2.0
+				var/box_wid = 1.5
+				var/fwd_off = 1.0
+
+				if(attack_type == "sword")
+					box_len = 4.0
+					box_wid = 1.5
+					fwd_off = 2.5
+				else if(attack_type == "kick")
+					box_len = 2.5
+					box_wid = 1.5
+					fwd_off = 1.2
+
+				var/dx = target.real_x - src.real_x
+				var/dz = target.real_z - src.real_z
 
 				var/rot_deg = src.real_rot * 57.2957795
-				var/fx = sin(rot_deg)
-				var/fz = cos(rot_deg)
+				var/s = sin(rot_deg)
+				var/c = cos(rot_deg)
 
-				var/dot = (ndx * fx) + (ndz * fz)
+				var/local_z = (dx * s) + (dz * c)
+				var/local_x = (dx * c) - (dz * s)
 
-				if(dot < -0.2)
-					src << output("<span style='color:red'><b>Servidor:</b> Hit Negado - Alvo fora de visão (Dot: [round(dot, 0.01)]).</span>", "map3d:addLog")
+				// Padding = Raio Cilíndrico do Inimigo (0.6) + Tolerância de Ping (0.4)
+				var/pad = 1.0
+				var/half_l = (box_len / 2) + pad
+				var/half_w = (box_wid / 2) + pad
+
+				if(abs(local_z - fwd_off) > half_l || abs(local_x) > half_w)
+					src << output("<span style='color:red'><b>Servidor:</b> Hit Negado - Fora da Hitbox Matematica.</span>", "map3d:addLog")
 					return
 
 			var/target_flee = 0

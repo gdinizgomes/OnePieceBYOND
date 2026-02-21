@@ -6,7 +6,13 @@
 
 // --- NOVIDADE: FUNÇÕES GLOBAIS DE PERSISTÊNCIA DO MUNDO ---
 proc/SaveWorldState()
-	var/savefile/F = new("[SAVE_DIR]world_state.sav")
+	var/file_path = "[SAVE_DIR]world_state.sav"
+	
+	// ATOMICIDADE: Deleta o arquivo antigo primeiro para garantir uma escrita física limpa (Evita buffer pendente)
+	if(fexists(file_path)) 
+		fdel(file_path)
+		
+	var/savefile/F = new(file_path)
 	var/list/items_data = list()
 	for(var/obj/item/I in global_ground_items)
 		if(!I) continue
@@ -17,8 +23,12 @@ proc/SaveWorldState()
 			"z" = I.real_z,
 			"amount" = I.amount
 		)
-		items_data += list(idata)
+		items_data[++items_data.len] = idata
+		
 	F["ground_items"] << items_data
+	
+	// ATOMICIDADE: Destrói o ponteiro, forçando o BYOND a gravar no Disco Rígido (HD) instantaneamente
+	F = null 
 
 proc/LoadWorldState()
 	if(!fexists("[SAVE_DIR]world_state.sav")) return
@@ -40,17 +50,17 @@ proc/LoadWorldState()
 			if(idata["amount"]) I.amount = idata["amount"]
 			global_ground_items |= I
 			
-			// Retoma a contagem de autodestruição do item após relogar
 			if(I.despawn_time > 0)
 				spawn(I.despawn_time)
 					if(I && (I in global_ground_items))
 						global_ground_items -= I
 						if(SSserver) SSserver.ground_dirty_tick = SSserver.server_tick
+						SaveWorldState() // Salva o estado ao destruir o item
 						del(I)
 
 
 mob
-	var/received_starters = 0 // Flag de segurança para o sistema de itens
+	var/received_starters = 0 
 
 	proc/AutoSaveLoop()
 		while(src && in_game)
@@ -60,7 +70,7 @@ mob
 	proc/SaveCharacter()
 		if(!current_slot || !in_game) return
 		var/savefile/F = new("[SAVE_DIR][src.ckey]_slot[current_slot].sav")
-		F["save_version"] << SAVE_VERSION  // Versionamento para detectar saves incompatíveis
+		F["save_version"] << SAVE_VERSION  
 		F["name"] << src.name
 		F["level"] << src.level
 		F["exp"] << src.experience
@@ -97,14 +107,13 @@ mob
 		F["gender"] << src.char_gender
 		F["kills"] << src.kills
 		F["deaths"] << src.deaths
-		F["starters"] << src.received_starters // Grava a flag
+		F["starters"] << src.received_starters 
 		src << output("Salvo!", "map3d:mostrarNotificacao")
 
 	proc/LoadCharacter(slot)
 		if(!fexists("[SAVE_DIR][src.ckey]_slot[slot].sav")) return 0
 		var/savefile/F = new("[SAVE_DIR][src.ckey]_slot[slot].sav")
 
-		// Leitura com valores padrão em todas as variáveis (padronizado)
 		if(F["name"])     F["name"]     >> src.name; else src.name = "Sem nome"
 		if(F["level"])    F["level"]    >> src.level; else src.level = 1
 		if(F["exp"])      F["exp"]      >> src.experience; else src.experience = 0
@@ -142,13 +151,11 @@ mob
 		if(F["deaths"])   F["deaths"]   >> src.deaths; else src.deaths = 0
 		if(F["starters"]) F["starters"] >> src.received_starters; else src.received_starters = 0
 
-		// Validação de integridade dos dados carregados
 		if(src.level < 1) src.level = 1
 		if(src.experience < 0) src.experience = 0
 		if(src.gold < 0) src.gold = 0
 		if(!src.name || src.name == "") src.name = "Sem nome"
 
-		// Recalcula req_experience usando a fórmula atual (sincronizada com Combat.dm)
 		src.req_experience = round(100 * (log(src.level + 1) / log(2)) * src.level)
 		if(src.req_experience < 100) src.req_experience = 100
 
