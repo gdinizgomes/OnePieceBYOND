@@ -9,9 +9,9 @@ const CharFactory = {
         plane: new THREE.PlaneGeometry(1, 1)
     },
 
-    matCache: {},       // Dicionário para reaproveitamento de materiais
-    matCacheOrder: [],  // Ordem de inserção para evicção LRU
-    MAT_CACHE_MAX: 100, // Limite: evita acumular centenas de materiais em memória
+    matCache: {},       
+    matCacheOrder: [],  
+    MAT_CACHE_MAX: 100, 
 
     createMesh: function(visualData, overrides = {}) {
         const geometry = this.geoCache[visualData.model] || this.geoCache.box;
@@ -21,18 +21,18 @@ const CharFactory = {
         let material = this.matCache[cacheKey];
 
         if (!material) {
+            // NOVIDADE TÉCNICA: Renderização otimizada para Low-Poly. MeshLambertMaterial em vez de Phong.
             if (visualData.texture) {
                 const tex = this.textureLoader.load(visualData.texture);
                 tex.magFilter = THREE.NearestFilter;
-                material = new THREE.MeshPhongMaterial({ map: tex, transparent: true, alphaTest: 0.5, color: colorHex });
+                material = new THREE.MeshLambertMaterial({ map: tex, transparent: true, alphaTest: 0.5, color: colorHex });
             } else {
-                material = new THREE.MeshPhongMaterial({ color: colorHex });
+                material = new THREE.MeshLambertMaterial({ color: colorHex });
             }
-            // Evicção LRU: remove o material mais antigo quando cache está cheio
+            
             if (this.matCacheOrder.length >= this.MAT_CACHE_MAX) {
                 const oldest = this.matCacheOrder.shift();
                 if (this.matCache[oldest]) {
-                    // NOVIDADE CRÍTICA (VRAM Leak Fix): Limpa a textura alocada na placa de vídeo
                     if (this.matCache[oldest].map) this.matCache[oldest].map.dispose(); 
                     this.matCache[oldest].dispose();
                     delete this.matCache[oldest];
@@ -53,13 +53,10 @@ const CharFactory = {
         return mesh;
     },
 
-    // NOVIDADE CRÍTICA (Memory Management): Função segura para descartar instâncias de tela
     disposeEntity: function(entity) {
         if (!entity) return;
         if (entity.parent) entity.parent.remove(entity);
         
-        // Limpa referências locais para forçar o Garbage Collector da RAM.
-        // O descarte de VRAM é protegido e deixado para o matCache (evita apagar material em uso).
         entity.traverse((child) => {
             if (child.isMesh) {
                 child.userData = {};
@@ -74,18 +71,18 @@ const CharFactory = {
             return new THREE.Mesh(this.geoCache.box, new THREE.MeshBasicMaterial({color: 0xFF00FF})); 
         }
 
-        // NOVIDADE (Padronização e ECS): Schema universal para todos os objetos do jogo
+        // NOVIDADE: O userData agora se alimenta do novo Schema Limpo
         const stdUserData = {
             id: def.id || defId,
             name: def.name || "Unknown",
             type: def.type || "generic",
-            tags: def.tags || (def.data ? def.data.tags : []) || [], // Corrige o bug de leitura de tags
-            gameplay: def.data || {},
+            tags: def.tags || [], 
+            gameplay: def.gameplay || {},
             physics: def.physics || null
         };
         if (def.physics && def.physics.standable) stdUserData.standable = true;
 
-        if (def.visual.model === "group" && def.visual.parts) {
+        if (def.visual && def.visual.model === "group" && def.visual.parts) {
             const group = new THREE.Group();
             def.visual.parts.forEach(partDef => {
                 const mesh = this.createMesh(partDef);
@@ -95,43 +92,36 @@ const CharFactory = {
             return group;
         } 
 
-        const mesh = this.createMesh(def.visual, overrides);
+        const mesh = this.createMesh(def.visual || {model: "box"}, overrides);
         mesh.userData = { ...stdUserData };
         return mesh;
     },
 
-    // --- CRIAÇÃO HIERÁRQUICA (RIGGING) ---
     createCharacter: function(skinColor, clothColor) {
         const root = new THREE.Group(); 
 
-        // 1. TORSO (Base)
         const torsoGroup = new THREE.Group();
-        // AJUSTE DE ALTURA PERFEITO: Subindo para 1.20, a ponta inferior do pé fica matematicamente em 0.0.
         torsoGroup.position.y = 1.20; 
         root.add(torsoGroup);
 
         const torsoMesh = this.createFromDef("char_torso", { color: clothColor });
         torsoGroup.add(torsoMesh);
 
-        // 2. CABEÇA
         const headGroup = new THREE.Group();
         headGroup.position.y = 0.45; 
         torsoGroup.add(headGroup);
         const headMesh = this.createFromDef("char_head", { color: skinColor });
         headGroup.add(headMesh);
 
-        // Olhos
         const eyeMat = new THREE.MeshBasicMaterial({color: 0x000000});
         const eyeL = new THREE.Mesh(this.geoCache.box, eyeMat); eyeL.scale.set(0.05, 0.05, 0.05); eyeL.position.set(0.08, 0.05, 0.16); headGroup.add(eyeL);
         const eyeR = new THREE.Mesh(this.geoCache.box, eyeMat); eyeR.scale.set(0.05, 0.05, 0.05); eyeR.position.set(-0.08, 0.05, 0.16); headGroup.add(eyeR);
 
-        // --- FUNÇÃO AUXILIAR PARA CRIAR MEMBROS ARTICULADOS ---
         function createLimbChain(side, colorUpper, colorLower, yOffset, isLeg) {
             const xDir = (side === "left") ? 1 : -1;
             const xPos = isLeg ? (0.10 * xDir) : (0.28 * xDir);
             const yPos = isLeg ? -0.30 : 0.25;
 
-            // PIVÔ SUPERIOR
             const upperPivot = new THREE.Group();
             upperPivot.position.set(xPos, yPos, 0);
             torsoGroup.add(upperPivot);
@@ -141,7 +131,6 @@ const CharFactory = {
             upperMesh.position.y = -upperMesh.scale.y / 2;
             upperPivot.add(upperMesh);
 
-            // PIVÔ INFERIOR
             const lowerPivot = new THREE.Group();
             lowerPivot.position.y = -upperMesh.scale.y; 
             upperPivot.add(lowerPivot);
@@ -151,7 +140,6 @@ const CharFactory = {
             lowerMesh.position.y = -lowerMesh.scale.y / 2;
             lowerPivot.add(lowerMesh);
 
-            // PIVÔ EXTREMIDADE
             const endPivot = new THREE.Group();
             endPivot.position.y = -lowerMesh.scale.y;
             lowerPivot.add(endPivot);
@@ -160,9 +148,9 @@ const CharFactory = {
             const endMesh = CharFactory.createFromDef(endDef, { color: isLeg ? 0x333333 : skinColor }); 
             
             if(isLeg) {
-                endMesh.position.y = -0.05; endMesh.position.z = 0.05; // Pé pra frente
+                endMesh.position.y = -0.05; endMesh.position.z = 0.05; 
             } else {
-                endMesh.position.y = -0.05; // Mão pendurada
+                endMesh.position.y = -0.05; 
             }
             endPivot.add(endMesh);
 
@@ -185,7 +173,6 @@ const CharFactory = {
         return root;
     },
 
-    // --- EQUIPAMENTO INTELIGENTE v3 ---
     equipItem: function(characterGroup, itemId, oldItemId) {
         if(!characterGroup || !characterGroup.userData.limbs) return;
         
@@ -200,7 +187,6 @@ const CharFactory = {
                         for(let i = targetBone.children.length - 1; i >= 0; i--) {
                             const child = targetBone.children[i];
                             if(child.userData && child.userData.id === oldItemId) {
-                                // NOVIDADE: Chama o dispose para limpar memória do item que foi desequipado
                                 CharFactory.disposeEntity(child);
                             }
                         }

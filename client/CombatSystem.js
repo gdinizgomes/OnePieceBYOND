@@ -2,12 +2,11 @@
 
 const CombatSystem = {
     localSkillCooldowns: {},
-    activeCooldownsUI: {}, // NOVIDADE: Fila para atualizar UIs de Cooldown sem setInterval
+    activeCooldownsUI: {}, 
     
     isAttacking: false,
     lastCombatActionTime: 0,
     
-    // Variáveis da Máquina de Estados (FSM)
     combatState: "IDLE", 
     stateTimer: 0,
     syncBlockTimer: 0,
@@ -17,19 +16,15 @@ const CombatSystem = {
     kickComboStep: 0, lastKickAttackTime: 0,
     swordComboStep: 0, lastSwordAttackTime: 0,
 
-    // NOVIDADE: Atualização em Tempo Real (Chamada pelo GameLoop do game.js)
     update: function(dt) {
-        // 1. Sistema de Prioridade Global (Morte/Stun cancelam ataques em andamento)
         if (typeof EntityManager !== 'undefined' && (EntityManager.isFainted || EntityManager.isResting)) {
             if (this.combatState !== "IDLE") {
                 this.combatState = "IDLE";
                 this.isAttacking = false;
                 this.pendingAction = null;
             }
-            // Não retorna aqui para garantir que timers de UI continuem rodando
         }
 
-        // 2. Proteção e Desbloqueio de Sync de Rede
         if (this.syncBlockTimer > 0) {
             this.syncBlockTimer -= dt;
             if (this.syncBlockTimer <= 0 && typeof NetworkSystem !== 'undefined') {
@@ -37,13 +32,12 @@ const CombatSystem = {
             }
         }
 
-        // 3. FSM de Combate (Substitui os setTimeouts do Windup e Attack)
         if (this.combatState !== "IDLE") {
             this.stateTimer -= dt;
             if (this.stateTimer <= 0) {
                 if (this.combatState === "WINDUP") {
                     this.combatState = "ATTACK";
-                    this.stateTimer = 300; // Duração do frame de ataque (Hitbox e animação de impacto)
+                    this.stateTimer = 300; 
                     
                     if (this.pendingAction) {
                         if (typeof EntityManager !== 'undefined') EntityManager.charState = this.pendingAction.atkStance;
@@ -61,7 +55,6 @@ const CombatSystem = {
             }
         }
 
-        // 4. Limpeza visual de Cooldowns
         for (const skillId in this.activeCooldownsUI) {
             const cdData = this.activeCooldownsUI[skillId];
             cdData.timeLeft -= dt;
@@ -110,14 +103,13 @@ const CombatSystem = {
         
         NetworkSystem.queueCommand(`action=cast_skill&skill_id=${skillId}`);
 
-        // Configura FSM de Cast
         EntityManager.charState = windupAnim;
         this.combatState = "WINDUP";
         this.stateTimer = 100;
         this.pendingAction = {
             atkStance: castAnim,
             idleStance: "DEFAULT",
-            execute: null // A magia já foi pra rede, o client só encena o cast visual.
+            execute: null 
         };
     },
 
@@ -133,7 +125,6 @@ const CombatSystem = {
             overlay.style.height = "100%";
             overlay.innerText = (skillDef.cooldown / 1000).toFixed(1) + "s";
             
-            // Registra na FSM para evitar vazamento de memória com setIntervals órfãos
             this.activeCooldownsUI[skillId] = {
                 timeLeft: skillDef.cooldown,
                 max: skillDef.cooldown,
@@ -147,10 +138,19 @@ const CombatSystem = {
         
         const equippedItem = EntityManager.playerGroup.userData.lastItem;
         let hasSword = false; let hasGun = false; let projectileData = null;
+        
+        // NOVIDADE: Leitura elegante e segura do novo Schema Padrão
         if(equippedItem && GameDefinitions[equippedItem]) {
-            const def = GameDefinitions[equippedItem]; const tags = def.tags || (def.data ? def.data.tags : []);
-            if(tags && tags.includes("sword")) hasSword = true; if(tags && tags.includes("gun")) { hasGun = true; projectileData = def.projectile; }
+            const def = GameDefinitions[equippedItem]; 
+            const tags = def.tags || [];
+            
+            if(tags.includes("sword")) hasSword = true; 
+            if(tags.includes("gun")) { 
+                hasGun = true; 
+                projectileData = def.gameplay ? def.gameplay.projectile : null; 
+            }
         }
+        
         if(type === "sword" && !hasSword) { UISystem.addLog("Sem espada!", "log-miss"); return; }
         if(type === "gun" && !hasGun) { UISystem.addLog("Sem arma!", "log-miss"); return; }
         
@@ -190,10 +190,9 @@ const CombatSystem = {
         }
         else if(type === "gun") { windupStance = "GUN_IDLE"; atkStance = "GUN_ATK"; idleStance = "GUN_IDLE"; }
         
-        // Configura FSM de Ataque Físico/Tiro
         EntityManager.charState = windupStance; 
         this.combatState = "WINDUP";
-        this.stateTimer = 100; // Tempo de recuo da arma
+        this.stateTimer = 100; 
         
         this.pendingAction = {
             atkStance: atkStance,
@@ -216,7 +215,7 @@ const CombatSystem = {
                 
                 if(typeof BYOND_REF !== 'undefined') { 
                     NetworkSystem.blockSync = true; 
-                    this.syncBlockTimer = 200; // Delega o desbloqueio para a matemática temporal da FSM
+                    this.syncBlockTimer = 200; 
                     
                     const currentRot = EntityManager.playerGroup.rotation.y.toFixed(3);
                     NetworkSystem.queueCommand(`action=attack&type=${type}&step=${currentComboStep}&rot=${currentRot}`); 
