@@ -27,7 +27,7 @@ world/New()
 			world.log << "ERRO de Formatação no JSON: [e.name]"
 	else
 		world.log << "ERRO CRITICO: shared/SkillDefinitions.json nao encontrado no pacote!"
-
+		
 	if(!SSserver)
 		SSserver = new()
 		spawn(5) SSserver.Heartbeat()
@@ -93,8 +93,11 @@ datum/game_controller
 				var/list/ground_data = list()
 				if(send_ground)
 					for(var/obj/item/I in global_ground_items)
-						if(isturf(I.loc)) ground_data += list(list("ref" = "\ref[I]", "id" = I.id_visual, "x" = I.real_x, "y" = I.real_y, "z" = I.real_z))
-						else global_ground_items -= I
+						// CORREÇÃO: Permite itens que estejam no nosso cofre virtual (ground_holder) ou turfs.
+						if(I && (I.loc == global.ground_holder || isturf(I.loc))) 
+							ground_data += list(list("ref" = "\ref[I]", "id" = I.id_visual, "x" = I.real_x, "y" = I.real_y, "z" = I.real_z))
+						else 
+							global_ground_items -= I
 
 				for(var/mob/M in active_clients)
 					var/faint_rem = 0
@@ -116,7 +119,8 @@ datum/game_controller
 					if(global_events.len > 0)
 						my_global_json_list["evts"] = list()
 						for(var/list/evt in global_events)
-							if(sqrt((evt["x"] - M.real_x)**2 + (evt["z"] - M.real_z)**2) <= VISION_RANGE) my_global_json_list["evts"] += list(evt)
+							if(sqrt((evt["x"] - M.real_x)**2 + (evt["z"] - M.real_z)**2) <= VISION_RANGE) 
+								my_global_json_list["evts"] += list(evt)
 
 					var/global_json = json_encode(my_global_json_list)
 
