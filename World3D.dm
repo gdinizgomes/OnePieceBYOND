@@ -131,7 +131,6 @@ datum/game_controller
 
 					var/list/my_eq = SerializeEquipment(M)
 					
-					// NOVIDADE CRÍTICA: Compila o progresso de TODAS as magias e envia o Hotbar
 					var/list/all_profs = list()
 					all_profs["basic_fist"] = list("lvl"=M.prof_punch_lvl, "exp"=M.prof_punch_exp, "req"=M.GetProficiencyReq(M.prof_punch_lvl))
 					all_profs["basic_kick"] = list("lvl"=M.prof_kick_lvl, "exp"=M.prof_kick_exp, "req"=M.GetProficiencyReq(M.prof_kick_lvl))
@@ -181,9 +180,10 @@ mob
 	var/deaths = 0
 	var/lethality_mode = 0
 	var/needs_skill_sync = 1 
-	var/list/unlocked_skills = list("fireball", "iceball")
 	
-	// NOVIDADE: Variáveis persistentes para habilidades e Hotbar!
+	// NOVIDADE: A lista começa rigorosamente vazia. O CheckSkillUnlocks entregará as iniciais!
+	var/list/unlocked_skills = list()
+	
 	var/list/skill_levels = list()
 	var/list/skill_exps = list()
 	var/list/hotbar = list("1"=null, "2"=null, "3"=null, "4"=null, "5"=null, "6"=null, "7"=null, "8"=null, "9"=null)
@@ -206,7 +206,72 @@ mob
 	var/obj/item/slot_hand = null; var/obj/item/slot_head = null; var/obj/item/slot_body = null; var/obj/item/slot_legs = null; var/obj/item/slot_feet = null 
 	var/list/pending_visuals = list()
 
-	// NOVIDADE: Motor de Experiência Genérico para Magias (Lido pelo Network)
+	// =======================================================================
+	// NOVIDADE TÉCNICA: O SCANNER UNIVERSAL DE ÁRVORE DE HABILIDADES
+	// =======================================================================
+	proc/CheckSkillUnlocks()
+		if(!in_game) return
+		var/skills_changed = 0
+
+		if(!unlocked_skills) unlocked_skills = list()
+
+		for(var/sid in GlobalSkillsData)
+			if(sid == "_COMMENT_DOCUMENTATION") continue
+			var/list/s_data = GlobalSkillsData[sid]
+			var/list/reqs = s_data["requirements"]
+
+			var/meets_reqs = 1
+
+			if(reqs && istype(reqs, /list))
+				if(reqs["level"] && level < reqs["level"]) meets_reqs = 0
+				if(meets_reqs && reqs["str"] && strength < reqs["str"]) meets_reqs = 0
+				if(meets_reqs && reqs["agi"] && agility < reqs["agi"]) meets_reqs = 0
+				if(meets_reqs && reqs["vit"] && vitality < reqs["vit"]) meets_reqs = 0
+				if(meets_reqs && reqs["dex"] && dexterity < reqs["dex"]) meets_reqs = 0
+				if(meets_reqs && reqs["von"] && willpower < reqs["von"]) meets_reqs = 0
+				if(meets_reqs && reqs["sor"] && luck < reqs["sor"]) meets_reqs = 0
+				if(meets_reqs && reqs["class"] && char_class != reqs["class"]) meets_reqs = 0
+
+				// Checa a sub-árvore de dependências (Skill X precisa de Skill Y nv Z)
+				if(meets_reqs && reqs["skill_deps"] && istype(reqs["skill_deps"], /list))
+					var/list/deps = reqs["skill_deps"]
+					for(var/dep_id in deps)
+						var/req_lvl = deps[dep_id]
+						var/cur_lvl = 0
+
+						if(dep_id == "basic_fist") cur_lvl = prof_punch_lvl
+						else if(dep_id == "basic_kick") cur_lvl = prof_kick_lvl
+						else if(dep_id == "basic_sword") cur_lvl = prof_sword_lvl
+						else if(dep_id == "basic_gun") cur_lvl = prof_gun_lvl
+						else
+							if(skill_levels && skill_levels[dep_id]) cur_lvl = skill_levels[dep_id]
+
+						if(cur_lvl < req_lvl)
+							meets_reqs = 0
+							break
+
+			if(meets_reqs)
+				if(!(sid in unlocked_skills))
+					unlocked_skills += sid
+					skills_changed = 1
+					var/s_name = s_data["name"]
+					if(s_data["macro"] == null) // Evita flodar a tela dizendo que você desbloqueou o "Soco Básico" no level 1
+						src << output("<span class='log-hit' style='color:#f1c40f; font-weight:bold'>✨ Você descobriu os mistérios da habilidade [s_name]!</span>", "map3d:addLog")
+			else
+				if(sid in unlocked_skills)
+					unlocked_skills -= sid
+					skills_changed = 1
+					
+					// Prevenção Crítica: Limpa a habilidade da Hotbar se o jogador a perder!
+					if(hotbar)
+						for(var/h_slot in hotbar)
+							if(hotbar[h_slot] == sid) hotbar[h_slot] = null
+							
+					var/s_name = s_data["name"]
+					src << output("<span class='log-hit' style='color:#e74c3c'>Você não possui mais os requisitos para a habilidade [s_name].</span>", "map3d:addLog")
+
+		if(skills_changed) needs_skill_sync = 1
+
 	proc/GainSkillExp(sid, amt)
 		if(!skill_levels) skill_levels = list()
 		if(!skill_exps) skill_exps = list()
@@ -221,6 +286,7 @@ mob
 			var/s_name = sid
 			if(GlobalSkillsData[sid]) s_name = GlobalSkillsData[sid]["name"]
 			src << output("Sua habilidade [s_name] subiu para o nivel [skill_levels[sid]]!", "map3d:mostrarNotificacao")
+			CheckSkillUnlocks() // Se a magia upar, pode destravar outra!
 
 	proc/UpdateVisuals()
 		if(SSserver) last_visual_update = SSserver.server_tick
@@ -300,6 +366,7 @@ mob
 		if(fexists("armor_feet_boots_img.png")) src << browse_rsc(file("armor_feet_boots_img.png"), "armor_feet_boots_img.png")
 
 		char_loaded = 1; in_game = 1; is_resting = 0; is_fainted = 0; is_running = 0
+		CheckSkillUnlocks() // FORÇA A AVALIAÇÃO DE REQUISITOS NA ENTRADA
 		UpdateVisuals()
 		
 		src << browse(page, "window=map3d") 

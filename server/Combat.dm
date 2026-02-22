@@ -31,6 +31,9 @@ mob
 		calc_crit = round((luck * 0.5) + eq_crit)
 		calc_poise = vitality * 2
 
+		// Gatilho: Subiu algum atributo? Checa se liberou Magia!
+		if(in_game) CheckSkillUnlocks()
+
 	proc/GainExperience(amount)
 		if(!in_game) return
 		if(amount <= 0) return  // Ignora XP negativa ou zero
@@ -64,10 +67,10 @@ mob
 	proc/GainWeaponExp(type, amount)
 		// Mapa de (tipo) -> (exp_var, lvl_var) para evitar if/else duplicados
 		var/lvl = 1; var/exp = 0
-		if(type == "fist")       { exp = prof_punch_exp;  lvl = prof_punch_lvl  }
-		else if(type == "kick")  { exp = prof_kick_exp;   lvl = prof_kick_lvl   }
-		else if(type == "sword") { exp = prof_sword_exp;  lvl = prof_sword_lvl  }
-		else if(type == "gun")   { exp = prof_gun_exp;    lvl = prof_gun_lvl    }
+		if(type == "fist")       { exp = prof_punch_exp; lvl = prof_punch_lvl  }
+		else if(type == "kick")  { exp = prof_kick_exp; lvl = prof_kick_lvl   }
+		else if(type == "sword") { exp = prof_sword_exp; lvl = prof_sword_lvl  }
+		else if(type == "gun")   { exp = prof_gun_exp; lvl = prof_gun_lvl    }
 		else return  // Tipo desconhecido, não processa
 
 		var/req = GetProficiencyReq(lvl)
@@ -77,10 +80,13 @@ mob
 			src << output("<span class='log-hit' style='color:#00ff00'>Habilidade [type] subiu para [lvl]!</span>", "map3d:addLog")
 
 		// Salva de volta nas variáveis correspondentes
-		if(type == "fist")       { prof_punch_exp = exp;  prof_punch_lvl = lvl  }
-		else if(type == "kick")  { prof_kick_exp = exp;   prof_kick_lvl = lvl   }
-		else if(type == "sword") { prof_sword_exp = exp;  prof_sword_lvl = lvl  }
-		else if(type == "gun")   { prof_gun_exp = exp;    prof_gun_lvl = lvl    }
+		if(type == "fist")       { prof_punch_exp = exp; prof_punch_lvl = lvl  }
+		else if(type == "kick")  { prof_kick_exp = exp; prof_kick_lvl = lvl   }
+		else if(type == "sword") { prof_sword_exp = exp; prof_sword_lvl = lvl  }
+		else if(type == "gun")   { prof_gun_exp = exp; prof_gun_lvl = lvl    }
+
+		// Gatilho: Subiu o nível do soco? Pode liberar magia de classe
+		if(in_game) CheckSkillUnlocks()
 
 	proc/ConsumeEnergy(amount)
 		if(is_fainted) return 0
