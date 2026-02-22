@@ -248,8 +248,6 @@ const UISystem = {
                 const sDef = skill.def;
                 const isUnlocked = (sDef.macro !== null) || this.unlockedSkills.includes(sId);
                 
-                // CORREÇÃO CRÍTICA (Ocultação Total de Segredos): Se o jogador não tem 
-                // acesso à skill especial, o JavaScript ABORTA a renderização dela na aba!
                 if(!isUnlocked) return;
                 
                 const rarityColors = { basic: "#ccc", uncommon: "#2ecc71", rare: "#3498db", legend: "#f1c40f", ultimate: "#e74c3c" };
@@ -324,21 +322,12 @@ const UISystem = {
             if(lvl) lvl.innerText = prof.lvl || 1;
         }
         
-        // CORREÇÃO CRÍTICA DA HOTBAR (Sync Estrito): Agora o JS força a leitura rigorosa
-        // dos Nulls enviados pelo BYOND, e obriga a Hotbar a ser apagada caso a skill suma!
+        // CORREÇÃO CRÍTICA (Esmagamento de Cache): O Javascript aceita as limpezas
+        // da Hotbar feitas pelo Servidor e renderiza instantaneamente o apagamento!
         if(me.hotbar) {
-            let changed = false;
-            for(let i=1; i<=9; i++) {
-                const serverSkill = me.hotbar[i.toString()] || null;
-                if(this.hotbar[i.toString()] !== serverSkill) {
-                    changed = true;
-                    this.hotbar[i.toString()] = serverSkill;
-                }
-            }
-            if(changed) {
-                this.saveHotbarMemory(); // Força salvar no cachê do navegador para reforço!
-                this.renderHotbar();
-            }
+            this.hotbar = me.hotbar;
+            this.saveHotbarMemory(); 
+            this.renderHotbar();
         }
 
         document.getElementById('name-display').innerText = me.nick || "Unknown";

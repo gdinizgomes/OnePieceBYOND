@@ -139,17 +139,16 @@ datum/game_controller
 					
 					if(M.unlocked_skills)
 						for(var/sid in M.unlocked_skills)
-							// CORREÇÃO CRÍTICA (Evita Sobrescrita Cega): Pula as habilidades físicas básicas
-							// pois elas já foram preenchidas no bloco acima usando as variáveis corretas.
 							if(sid == "basic_fist" || sid == "basic_kick" || sid == "basic_sword" || sid == "basic_gun") continue
-							
 							var/slvl = 1; if(M.skill_levels && !isnull(M.skill_levels[sid])) slvl = M.skill_levels[sid]
 							var/sexp = 0; if(M.skill_exps && !isnull(M.skill_exps[sid])) sexp = M.skill_exps[sid]
 							all_profs[sid] = list("lvl"=slvl, "exp"=sexp, "req"=M.GetProficiencyReq(slvl))
 					
+					var/list/safe_hotbar = list("1"=M.hotbar["1"], "2"=M.hotbar["2"], "3"=M.hotbar["3"], "4"=M.hotbar["4"], "5"=M.hotbar["5"], "6"=M.hotbar["6"], "7"=M.hotbar["7"], "8"=M.hotbar["8"], "9"=M.hotbar["9"])
+					
 					var/list/my_stats = list(
 						"my_id" = "\ref[M]",
-						"me" = list("loaded" = 1, "x" = M.R2(M.real_x), "y" = M.R2(M.real_y), "z" = M.R2(M.real_z), "rot" = M.R2(M.real_rot), "nick" = M.name, "class" = M.char_class, "lvl" = M.level, "exp" = M.experience, "req_exp" = M.req_experience, "pts" = M.stat_points, "str" = M.strength, "vit" = M.vitality, "agi" = M.agility, "dex" = M.dexterity, "von" = M.willpower, "sor" = M.luck, "atk" = M.calc_atk, "ratk" = M.calc_ratk, "def" = M.calc_def, "hit" = M.calc_hit, "flee" = M.calc_flee, "crit" = M.calc_crit, "gold" = M.gold, "hp" = M.current_hp, "max_hp" = M.max_hp, "en" = M.current_energy, "max_en" = M.max_energy, "mspd" = M.calc_move_speed, "jmp" = M.calc_jump_power, "rest" = M.is_resting, "ft" = M.is_fainted, "rem" = faint_rem, "skin" = M.skin_color, "cloth" = M.cloth_color, "gen" = M.char_gender, "it" = my_eq["it"], "eq_h" = my_eq["eq_h"], "eq_b" = my_eq["eq_b"], "eq_l" = my_eq["eq_l"], "eq_f" = my_eq["eq_f"], "kills" = M.kills, "deaths" = M.deaths, "lethal" = M.lethality_mode, "skills" = M.unlocked_skills, "profs" = all_profs, "hotbar" = M.hotbar),
+						"me" = list("loaded" = 1, "x" = M.R2(M.real_x), "y" = M.R2(M.real_y), "z" = M.R2(M.real_z), "rot" = M.R2(M.real_rot), "nick" = M.name, "class" = M.char_class, "lvl" = M.level, "exp" = M.experience, "req_exp" = M.req_experience, "pts" = M.stat_points, "str" = M.strength, "vit" = M.vitality, "agi" = M.agility, "dex" = M.dexterity, "von" = M.willpower, "sor" = M.luck, "atk" = M.calc_atk, "ratk" = M.calc_ratk, "def" = M.calc_def, "hit" = M.calc_hit, "flee" = M.calc_flee, "crit" = M.calc_crit, "gold" = M.gold, "hp" = M.current_hp, "max_hp" = M.max_hp, "en" = M.current_energy, "max_en" = M.max_energy, "mspd" = M.calc_move_speed, "jmp" = M.calc_jump_power, "rest" = M.is_resting, "ft" = M.is_fainted, "rem" = faint_rem, "skin" = M.skin_color, "cloth" = M.cloth_color, "gen" = M.char_gender, "it" = my_eq["it"], "eq_h" = my_eq["eq_h"], "eq_b" = my_eq["eq_b"], "eq_l" = my_eq["eq_l"], "eq_f" = my_eq["eq_f"], "kills" = M.kills, "deaths" = M.deaths, "lethal" = M.lethality_mode, "skills" = M.unlocked_skills, "profs" = all_profs, "hotbar" = safe_hotbar),
 						"evts" = M.pending_visuals
 					)
 					
@@ -257,17 +256,30 @@ mob
 					var/s_name = s_data["name"]
 					if(s_data["macro"] == null) 
 						src << output("<span class='log-hit' style='color:#f1c40f; font-weight:bold'>✨ Você descobriu os mistérios da habilidade [s_name]!</span>", "map3d:addLog")
+						src << output("Nova Habilidade: [s_name]!", "map3d:mostrarNotificacao")
 			else
+				// CORREÇÃO CRÍTICA DE LEGADO: 
+				// Mesmo que a magia não estivesse listada como 'desbloqueada' devido a um save antigo,
+				// nós forçamos a varredura da Hotbar e do Nível para evitar "restos" no jogo.
 				if(sid in unlocked_skills)
 					unlocked_skills -= sid
 					skills_changed = 1
-					
-					if(istype(hotbar, /list))
-						for(var/h_slot in hotbar)
-							if(hotbar[h_slot] == sid) hotbar[h_slot] = null
-							
 					var/s_name = s_data["name"]
-					src << output("<span class='log-hit' style='color:#e74c3c'>Você não possui mais os requisitos para a habilidade [s_name].</span>", "map3d:addLog")
+					src << output("<span class='log-hit' style='color:#e74c3c'>Você esqueceu como usar a habilidade [s_name]. O nível dela foi perdido.</span>", "map3d:addLog")
+
+				// Poda de Segurança Absoluta (Age fora do bloco if para garantir a limpeza)
+				if(istype(skill_levels, /list) && skill_levels[sid] && skill_levels[sid] > 1) 
+					skill_levels[sid] = 1
+					skills_changed = 1
+				if(istype(skill_exps, /list) && skill_exps[sid] && skill_exps[sid] > 0) 
+					skill_exps[sid] = 0
+				
+				if(istype(hotbar, /list))
+					for(var/i=1 to 9)
+						var/h_slot = "[i]"
+						if(hotbar[h_slot] == sid) 
+							hotbar[h_slot] = null
+							skills_changed = 1
 
 		if(skills_changed) needs_skill_sync = 1
 

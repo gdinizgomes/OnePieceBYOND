@@ -147,7 +147,7 @@
         "scaling": "magical",
         "requiresWeaponTag": null,
         "requirements": {
-            "level": 5, "str": null, "agi": null, "vit": null, "dex": null, "von": 10, "sor": null,
+            "level": 6, "str": null, "agi": null, "vit": null, "dex": null, "von": 10, "sor": null,
             "class": null, "devil_fruit": null, "skill_deps": { "basic_fist": 5 }
         },
         "energyCost": 15,
@@ -173,7 +173,7 @@
         "scaling": "magical",
         "requiresWeaponTag": null,
         "requirements": {
-            "level": 20, "str": null, "agi": null, "vit": null, "dex": null, "von": 15, "sor": 10,
+            "level": 7, "str": null, "agi": null, "vit": null, "dex": null, "von": 15, "sor": 10,
             "class": null, "devil_fruit": null, "skill_deps": { "fireball": 2 }
         },
         "energyCost": 20,
