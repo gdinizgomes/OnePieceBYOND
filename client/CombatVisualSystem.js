@@ -70,7 +70,6 @@ const CombatVisualSystem = {
         setTimeout(() => { div.remove(); }, 1000);
     },
 
-    // CORREÇÃO: Recebe e armazena o skillId do tiro da arma
     fireProjectile: function(originMesh, projectileDef, isMine, skillId) {
         const s = projectileDef.scale || [0.1, 0.1, 0.1];
         const bullet = this.getProjectile(projectileDef.color, s);
@@ -83,23 +82,15 @@ const CombatVisualSystem = {
         
         bullet.position.copy(originMesh.position); 
         bullet.position.y += 1.05; 
-        bullet.position.x += sin * 0.8 - cos * 0.25; 
-        bullet.position.z += cos * 0.8 + sin * 0.25; 
+        
+        // CORREÇÃO CRÍTICA (Alinhamento Perfeito):
+        // Removemos o 'lookAt' convergente que entortava os tiros.
+        // O tiro agora sai do peito de forma perfeitamente reta no eixo Z.
+        bullet.position.x += sin * 0.5; 
+        bullet.position.z += cos * 0.5; 
         
         let dX = sin; let dY = 0; let dZ = cos;
-        
-        if (isMine && TargetSystem.currentTargetID && EntityManager.otherPlayers[TargetSystem.currentTargetID] && EntityManager.otherPlayers[TargetSystem.currentTargetID].mesh) {
-            const targetMesh = EntityManager.otherPlayers[TargetSystem.currentTargetID].mesh;
-            const targetPos = new THREE.Vector3(targetMesh.position.x, targetMesh.position.y + 0.9, targetMesh.position.z);
-            const bulletPos = bullet.position.clone();
-            
-            const dirVec = new THREE.Vector3().subVectors(targetPos, bulletPos).normalize();
-            dX = dirVec.x; dY = dirVec.y; dZ = dirVec.z;
-            
-            bullet.lookAt(targetPos); 
-        } else {
-            bullet.rotation.y = bodyRot; 
-        }
+        bullet.rotation.y = bodyRot;
 
         Engine.scene.add(bullet);
         
@@ -107,7 +98,7 @@ const CombatVisualSystem = {
             mesh: bullet, dirX: dX, dirY: dY, dirZ: dZ, 
             speed: projectileDef.speed, distTraveled: 0, 
             maxDist: projectileDef.range || 10, isMine: isMine,
-            skillId: skillId // Guardado para o servidor
+            skillId: skillId
         });
     },
 
@@ -135,14 +126,23 @@ const CombatVisualSystem = {
         hitboxMesh.material.transparent = true;
         hitboxMesh.material.opacity = 0.5; 
         
-        // CORREÇÃO CRÍTICA (Invisibilidade do Fogo/Gelo):
-        // Aplica o DEBUG apenas ao MATERIAL do contorno, e não ao Grupo inteiro,
-        // garantindo que a "Skin" (partículas ou modelo 3D) seja renderizada.
+        // CORREÇÃO (Invisibilidade): Ocular apenas a borda (material), 
+        // mantendo os filhos (o visual da magia 3D) visíveis!
         hitboxMesh.material.visible = Config.DEBUG_HITBOXES;
 
         if (def.visualDef && GameDefinitions[def.visualDef]) {
             const skinData = GameDefinitions[def.visualDef];
             const skinMesh = CharFactory.createFromDef(def.visualDef, skinData.visual);
+            
+            // CORREÇÃO (Dupla Escala/Estaca Torta):
+            // Anula a escala do pai (hitbox) na pele visual para não achatar o modelo.
+            if(def.hitboxSize) {
+                skinMesh.scale.set(
+                    1 / def.hitboxSize[0],
+                    1 / def.hitboxSize[1],
+                    1 / def.hitboxSize[2]
+                );
+            }
             hitboxMesh.add(skinMesh); 
         }
 
@@ -151,19 +151,11 @@ const CombatVisualSystem = {
         
         hitboxMesh.position.copy(originMesh.position);
         hitboxMesh.position.y += 1.0; 
-        hitboxMesh.position.x += sin * 1.0; 
-        hitboxMesh.position.z += cos * 1.0;
+        hitboxMesh.position.x += sin * 0.5; 
+        hitboxMesh.position.z += cos * 0.5;
 
         let dX = sin; let dY = 0; let dZ = cos;
-        
-        if (isMine && TargetSystem.currentTargetID && EntityManager.otherPlayers[TargetSystem.currentTargetID] && EntityManager.otherPlayers[TargetSystem.currentTargetID].mesh) {
-            const targetMesh = EntityManager.otherPlayers[TargetSystem.currentTargetID].mesh;
-            const targetPos = new THREE.Vector3(targetMesh.position.x, targetMesh.position.y + 0.9, targetMesh.position.z);
-            const dirVec = new THREE.Vector3().subVectors(targetPos, hitboxMesh.position).normalize();
-            dX = dirVec.x; dY = dirVec.y; dZ = dirVec.z;
-        }
-
-        hitboxMesh.rotation.y = Math.atan2(dX, dZ);
+        hitboxMesh.rotation.y = bodyRot; 
 
         Engine.scene.add(hitboxMesh);
         
@@ -211,8 +203,6 @@ const CombatVisualSystem = {
 
             if (this.checkAccurateCollision(objRef, target.mesh)) {
                 
-                // CORREÇÃO CRÍTICA (Acoplamento de Rede): 
-                // Agora envia rigorosamente os dados Data-Driven exigidos pelo servidor
                 let sId = "";
                 let step = 1;
 
@@ -269,7 +259,6 @@ const CombatVisualSystem = {
 
                     if (this.checkAccurateCollision(p, EntityManager.otherPlayers[id].mesh)) {
                         
-                        // CORREÇÃO CRÍTICA (Acoplamento de Rede de Magias)
                         if(typeof BYOND_REF !== 'undefined') {
                             NetworkSystem.queueCommand(`action=register_hit&target_ref=${id}&skill_id=${p.skillId}&step=1`);
                         }

@@ -138,7 +138,6 @@ const EntityManager = {
                 
                 if(other.hpFill && other.maxHp > 0) other.hpFill.style.width = Math.max(0, Math.min(100, (other.currentHp / other.maxHp) * 100)) + "%";
                 
-                // NOVIDADE: Verifica no JSON se a arma é "ranged" para disparar visual remoto
                 if (other.attacking && other.attackType) {
                     const sDef = window.GameSkills ? window.GameSkills[other.attackType] : null;
                     if(sDef && sDef.scaling === "ranged" && !other.hasFiredThisCycle) {
@@ -165,11 +164,14 @@ const EntityManager = {
         if(packet.t && packet.evts) {
             packet.evts.forEach(evt => {
                 if (evt.type === "skill_cast") {
+                    // CORREÇÃO CRÍTICA: Se o lançador da magia for VOCÊ, o cliente ignora 
+                    // a ordem do servidor pois ele já fez a Previsão Visual (Evita clones)
+                    if(evt.caster === this.myID) return; 
+
                     let originMesh = null;
-                    if(evt.caster === this.myID && this.playerGroup) originMesh = this.playerGroup;
-                    else if(this.otherPlayers[evt.caster]) originMesh = this.otherPlayers[evt.caster].mesh;
+                    if(this.otherPlayers[evt.caster]) originMesh = this.otherPlayers[evt.caster].mesh;
                     
-                    CombatVisualSystem.fireSkillProjectile(originMesh, evt.skill, evt.caster);
+                    if(originMesh) CombatVisualSystem.fireSkillProjectile(originMesh, evt.skill, evt.caster);
                 }
             });
         }
@@ -352,7 +354,6 @@ const EntityManager = {
 
             let remoteState = "DEFAULT";
             
-            // CORREÇÃO CRÍTICA (Animações de Remotos Data-Driven)
             if(other.attacking && other.attackType) {
                 const sDef = window.GameSkills ? window.GameSkills[other.attackType] : null;
                 if(sDef) {

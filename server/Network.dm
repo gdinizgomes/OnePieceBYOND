@@ -189,8 +189,6 @@ mob
 					del(I)
 					RequestInventoryUpdate()
 
-
-		// --- A REFATORAÇÃO DEFINITIVA DE ATAQUES E MAGIAS (DATA-DRIVEN) ---
 		if(action == "execute_skill" && in_game)
 			if(is_resting || is_fainted) return
 			var/s_id = href_list["skill_id"]
@@ -280,9 +278,12 @@ mob
 					var/local_z = (dx * s) + (dz * c)
 					var/local_x = (dx * c) - (dz * s)
 
-					var/pad = 1.0 
-					var/half_l = (box_len / 2) + pad
-					var/half_w = (box_wid / 2) + pad
+					// CORREÇÃO CRÍTICA (Lag Compensation):
+					// Profundidade aumentada de 1.0 para 1.5, perdoando alvos que correm para trás com ping alto.
+					var/pad_w = 1.0 
+					var/pad_l = 1.5 
+					var/half_l = (box_len / 2) + pad_l
+					var/half_w = (box_wid / 2) + pad_w
 
 					if(abs(local_z - fwd_off) > half_l || abs(local_x) > half_w)
 						src << output("<span style='color:red'><b>Servidor:</b> Hit Negado - OBB Matemática.</span>", "map3d:addLog")
@@ -311,7 +312,6 @@ mob
 					src << output("<span class='log-hit' style='color:#95a5a6'>Errou o alvo! (Esquiva)</span>", "map3d:addLog")
 					return 
 
-			// --- O CÁLCULO DE DANO UNIVERSAL (AGORA INCLUI A VAR DE "POWER") ---
 			var/base_dmg = skill_data["power"]
 			if(!base_dmg) base_dmg = 0
 			
