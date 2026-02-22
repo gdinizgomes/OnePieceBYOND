@@ -1,14 +1,11 @@
 // server/Persistence.dm
 // Módulo de Gerenciamento de Dados, Salvamento e Carregamento (Save/Load)
 
-// Incremente este número ao mudar qualquer campo de save para detectar migração necessária
 #define SAVE_VERSION 2
 
-// --- NOVIDADE: FUNÇÕES GLOBAIS DE PERSISTÊNCIA DO MUNDO ---
 proc/SaveWorldState()
 	var/file_path = "[SAVE_DIR]world_state.sav"
 	
-	// ATOMICIDADE: Deleta o arquivo antigo primeiro para garantir uma escrita física limpa (Evita buffer pendente)
 	if(fexists(file_path)) 
 		fdel(file_path)
 		
@@ -27,7 +24,6 @@ proc/SaveWorldState()
 		
 	F["ground_items"] << items_data
 	
-	// ATOMICIDADE: Destrói o ponteiro, forçando o BYOND a gravar no Disco Rígido (HD) instantaneamente
 	F = null 
 
 proc/LoadWorldState()
@@ -55,7 +51,7 @@ proc/LoadWorldState()
 					if(I && (I in global_ground_items))
 						global_ground_items -= I
 						if(SSserver) SSserver.ground_dirty_tick = SSserver.server_tick
-						SaveWorldState() // Salva o estado ao destruir o item
+						SaveWorldState() 
 						del(I)
 
 
@@ -108,6 +104,12 @@ mob
 		F["kills"] << src.kills
 		F["deaths"] << src.deaths
 		F["starters"] << src.received_starters 
+		
+		// NOVIDADE: Gravação Estrita de Memória Avançada
+		F["skill_levels"] << src.skill_levels
+		F["skill_exps"] << src.skill_exps
+		F["hotbar"] << src.hotbar
+		
 		src << output("Salvo!", "map3d:mostrarNotificacao")
 
 	proc/LoadCharacter(slot)
@@ -150,6 +152,11 @@ mob
 		if(F["kills"])    F["kills"]    >> src.kills; else src.kills = 0
 		if(F["deaths"])   F["deaths"]   >> src.deaths; else src.deaths = 0
 		if(F["starters"]) F["starters"] >> src.received_starters; else src.received_starters = 0
+
+		// NOVIDADE: Carregamento Estrito de Memória Avançada
+		if(F["skill_levels"]) F["skill_levels"] >> src.skill_levels; else src.skill_levels = list()
+		if(F["skill_exps"]) F["skill_exps"] >> src.skill_exps; else src.skill_exps = list()
+		if(F["hotbar"]) F["hotbar"] >> src.hotbar; else src.hotbar = list("1"=null, "2"=null, "3"=null, "4"=null, "5"=null, "6"=null, "7"=null, "8"=null, "9"=null)
 
 		if(src.level < 1) src.level = 1
 		if(src.experience < 0) src.experience = 0

@@ -10,7 +10,6 @@ const UISystem = {
     hotbar: { '1': null, '2': null, '3': null, '4': null, '5': null, '6': null, '7': null, '8': null, '9': null },
     assignTargetSlot: null,
 
-    // NOVIDADE: Fecha todas as janelas para evitar sobreposição suja
     closeAllWindows: function() {
         this.state.invOpen = false; document.getElementById('inventory-window').style.display = 'none';
         this.state.statOpen = false; document.getElementById('stat-window').style.display = 'none';
@@ -91,20 +90,6 @@ const UISystem = {
     },
     hideTooltip: function() { document.getElementById('tooltip').style.display = 'none'; },
 
-    loadHotbarMemory: function() {
-        if(!this.charName) return;
-        const saved = localStorage.getItem(`poe2_hotbar_${this.charName}`);
-        if(saved) {
-            try { this.hotbar = JSON.parse(saved); } catch(e){}
-        }
-        this.renderHotbar();
-    },
-
-    saveHotbarMemory: function() {
-        if(!this.charName) return;
-        localStorage.setItem(`poe2_hotbar_${this.charName}`, JSON.stringify(this.hotbar));
-    },
-
     renderHotbar: function() {
         const container = document.getElementById('hotbar');
         if(!container) return;
@@ -147,7 +132,6 @@ const UISystem = {
         emptyBtn.onclick = () => this.assignSkillToSlot(null);
         list.appendChild(emptyBtn);
 
-        // NOVIDADE: Verifica quais habilidades já estão equipadas em OUTROS slots!
         const currentEquipped = Object.values(this.hotbar);
 
         for(const [sId, sDef] of Object.entries(window.GameSkills)) {
@@ -155,7 +139,6 @@ const UISystem = {
             if(sDef.macro !== null) continue; 
             if(!this.unlockedSkills.includes(sId)) continue; 
             
-            // Se já está na hotbar E não é o slot que clicamos agora, oculta!
             if(currentEquipped.includes(sId) && this.hotbar[this.assignTargetSlot] !== sId) continue;
 
             const btn = document.createElement('div');
@@ -180,7 +163,10 @@ const UISystem = {
     assignSkillToSlot: function(skillId) {
         if(this.assignTargetSlot) {
             this.hotbar[this.assignTargetSlot] = skillId;
-            this.saveHotbarMemory();
+            // NOVIDADE: A Hotbar agora avisa diretamente o BYOND no momento do clique
+            if(typeof window.NetworkSystem !== 'undefined') {
+                window.NetworkSystem.queueCommand(`action=update_hotbar&slot=${this.assignTargetSlot}&skill_id=${skillId || "null"}`);
+            }
             this.renderHotbar();
         }
         this.closeAssignPopup();
@@ -277,7 +263,6 @@ const UISystem = {
                     }
                 }
                 
-                // NOVIDADE: title na bar-bg mostra a exp exata quando o mouse passa em cima
                 card.innerHTML = `
                     <div class="skill-icon" style="color:${c}; border-color:${c};">${iconChar}</div>
                     <div class="skill-info">
@@ -302,12 +287,7 @@ const UISystem = {
     },
 
     updatePersonalStatus: function(me) {
-        this.cache.profs = {
-            'basic_fist': { lvl: me.pp, exp: me.pp_x, req: me.pp_r },
-            'basic_kick': { lvl: me.pk, exp: me.pk_x, req: me.pk_r },
-            'basic_sword': { lvl: me.ps, exp: me.ps_x, req: me.ps_r },
-            'basic_gun': { lvl: me.pg, exp: me.pg_x, req: me.pg_r }
-        };
+        if(me.profs) this.cache.profs = me.profs;
 
         if(me.skills) {
             const str = JSON.stringify(me.skills);
@@ -328,10 +308,17 @@ const UISystem = {
             }
             if(lvl) lvl.innerText = prof.lvl || 1;
         }
-
-        if(me.nick && this.charName !== me.nick) {
-            this.charName = me.nick;
-            this.loadHotbarMemory();
+        
+        // NOVIDADE: O Cliente se alimenta unicamente da Hotbar enviada pelo servidor!
+        if(me.hotbar) {
+            let changed = false;
+            for(let i=1; i<=9; i++) {
+                if(this.hotbar[i.toString()] !== me.hotbar[i.toString()]) {
+                    changed = true;
+                    this.hotbar[i.toString()] = me.hotbar[i.toString()];
+                }
+            }
+            if(changed) this.renderHotbar();
         }
 
         document.getElementById('name-display').innerText = me.nick || "Unknown";

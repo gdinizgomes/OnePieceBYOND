@@ -130,10 +130,22 @@ datum/game_controller
 					var/global_json = json_encode(my_global_json_list)
 
 					var/list/my_eq = SerializeEquipment(M)
+					
+					// NOVIDADE CRÍTICA: Compila o progresso de TODAS as magias e envia o Hotbar
+					var/list/all_profs = list()
+					all_profs["basic_fist"] = list("lvl"=M.prof_punch_lvl, "exp"=M.prof_punch_exp, "req"=M.GetProficiencyReq(M.prof_punch_lvl))
+					all_profs["basic_kick"] = list("lvl"=M.prof_kick_lvl, "exp"=M.prof_kick_exp, "req"=M.GetProficiencyReq(M.prof_kick_lvl))
+					all_profs["basic_sword"] = list("lvl"=M.prof_sword_lvl, "exp"=M.prof_sword_exp, "req"=M.GetProficiencyReq(M.prof_sword_lvl))
+					all_profs["basic_gun"] = list("lvl"=M.prof_gun_lvl, "exp"=M.prof_gun_exp, "req"=M.GetProficiencyReq(M.prof_gun_lvl))
+					if(M.unlocked_skills)
+						for(var/sid in M.unlocked_skills)
+							var/slvl = 1; if(M.skill_levels && M.skill_levels[sid]) slvl = M.skill_levels[sid]
+							var/sexp = 0; if(M.skill_exps && M.skill_exps[sid]) sexp = M.skill_exps[sid]
+							all_profs[sid] = list("lvl"=slvl, "exp"=sexp, "req"=M.GetProficiencyReq(slvl))
+					
 					var/list/my_stats = list(
 						"my_id" = "\ref[M]",
-						// NOVIDADE: Adicionado a key "skills" ao final da lista de status pessoal!
-						"me" = list("loaded" = 1, "x" = M.R2(M.real_x), "y" = M.R2(M.real_y), "z" = M.R2(M.real_z), "rot" = M.R2(M.real_rot), "nick" = M.name, "class" = M.char_class, "lvl" = M.level, "exp" = M.experience, "req_exp" = M.req_experience, "pts" = M.stat_points, "str" = M.strength, "vit" = M.vitality, "agi" = M.agility, "dex" = M.dexterity, "von" = M.willpower, "sor" = M.luck, "atk" = M.calc_atk, "ratk" = M.calc_ratk, "def" = M.calc_def, "hit" = M.calc_hit, "flee" = M.calc_flee, "crit" = M.calc_crit, "gold" = M.gold, "hp" = M.current_hp, "max_hp" = M.max_hp, "en" = M.current_energy, "max_en" = M.max_energy, "pp" = M.prof_punch_lvl, "pp_x" = M.prof_punch_exp, "pp_r" = M.GetProficiencyReq(M.prof_punch_lvl), "pk" = M.prof_kick_lvl,  "pk_x" = M.prof_kick_exp,  "pk_r" = M.GetProficiencyReq(M.prof_kick_lvl), "ps" = M.prof_sword_lvl, "ps_x" = M.prof_sword_exp, "ps_r" = M.GetProficiencyReq(M.prof_sword_lvl), "pg" = M.prof_gun_lvl,   "pg_x" = M.prof_gun_exp,   "pg_r" = M.GetProficiencyReq(M.prof_gun_lvl), "mspd" = M.calc_move_speed, "jmp" = M.calc_jump_power, "rest" = M.is_resting, "ft" = M.is_fainted, "rem" = faint_rem, "skin" = M.skin_color, "cloth" = M.cloth_color, "gen" = M.char_gender, "it" = my_eq["it"], "eq_h" = my_eq["eq_h"], "eq_b" = my_eq["eq_b"], "eq_l" = my_eq["eq_l"], "eq_f" = my_eq["eq_f"], "kills" = M.kills, "deaths" = M.deaths, "lethal" = M.lethality_mode, "skills" = M.unlocked_skills),
+						"me" = list("loaded" = 1, "x" = M.R2(M.real_x), "y" = M.R2(M.real_y), "z" = M.R2(M.real_z), "rot" = M.R2(M.real_rot), "nick" = M.name, "class" = M.char_class, "lvl" = M.level, "exp" = M.experience, "req_exp" = M.req_experience, "pts" = M.stat_points, "str" = M.strength, "vit" = M.vitality, "agi" = M.agility, "dex" = M.dexterity, "von" = M.willpower, "sor" = M.luck, "atk" = M.calc_atk, "ratk" = M.calc_ratk, "def" = M.calc_def, "hit" = M.calc_hit, "flee" = M.calc_flee, "crit" = M.calc_crit, "gold" = M.gold, "hp" = M.current_hp, "max_hp" = M.max_hp, "en" = M.current_energy, "max_en" = M.max_energy, "mspd" = M.calc_move_speed, "jmp" = M.calc_jump_power, "rest" = M.is_resting, "ft" = M.is_fainted, "rem" = faint_rem, "skin" = M.skin_color, "cloth" = M.cloth_color, "gen" = M.char_gender, "it" = my_eq["it"], "eq_h" = my_eq["eq_h"], "eq_b" = my_eq["eq_b"], "eq_l" = my_eq["eq_l"], "eq_f" = my_eq["eq_f"], "kills" = M.kills, "deaths" = M.deaths, "lethal" = M.lethality_mode, "skills" = M.unlocked_skills, "profs" = all_profs, "hotbar" = M.hotbar),
 						"evts" = M.pending_visuals
 					)
 					
@@ -170,6 +182,12 @@ mob
 	var/lethality_mode = 0
 	var/needs_skill_sync = 1 
 	var/list/unlocked_skills = list("fireball", "iceball")
+	
+	// NOVIDADE: Variáveis persistentes para habilidades e Hotbar!
+	var/list/skill_levels = list()
+	var/list/skill_exps = list()
+	var/list/hotbar = list("1"=null, "2"=null, "3"=null, "4"=null, "5"=null, "6"=null, "7"=null, "8"=null, "9"=null)
+
 	var/list/skill_cooldowns = list()
 	var/list/active_skill_hits = list()
 	var/strength = 5; var/agility = 5; var/vitality = 5; var/dexterity = 5; var/willpower = 5; var/luck = 5
@@ -187,6 +205,22 @@ mob
 	var/max_targets_per_swing = 1; var/attack_window = 0; var/projectile_window = 0
 	var/obj/item/slot_hand = null; var/obj/item/slot_head = null; var/obj/item/slot_body = null; var/obj/item/slot_legs = null; var/obj/item/slot_feet = null 
 	var/list/pending_visuals = list()
+
+	// NOVIDADE: Motor de Experiência Genérico para Magias (Lido pelo Network)
+	proc/GainSkillExp(sid, amt)
+		if(!skill_levels) skill_levels = list()
+		if(!skill_exps) skill_exps = list()
+		if(!skill_levels[sid]) skill_levels[sid] = 1
+		if(!skill_exps[sid]) skill_exps[sid] = 0
+
+		skill_exps[sid] += amt
+		var/req = GetProficiencyReq(skill_levels[sid])
+		if(skill_exps[sid] >= req)
+			skill_exps[sid] -= req
+			skill_levels[sid]++
+			var/s_name = sid
+			if(GlobalSkillsData[sid]) s_name = GlobalSkillsData[sid]["name"]
+			src << output("Sua habilidade [s_name] subiu para o nivel [skill_levels[sid]]!", "map3d:mostrarNotificacao")
 
 	proc/UpdateVisuals()
 		if(SSserver) last_visual_update = SSserver.server_tick
