@@ -137,9 +137,12 @@ datum/game_controller
 					all_profs["basic_sword"] = list("lvl"=M.prof_sword_lvl, "exp"=M.prof_sword_exp, "req"=M.GetProficiencyReq(M.prof_sword_lvl))
 					all_profs["basic_gun"] = list("lvl"=M.prof_gun_lvl, "exp"=M.prof_gun_exp, "req"=M.GetProficiencyReq(M.prof_gun_lvl))
 					
-					// CORREÇÃO CRÍTICA: Leitura protegida de EXP para impedir que Zeros sejam ignorados
 					if(M.unlocked_skills)
 						for(var/sid in M.unlocked_skills)
+							// CORREÇÃO CRÍTICA (Evita Sobrescrita Cega): Pula as habilidades físicas básicas
+							// pois elas já foram preenchidas no bloco acima usando as variáveis corretas.
+							if(sid == "basic_fist" || sid == "basic_kick" || sid == "basic_sword" || sid == "basic_gun") continue
+							
 							var/slvl = 1; if(M.skill_levels && !isnull(M.skill_levels[sid])) slvl = M.skill_levels[sid]
 							var/sexp = 0; if(M.skill_exps && !isnull(M.skill_exps[sid])) sexp = M.skill_exps[sid]
 							all_profs[sid] = list("lvl"=slvl, "exp"=sexp, "req"=M.GetProficiencyReq(slvl))
@@ -268,7 +271,6 @@ mob
 
 		if(skills_changed) needs_skill_sync = 1
 
-	// CORREÇÃO CRÍTICA DE EXP: A avaliação falhava quando o XP era exatamente zero!
 	proc/GainSkillExp(sid, amt)
 		if(!istype(skill_levels, /list)) skill_levels = list()
 		if(!istype(skill_exps, /list)) skill_exps = list()
