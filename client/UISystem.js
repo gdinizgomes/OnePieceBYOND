@@ -180,6 +180,7 @@ const UISystem = {
             if(typeof window.NetworkSystem !== 'undefined') {
                 window.NetworkSystem.queueCommand(`action=update_hotbar&slot=${this.assignTargetSlot}&skill_id=${skillId || "null"}`);
             }
+            this.saveHotbarMemory();
             this.renderHotbar();
         }
         this.closeAssignPopup();
@@ -189,6 +190,13 @@ const UISystem = {
         if(!window.GameSkills) {
             if(typeof window.NetworkSystem !== 'undefined') window.NetworkSystem.queueCommand('action=request_skills');
             return;
+        }
+        
+        // CORREÇÃO CRÍTICA (Preservação de Aba): Memoriza qual aba você estava olhando!
+        let currentActiveTab = null;
+        const activeContent = document.querySelector('.tab-content.active');
+        if (activeContent) {
+            currentActiveTab = activeContent.id.replace('tab-cat-', '');
         }
         
         const tabsHeader = document.getElementById('skills-tabs-header');
@@ -232,7 +240,12 @@ const UISystem = {
                 btn.className = 'tab-btn';
                 btn.innerText = cat;
                 btn.onclick = () => this.switchSkillTab(`tab-cat-${cat}`, btnId);
-                if(!firstActive) {
+                
+                // Abre a aba que você estava olhando antes do JS redesenhar a janela
+                if(currentActiveTab === cat) {
+                    btn.classList.add('active');
+                    firstActive = cat;
+                } else if(!firstActive && !currentActiveTab) {
                     btn.classList.add('active');
                     firstActive = cat;
                 }
@@ -322,12 +335,22 @@ const UISystem = {
             if(lvl) lvl.innerText = prof.lvl || 1;
         }
         
-        // CORREÇÃO CRÍTICA (Esmagamento de Cache): O Javascript aceita as limpezas
-        // da Hotbar feitas pelo Servidor e renderiza instantaneamente o apagamento!
+        // CORREÇÃO CRÍTICA DO PISCA-PISCA: A Hotbar só é tocada se houver MUDANÇAS do servidor.
         if(me.hotbar) {
-            this.hotbar = me.hotbar;
-            this.saveHotbarMemory(); 
-            this.renderHotbar();
+            let changed = false;
+            for(let i=1; i<=9; i++) {
+                let serverSkill = me.hotbar[i.toString()];
+                if (serverSkill === "") serverSkill = null; // Burlando o bug do BYOND
+                
+                if(this.hotbar[i.toString()] !== serverSkill) {
+                    changed = true;
+                    this.hotbar[i.toString()] = serverSkill;
+                }
+            }
+            if(changed) {
+                this.saveHotbarMemory(); 
+                this.renderHotbar();
+            }
         }
 
         document.getElementById('name-display').innerText = me.nick || "Unknown";

@@ -108,8 +108,6 @@ mob
 		F["skill_levels"] << src.skill_levels
 		F["skill_exps"] << src.skill_exps
 		F["hotbar"] << src.hotbar
-		
-		// CORREÇÃO CRÍTICA: Salva a árvore de descobertas para não flodar notificação no relog
 		F["unlocked_skills"] << src.unlocked_skills
 		
 		src << output("Salvo!", "map3d:mostrarNotificacao")
@@ -159,9 +157,10 @@ mob
 
 		F["skill_levels"] >> src.skill_levels; if(!istype(src.skill_levels, /list)) src.skill_levels = list()
 		F["skill_exps"] >> src.skill_exps; if(!istype(src.skill_exps, /list)) src.skill_exps = list()
-		F["hotbar"] >> src.hotbar; if(!istype(src.hotbar, /list)) src.hotbar = list("1"=null, "2"=null, "3"=null, "4"=null, "5"=null, "6"=null, "7"=null, "8"=null, "9"=null)
 		
-		// Lendo a árvore do DB
+		// CORREÇÃO CRÍTICA (Bypass do Bug BYOND): Inicializa as strings da Hotbar!
+		F["hotbar"] >> src.hotbar; if(!istype(src.hotbar, /list)) src.hotbar = list("1"="", "2"="", "3"="", "4"="", "5"="", "6"="", "7"="", "8"="", "9"="")
+		
 		F["unlocked_skills"] >> src.unlocked_skills; if(!istype(src.unlocked_skills, /list)) src.unlocked_skills = list()
 
 		if(src.level < 1) src.level = 1

@@ -174,7 +174,7 @@
         "requiresWeaponTag": null,
         "requirements": {
             "level": 7, "str": null, "agi": null, "vit": null, "dex": null, "von": 15, "sor": 10,
-            "class": null, "devil_fruit": null, "skill_deps": { "fireball": 2 }
+            "class": null, "devil_fruit": null, "skill_deps": { "fireball": 4 }
         },
         "energyCost": 20,
         "cooldown": 3000,

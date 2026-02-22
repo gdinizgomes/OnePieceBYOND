@@ -186,10 +186,9 @@ mob
 	var/needs_skill_sync = 1 
 	
 	var/list/unlocked_skills = list()
-	
 	var/list/skill_levels = list()
 	var/list/skill_exps = list()
-	var/list/hotbar = list("1"=null, "2"=null, "3"=null, "4"=null, "5"=null, "6"=null, "7"=null, "8"=null, "9"=null)
+	var/list/hotbar = list("1"="", "2"="", "3"="", "4"="", "5"="", "6"="", "7"="", "8"="", "9"="")
 
 	var/list/skill_cooldowns = list()
 	var/list/active_skill_hits = list()
@@ -209,6 +208,7 @@ mob
 	var/obj/item/slot_hand = null; var/obj/item/slot_head = null; var/obj/item/slot_body = null; var/obj/item/slot_legs = null; var/obj/item/slot_feet = null 
 	var/list/pending_visuals = list()
 
+	// CORREÇÃO CRÍTICA (A Poda Absoluta): As magias resetam sempre que forem negadas.
 	proc/CheckSkillUnlocks()
 		if(!in_game) return
 		var/skills_changed = 0
@@ -258,27 +258,21 @@ mob
 						src << output("<span class='log-hit' style='color:#f1c40f; font-weight:bold'>✨ Você descobriu os mistérios da habilidade [s_name]!</span>", "map3d:addLog")
 						src << output("Nova Habilidade: [s_name]!", "map3d:mostrarNotificacao")
 			else
-				// CORREÇÃO CRÍTICA DE LEGADO: 
-				// Mesmo que a magia não estivesse listada como 'desbloqueada' devido a um save antigo,
-				// nós forçamos a varredura da Hotbar e do Nível para evitar "restos" no jogo.
 				if(sid in unlocked_skills)
 					unlocked_skills -= sid
 					skills_changed = 1
 					var/s_name = s_data["name"]
 					src << output("<span class='log-hit' style='color:#e74c3c'>Você esqueceu como usar a habilidade [s_name]. O nível dela foi perdido.</span>", "map3d:addLog")
 
-				// Poda de Segurança Absoluta (Age fora do bloco if para garantir a limpeza)
-				if(istype(skill_levels, /list) && skill_levels[sid] && skill_levels[sid] > 1) 
-					skill_levels[sid] = 1
-					skills_changed = 1
-				if(istype(skill_exps, /list) && skill_exps[sid] && skill_exps[sid] > 0) 
-					skill_exps[sid] = 0
+				// Poda de Força Bruta
+				if(istype(skill_levels, /list)) skill_levels[sid] = 1
+				if(istype(skill_exps, /list)) skill_exps[sid] = 0
 				
 				if(istype(hotbar, /list))
 					for(var/i=1 to 9)
 						var/h_slot = "[i]"
 						if(hotbar[h_slot] == sid) 
-							hotbar[h_slot] = null
+							hotbar[h_slot] = ""
 							skills_changed = 1
 
 		if(skills_changed) needs_skill_sync = 1

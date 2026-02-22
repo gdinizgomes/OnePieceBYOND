@@ -20,8 +20,8 @@ mob
 		if(action == "update_hotbar" && in_game)
 			var/slot = href_list["slot"]
 			var/skill = href_list["skill_id"]
-			if(!hotbar) hotbar = list("1"=null, "2"=null, "3"=null, "4"=null, "5"=null, "6"=null, "7"=null, "8"=null, "9"=null)
-			if(skill == "null" || skill == "") hotbar[slot] = null
+			if(!hotbar) hotbar = list("1"="", "2"="", "3"="", "4"="", "5"="", "6"="", "7"="", "8"="", "9"="")
+			if(skill == "null" || skill == "") hotbar[slot] = ""
 			else hotbar[slot] = skill
 		
 		if(action == "request_slots")
@@ -205,8 +205,6 @@ mob
 			var/list/skill_data = GlobalSkillsData[s_id]
 			if(!skill_data) return
 
-			// CORREÇÃO CRÍTICA DE SEGURANÇA: Se a magia for especial, valida se o 
-			// jogador realmente possui ela na lista de desbloqueios, impedindo hackers de burlar os requisitos!
 			if(skill_data["macro"] == null)
 				if(!unlocked_skills || !(s_id in unlocked_skills))
 					return 
