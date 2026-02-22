@@ -10,14 +10,19 @@ const InputSystem = {
     handleKeyDown: function(e) {
         const k = e.key.toLowerCase();
         
+        // CORREÇÃO CRÍTICA (Foco de Botão): Previne que o botão de "Espaço" (Pulo) 
+        // ative acidentalmente o último botão clicado na Interface HTML
+        if (k === ' ') { e.preventDefault(); }
+        
         if (k === 'tab') { e.preventDefault(); if (e.repeat) return; TargetSystem.cycleTarget(); return; }
+        
         if (e.key === 'Escape') {
             if (UISystem.state.invOpen) UISystem.toggleInventory();
             else if (UISystem.state.statOpen) UISystem.toggleStats();
             else if (UISystem.state.skillsOpen) UISystem.toggleSkills();
             else if (UISystem.state.shopOpen) UISystem.toggleShop();
             else if (UISystem.state.lootOpen) UISystem.closeLoot();
-            else if (UISystem.assignTargetSlot !== null) UISystem.closeAssignPopup(); // Fecha popup de atalhos
+            else if (UISystem.assignTargetSlot !== null) UISystem.closeAssignPopup();
             else {
                 TargetSystem.deselectTarget();
                 if(document.getElementById('kill-modal').style.display === 'block') UISystem.confirmKill(false);
@@ -34,7 +39,6 @@ const InputSystem = {
         if(k === 'r' && !NetworkSystem.blockSync) { NetworkSystem.blockSync = true; EntityManager.lastActionTime = Date.now(); NetworkSystem.queueCommand(`action=toggle_rest`); setTimeout(() => { NetworkSystem.blockSync = false; }, 500); }
         if(e.key === 'Shift') EntityManager.isRunning = true;
 
-        // NOVIDADE TÉCNICA: Acionamento Dinâmico de Hotbar (1 ao 9)
         if(k >= '1' && k <= '9') {
             const mappedSkill = UISystem.hotbar[k];
             if(mappedSkill) {

@@ -10,8 +10,19 @@ const UISystem = {
     hotbar: { '1': null, '2': null, '3': null, '4': null, '5': null, '6': null, '7': null, '8': null, '9': null },
     assignTargetSlot: null,
 
-    toggleInventory: function() { this.state.invOpen = !this.state.invOpen; document.getElementById('inventory-window').style.display = this.state.invOpen ? 'flex' : 'none'; },
-    toggleStats: function() { this.state.statOpen = !this.state.statOpen; document.getElementById('stat-window').style.display = this.state.statOpen ? 'block' : 'none'; },
+    // CORREÇÃO CRÍTICA: Os Toggles agora obrigam a UI a requisitar os dados faltantes para o servidor!
+    toggleInventory: function() { 
+        this.state.invOpen = !this.state.invOpen; 
+        document.getElementById('inventory-window').style.display = this.state.invOpen ? 'flex' : 'none'; 
+        if(this.state.invOpen && typeof window.NetworkSystem !== 'undefined') window.NetworkSystem.queueCommand('action=request_inventory');
+    },
+    
+    toggleStats: function() { 
+        this.state.statOpen = !this.state.statOpen; 
+        document.getElementById('stat-window').style.display = this.state.statOpen ? 'block' : 'none'; 
+        if(this.state.statOpen && typeof window.NetworkSystem !== 'undefined') window.NetworkSystem.queueCommand('action=request_status');
+    },
+    
     toggleShop: function() { this.state.shopOpen = !this.state.shopOpen; document.getElementById('shop-window').style.display = this.state.shopOpen ? 'flex' : 'none'; },
     toggleSkills: function() { this.state.skillsOpen = !this.state.skillsOpen; document.getElementById('skills-window').style.display = this.state.skillsOpen ? 'flex' : 'none'; },
     
@@ -126,7 +137,6 @@ const UISystem = {
         this.assignTargetSlot = null;
     },
 
-    // CORREÇÃO CRÍTICA (Erro JS Linha 117): Função recolocada!
     assignSkillToSlot: function(skillId) {
         if(this.assignTargetSlot) {
             this.hotbar[this.assignTargetSlot] = skillId;
