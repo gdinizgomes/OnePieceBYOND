@@ -1,17 +1,20 @@
 // game.js - O Core Engine e Orquestrador Final do Cliente
 
-window.receberDadosGlobal = function(json) {
+// CORREÇÃO CRÍTICA: As funções voltaram ao formato de declaração nativa
+// para que a ponte do BYOND (output map3d:func) as encontre no momento do carregamento!
+
+function receberDadosGlobal(json) {
     let packet; try { packet = JSON.parse(json); } catch(e) { return; }
     if(typeof NetworkSystem !== 'undefined') NetworkSystem.lastPacketTime = Date.now();
     if(typeof EntityManager !== 'undefined') EntityManager.syncGlobal(packet, performance.now());
-};
+}
 
-window.receberDadosPessoal = function(json) {
+function receberDadosPessoal(json) {
     let packet; try { packet = JSON.parse(json); } catch(e) { return; }
     if(typeof EntityManager !== 'undefined') EntityManager.syncPersonal(packet);
-};
+}
 
-window.receberSkills = function(json) {
+function receberSkills(json) {
     try { 
         window.GameSkills = JSON.parse(json); 
         if(typeof UISystem !== 'undefined') {
@@ -20,23 +23,22 @@ window.receberSkills = function(json) {
     } catch(e) {
         console.error("Falha ao processar JSON de Skills", e);
     }
-};
+}
 
-// --- FUNÇÕES GLOBAIS DE PONTES DE INTERFACE (CHAMADAS PELO SERVIDOR) ---
-window.mostrarNotificacao = function(msg) {
+function mostrarNotificacao(msg) {
     if(typeof UISystem !== 'undefined') UISystem.showNotification(msg);
-};
+}
 
-window.addLog = function(msg) {
+function addLog(msg) {
     if(typeof UISystem !== 'undefined') UISystem.addLog(msg);
-};
+}
 
-window.askKillConfirm = function(ref) {
+function askKillConfirm(ref) {
     if(typeof TargetSystem !== 'undefined') TargetSystem.currentTargetID = ref;
     document.getElementById('kill-modal').style.display = 'block';
-};
+}
 
-window.openShop = function(json) {
+function openShop(json) {
     if(typeof UISystem === 'undefined') return;
     let items; try { items = JSON.parse(json); } catch(e) { return; }
     
@@ -60,9 +62,9 @@ window.openShop = function(json) {
     
     UISystem.state.shopOpen = true;
     document.getElementById('shop-window').style.display = 'flex';
-};
+}
 
-window.openLootWindow = function(json) {
+function openLootWindow(json) {
     if(typeof UISystem === 'undefined') return;
     let data; try { data = JSON.parse(json); } catch(e) { return; }
     
@@ -86,7 +88,8 @@ window.openLootWindow = function(json) {
         if(it) {
             if(it.equipped) slot.classList.add('equipped');
             
-            const imgName = `${it.ref.split('_').slice(1).join('_')}_img.png`; 
+            // CORREÇÃO CRÍTICA (Bug Visual do Loot): Estava tentando quebrar a \ref. Agora usa o it.id!
+            const imgName = `${it.id}_img.png`; 
             let innerHTML = `<img src="${imgName}" class="inv-icon" onerror="this.src='default_item.png'">`;
             if(it.amount > 1) innerHTML += `<div class="inv-qty">${it.amount}</div>`;
             
@@ -98,9 +101,9 @@ window.openLootWindow = function(json) {
         }
         grid.appendChild(slot);
     }
-};
+}
 
-window.loadInventory = function(json) {
+function loadInventory(json) {
     if(typeof UISystem === 'undefined') return;
     let items; try { items = JSON.parse(json); } catch(e) { return; }
     
@@ -137,9 +140,9 @@ window.loadInventory = function(json) {
     if(UISystem.state.shopOpen) {
         document.querySelectorAll('.btn-sell').forEach(b => b.style.display = 'block');
     }
-};
+}
 
-window.updateStatusMenu = function(json) {
+function updateStatusMenu(json) {
     let data; try { data = JSON.parse(json); } catch(e) { return; }
     const eq = data.equip;
     
@@ -156,7 +159,8 @@ window.updateStatusMenu = function(json) {
             }
         }
     });
-};
+}
+
 // -----------------------------------------------------------------------------
 
 const GameLoop = {

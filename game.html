@@ -15,6 +15,18 @@
             }
             errorBox.innerHTML += "ERRO JS: " + message + " em linha " + lineno + "<br>";
         };
+
+        // CORREÇÃO: Wrappers Globais Seguros. Evita chamadas perdidas nos botões HTML.
+        function addStat(stat) { if(window.NetworkSystem) window.NetworkSystem.queueCommand("action=add_stat&stat="+stat); }
+        function toggleLethal() { if(window.NetworkSystem) window.NetworkSystem.queueCommand("action=toggle_lethal"); }
+        function confirmKill(isYes) { if(window.UISystem) window.UISystem.confirmKill(isYes); }
+        function robGold() { if(window.NetworkSystem && window.UISystem) window.NetworkSystem.queueCommand("action=rob_gold&target=\\ref"+window.UISystem.state.lootTargetRef); }
+        function closeLoot() { if(window.UISystem) window.UISystem.closeLoot(); }
+        function toggleStats() { if(window.UISystem) window.UISystem.toggleStats(); }
+        function toggleInventory() { if(window.UISystem) window.UISystem.toggleInventory(); }
+        function toggleShop() { if(window.UISystem) window.UISystem.toggleShop(); }
+        function toggleSkills() { if(window.UISystem) window.UISystem.toggleSkills(); }
+        function closeAssignPopup() { if(window.UISystem) window.UISystem.closeAssignPopup(); }
     </script>
     <style>
         body { margin: 0; overflow: hidden; user-select: none; font-family: 'Segoe UI', sans-serif; }
@@ -137,8 +149,8 @@
         <div id="kill-modal">
             <h2 style="margin-top:0; color:#ff3333;">EXECUTAR ALVO?</h2>
             <p>O jogador está desmaiado. Deseja aplicar o golpe fatal?</p>
-            <button class="modal-btn yes" onclick="window.UISystem.confirmKill(true)">MATAR</button>
-            <button class="modal-btn no" onclick="window.UISystem.confirmKill(false)">CANCELAR</button>
+            <button class="modal-btn yes" onclick="confirmKill(true)">MATAR</button>
+            <button class="modal-btn no" onclick="confirmKill(false)">CANCELAR</button>
         </div>
 
         <div id="interaction-hint">[X] Interagir</div>
@@ -153,7 +165,7 @@
         </div>
 
         <div class="char-info">
-            <div class="lethality-btn" id="lethality-toggle" onclick="window.NetworkSystem.queueCommand('action=toggle_lethal')" title="Modo Letalidade: OFF (Matar jogadores)">💀</div>
+            <div class="lethality-btn" id="lethality-toggle" onclick="toggleLethal()" title="Modo Letalidade: OFF (Matar jogadores)">💀</div>
             <div id="name-display" style="font-size: 18px; font-weight: bold; width: 80%;">Loading...</div>
             <div style="font-size: 12px; color: #aaa;">Lvl <span id="lvl-display">0</span></div>
             <div style="font-size:10px;">HP <span id="hp-text"></span></div> <div class="bar-container"><div id="hp-bar-fill" class="hp-bar"></div></div>
@@ -173,7 +185,7 @@
         <div id="skill-assign-popup">
             <div style="text-align:center; font-size:12px; margin-bottom:5px; color:#aaa; font-weight:bold;">ATRIBUIR HABILIDADE</div>
             <div id="assign-skill-list" style="display:flex; flex-direction:column; gap:5px; max-height:200px; overflow-y:auto;"></div>
-            <button onclick="window.UISystem.closeAssignPopup()" style="margin-top:5px; background:none; color:#aaa; border:none; cursor:pointer; font-size:11px;">Cancelar</button>
+            <button onclick="closeAssignPopup()" style="margin-top:5px; background:none; color:#aaa; border:none; cursor:pointer; font-size:11px;">Cancelar</button>
         </div>
 
         <div id="hotbar"></div> 
@@ -194,12 +206,12 @@
             <div style="display: flex; gap: 20px;">
                 <div class="stat-col">
                     <div style="margin-bottom: 5px;"><strong>ATRIBUTOS</strong> (Pts: <span id="stat-points" style="color:#f1c40f">0</span>)</div>
-                    <div class="stat-row"><span>FOR (Força)</span> <div><span id="val-str">0</span> <button class="stat-btn" onclick="window.NetworkSystem.queueCommand('action=add_stat&stat=str')">+</button></div></div>
-                    <div class="stat-row"><span>AGI (Agilidade)</span> <div><span id="val-agi">0</span> <button class="stat-btn" onclick="window.NetworkSystem.queueCommand('action=add_stat&stat=agi')">+</button></div></div>
-                    <div class="stat-row"><span>VIT (Vitalidade)</span> <div><span id="val-vit">0</span> <button class="stat-btn" onclick="window.NetworkSystem.queueCommand('action=add_stat&stat=vit')">+</button></div></div>
-                    <div class="stat-row"><span>DES (Destreza)</span> <div><span id="val-dex">0</span> <button class="stat-btn" onclick="window.NetworkSystem.queueCommand('action=add_stat&stat=dex')">+</button></div></div>
-                    <div class="stat-row"><span>VON (Vontade)</span> <div><span id="val-von">0</span> <button class="stat-btn" onclick="window.NetworkSystem.queueCommand('action=add_stat&stat=von')">+</button></div></div>
-                    <div class="stat-row"><span>SOR (Sorte)</span> <div><span id="val-sor">0</span> <button class="stat-btn" onclick="window.NetworkSystem.queueCommand('action=add_stat&stat=sor')">+</button></div></div>
+                    <div class="stat-row"><span>FOR (Força)</span> <div><span id="val-str">0</span> <button class="stat-btn" onclick="addStat('str')">+</button></div></div>
+                    <div class="stat-row"><span>AGI (Agilidade)</span> <div><span id="val-agi">0</span> <button class="stat-btn" onclick="addStat('agi')">+</button></div></div>
+                    <div class="stat-row"><span>VIT (Vitalidade)</span> <div><span id="val-vit">0</span> <button class="stat-btn" onclick="addStat('vit')">+</button></div></div>
+                    <div class="stat-row"><span>DES (Destreza)</span> <div><span id="val-dex">0</span> <button class="stat-btn" onclick="addStat('dex')">+</button></div></div>
+                    <div class="stat-row"><span>VON (Vontade)</span> <div><span id="val-von">0</span> <button class="stat-btn" onclick="addStat('von')">+</button></div></div>
+                    <div class="stat-row"><span>SOR (Sorte)</span> <div><span id="val-sor">0</span> <button class="stat-btn" onclick="addStat('sor')">+</button></div></div>
                 </div>
                 
                 <div class="stat-col" style="border-left: 1px solid #555; padding-left: 15px;">
@@ -222,7 +234,7 @@
                 <div class="equip-slot" id="slot-legs" title="Pernas"><label>Pernas</label></div>
                 <div class="equip-slot" id="slot-feet" title="Pés"><label>Pés</label></div>
             </div>
-            <div style="text-align: center; margin-top: 15px;"><button onclick="window.UISystem.toggleStats()" style="padding: 5px 20px;">Fechar</button></div>
+            <div style="text-align: center; margin-top: 15px;"><button onclick="toggleStats()" style="padding: 5px 20px;">Fechar</button></div>
         </div>
 
         <div id="skills-window">
@@ -231,27 +243,27 @@
                 </div>
             <div id="skills-tabs-content">
                 </div>
-            <div style="text-align: center; padding: 15px; border-top: 1px solid #444; background: rgba(0,0,0,0.2);"><button onclick="window.UISystem.toggleSkills()" style="padding: 5px 20px; cursor: pointer;">Fechar</button></div>
+            <div style="text-align: center; padding: 15px; border-top: 1px solid #444; background: rgba(0,0,0,0.2);"><button onclick="toggleSkills()" style="padding: 5px 20px; cursor: pointer;">Fechar</button></div>
         </div>
 
         <div id="shop-window">
             <div style="text-align: center; border-bottom: 1px solid #e67e22; padding-bottom: 5px; font-weight: bold; color: #e67e22;">LOJA DO ARMEIRO</div>
             <div id="shop-list" style="overflow-y: auto; max-height: 300px; margin-top: 10px;"></div>
-            <div style="text-align: center; margin-top: 15px;"><button onclick="window.UISystem.toggleShop()" style="padding: 5px 15px; cursor: pointer;">Sair</button></div>
+            <div style="text-align: center; margin-top: 15px;"><button onclick="toggleShop()" style="padding: 5px 15px; cursor: pointer;">Sair</button></div>
         </div>
 
         <div id="inventory-window">
             <div style="text-align: center; border-bottom: 1px solid #3498db; padding-bottom: 5px; font-weight: bold;">MOCHILA (12 Slots)</div>
             <div id="inv-grid" class="grid-container"></div>
-            <div style="text-align: center; margin-top: 15px;"><button onclick="window.UISystem.toggleInventory()" style="padding: 5px 15px; cursor: pointer;">Fechar</button></div>
+            <div style="text-align: center; margin-top: 15px;"><button onclick="toggleInventory()" style="padding: 5px 15px; cursor: pointer;">Fechar</button></div>
         </div>
 
         <div id="loot-window">
             <div style="text-align: center; border-bottom: 1px solid #e74c3c; padding-bottom: 5px; font-weight: bold; color: #e74c3c;">SAQUEANDO: <span id="loot-target-name">Alvo</span></div>
-            <div style="margin-top:10px; text-align:center;"><button onclick="window.NetworkSystem.queueCommand('action=rob_gold&target=\\ref'+window.UISystem.state.lootTargetRef)" style="width: 100%; padding: 8px; background: #f1c40f; color: black; border:none; font-weight:bold; cursor:pointer; border-radius:4px;">Roubar 💰 <span id="loot-gold">0</span> Berries</button></div>
+            <div style="margin-top:10px; text-align:center;"><button onclick="robGold()" style="width: 100%; padding: 8px; background: #f1c40f; color: black; border:none; font-weight:bold; cursor:pointer; border-radius:4px;">Roubar 💰 <span id="loot-gold">0</span> Berries</button></div>
             <div style="font-size: 11px; color:#aaa; margin-top:10px; text-align:center;">Itens (Clique para jogar no chão)</div>
             <div id="loot-grid" class="grid-container"></div>
-            <div style="text-align: center; margin-top: 15px;"><button onclick="window.UISystem.closeLoot()" style="padding: 5px 15px; cursor: pointer;">Fechar Saque</button></div>
+            <div style="text-align: center; margin-top: 15px;"><button onclick="closeLoot()" style="padding: 5px 15px; cursor: pointer;">Fechar Saque</button></div>
         </div>
 
         <div id="notif-area"></div>
