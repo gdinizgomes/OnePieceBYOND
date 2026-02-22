@@ -10,7 +10,6 @@ const UISystem = {
     hotbar: { '1': null, '2': null, '3': null, '4': null, '5': null, '6': null, '7': null, '8': null, '9': null },
     assignTargetSlot: null,
 
-    // CORREÇÃO CRÍTICA: Os Toggles agora obrigam a UI a requisitar os dados faltantes para o servidor!
     toggleInventory: function() { 
         this.state.invOpen = !this.state.invOpen; 
         document.getElementById('inventory-window').style.display = this.state.invOpen ? 'flex' : 'none'; 
@@ -23,8 +22,18 @@ const UISystem = {
         if(this.state.statOpen && typeof window.NetworkSystem !== 'undefined') window.NetworkSystem.queueCommand('action=request_status');
     },
     
-    toggleShop: function() { this.state.shopOpen = !this.state.shopOpen; document.getElementById('shop-window').style.display = this.state.shopOpen ? 'flex' : 'none'; },
-    toggleSkills: function() { this.state.skillsOpen = !this.state.skillsOpen; document.getElementById('skills-window').style.display = this.state.skillsOpen ? 'flex' : 'none'; },
+    toggleShop: function() { 
+        this.state.shopOpen = !this.state.shopOpen; 
+        document.getElementById('shop-window').style.display = this.state.shopOpen ? 'flex' : 'none'; 
+        if(!this.state.shopOpen) {
+            document.querySelectorAll('.btn-sell').forEach(b => b.style.display = 'none');
+        }
+    },
+    
+    toggleSkills: function() { 
+        this.state.skillsOpen = !this.state.skillsOpen; 
+        document.getElementById('skills-window').style.display = this.state.skillsOpen ? 'flex' : 'none'; 
+    },
     
     closeLoot: function() { this.state.lootOpen = false; this.state.lootTargetRef = ""; document.getElementById('loot-window').style.display = 'none'; },
 
@@ -147,7 +156,12 @@ const UISystem = {
     },
 
     buildSkillsUI: function() {
-        if(!window.GameSkills) return;
+        // CORREÇÃO CRÍTICA (Prevenção de Aborto Silencioso): 
+        // Se as skills não estiverem na memória do JS, pede de volta ao Servidor instantaneamente!
+        if(!window.GameSkills) {
+            if(typeof window.NetworkSystem !== 'undefined') window.NetworkSystem.queueCommand('action=request_skills');
+            return;
+        }
         
         const tabsHeader = document.getElementById('skills-tabs-header');
         const tabsContent = document.getElementById('skills-tabs-content');
@@ -178,6 +192,8 @@ const UISystem = {
             });
 
             const btn = document.createElement('button');
+            const btnId = `btn-tab-${cat.toLowerCase()}`;
+            btn.id = btnId;
             
             if(skillsList.length === 0 || !hasUnlocked) {
                 btn.className = 'tab-btn';
@@ -187,7 +203,7 @@ const UISystem = {
             } else {
                 btn.className = 'tab-btn';
                 btn.innerText = cat;
-                btn.onclick = (e) => this.switchSkillTab(`tab-cat-${cat}`, e.target);
+                btn.onclick = () => this.switchSkillTab(`tab-cat-${cat}`, btnId);
                 if(!firstActive) {
                     btn.classList.add('active');
                     firstActive = cat;
@@ -244,10 +260,10 @@ const UISystem = {
         }
     },
 
-    switchSkillTab: function(tabId, btnElement) {
+    switchSkillTab: function(tabId, btnId) {
         document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
         document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-        btnElement.classList.add('active');
+        document.getElementById(btnId).classList.add('active');
         document.getElementById(tabId).classList.add('active');
     },
 

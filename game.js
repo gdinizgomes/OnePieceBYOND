@@ -1,8 +1,5 @@
 // game.js - O Core Engine e Orquestrador Final do Cliente
 
-// CORREÇÃO CRÍTICA: As funções voltaram ao formato de declaração nativa
-// para que a ponte do BYOND (output map3d:func) as encontre no momento do carregamento!
-
 function receberDadosGlobal(json) {
     let packet; try { packet = JSON.parse(json); } catch(e) { return; }
     if(typeof NetworkSystem !== 'undefined') NetworkSystem.lastPacketTime = Date.now();
@@ -14,11 +11,13 @@ function receberDadosPessoal(json) {
     if(typeof EntityManager !== 'undefined') EntityManager.syncPersonal(packet);
 }
 
+// CORREÇÃO: Força a UI a construir as abas caso o BYOND mande a request separada
 function receberSkills(json) {
     try { 
         window.GameSkills = JSON.parse(json); 
         if(typeof UISystem !== 'undefined') {
             UISystem.addLog("<span style='color:#2ecc71'>[Sistema Data-Driven Carregado]</span>", "log-hit");
+            UISystem.buildSkillsUI(); 
         }
     } catch(e) {
         console.error("Falha ao processar JSON de Skills", e);
@@ -40,7 +39,7 @@ function askKillConfirm(ref) {
 
 function openShop(json) {
     if(typeof UISystem === 'undefined') return;
-    let items; try { items = JSON.parse(json); } catch(e) { return; }
+    let items; try { items = JSON.parse(json); } catch(e) { console.error("JSON parse error in openShop", e); return; }
     
     const list = document.getElementById('shop-list');
     list.innerHTML = '';
@@ -60,8 +59,14 @@ function openShop(json) {
         list.appendChild(itemDiv);
     });
     
+    // CORREÇÃO DA DINÂMICA: Abrir a loja força o Inventário a abrir junto 
+    // para mostrar os botões de "Vender", restaurando o fluxo que você pediu!
     UISystem.state.shopOpen = true;
     document.getElementById('shop-window').style.display = 'flex';
+    
+    UISystem.state.invOpen = true;
+    document.getElementById('inventory-window').style.display = 'flex';
+    if(typeof window.NetworkSystem !== 'undefined') window.NetworkSystem.queueCommand('action=request_inventory');
 }
 
 function openLootWindow(json) {
@@ -88,7 +93,6 @@ function openLootWindow(json) {
         if(it) {
             if(it.equipped) slot.classList.add('equipped');
             
-            // CORREÇÃO CRÍTICA (Bug Visual do Loot): Estava tentando quebrar a \ref. Agora usa o it.id!
             const imgName = `${it.id}_img.png`; 
             let innerHTML = `<img src="${imgName}" class="inv-icon" onerror="this.src='default_item.png'">`;
             if(it.amount > 1) innerHTML += `<div class="inv-qty">${it.amount}</div>`;
@@ -137,6 +141,7 @@ function loadInventory(json) {
         grid.appendChild(slot);
     }
     
+    // Atualiza os botões de venda caso a loja esteja aberta
     if(UISystem.state.shopOpen) {
         document.querySelectorAll('.btn-sell').forEach(b => b.style.display = 'block');
     }
@@ -160,8 +165,6 @@ function updateStatusMenu(json) {
         }
     });
 }
-
-// -----------------------------------------------------------------------------
 
 const GameLoop = {
     lastFrameTime: performance.now(),
