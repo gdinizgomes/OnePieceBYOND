@@ -15,6 +15,17 @@
             }
             errorBox.innerHTML += "ERRO JS: " + message + " em linha " + lineno + "<br>";
         };
+
+        // CORREÇÃO: Ponte Global de Chamadas do HTML -> Módulos Internos
+        function addStat(stat) { if(window.NetworkSystem) window.NetworkSystem.queueCommand("action=add_stat&stat="+stat); }
+        function toggleLethal() { if(window.NetworkSystem) window.NetworkSystem.queueCommand("action=toggle_lethal"); }
+        function confirmKill(isYes) { if(window.UISystem) window.UISystem.confirmKill(isYes); }
+        function robGold() { if(window.NetworkSystem && window.UISystem) window.NetworkSystem.queueCommand("action=rob_gold&target=\\ref"+window.UISystem.state.lootTargetRef); }
+        function closeLoot() { if(window.UISystem) window.UISystem.closeLoot(); }
+        function toggleStats() { if(window.UISystem) window.UISystem.toggleStats(); }
+        function toggleInventory() { if(window.UISystem) window.UISystem.toggleInventory(); }
+        function toggleShop() { if(window.UISystem) window.UISystem.toggleShop(); }
+        function toggleSkills() { if(window.UISystem) window.UISystem.toggleSkills(); }
     </script>
     <style>
         body { margin: 0; overflow: hidden; user-select: none; font-family: 'Segoe UI', sans-serif; }
@@ -49,7 +60,6 @@
         .hotbar-key { position: absolute; top: -8px; left: -8px; background: #9b59b6; color: white; font-size: 10px; font-weight: bold; padding: 2px 5px; border-radius: 3px; border: 1px solid black; }
         .cooldown-overlay { position: absolute; bottom: 0; left: 0; width: 100%; height: 0%; background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center; color: white; font-size: 12px; font-weight: bold; overflow: hidden; pointer-events: none; }
 
-        /* NOVIDADE: Janela Popup estilo PoE2 para atribuição modular */
         #skill-assign-popup { position: absolute; bottom: 80px; left: 50%; transform: translateX(-50%); background: rgba(20,20,30,0.98); border: 2px solid #9b59b6; padding: 10px; border-radius: 8px; display: none; z-index: 2000; flex-direction: column; gap: 5px; width: 220px; box-shadow: 0 0 15px rgba(0,0,0,0.8); pointer-events: auto; }
         .assign-btn { background: #333; color: white; border: 1px solid #555; padding: 8px; cursor: pointer; text-align: left; border-radius: 4px; font-weight: bold; transition: 0.2s; font-size: 12px; display: flex; justify-content: space-between; }
         .assign-btn:hover { background: #555; border-color: #9b59b6; }
@@ -84,6 +94,8 @@
         .skill-info { flex: 1; }
         .skill-name { font-weight: bold; font-size: 15px; margin-bottom: 2px; }
         .skill-desc { font-size: 11px; color: #ccc; margin-bottom: 8px; line-height: 1.2; }
+        .skill-bar-bg { width: 100%; height: 8px; background: #111; border-radius: 4px; overflow: hidden; border: 1px solid #333; }
+        .skill-bar-fill { height: 100%; background: #2ecc71; width: 0%; transition: width 0.3s; }
         .skill-lvl { font-weight: bold; font-size: 14px; color: white; text-align: right; margin-left: 10px; }
         
         #inventory-window, #loot-window { position: absolute; top: 50%; right: 10%; transform: translateY(-50%); width: 320px; background: rgba(20, 20, 30, 0.95); border: 2px solid #3498db; border-radius: 10px; padding: 15px; display: none; pointer-events: auto; color: white; z-index: 100; flex-direction: column; }

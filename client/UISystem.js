@@ -2,12 +2,11 @@
 
 const UISystem = {
     state: { invOpen: false, statOpen: false, shopOpen: false, skillsOpen: false, lootOpen: false, lootTargetRef: "" },
-    cache: { maxHp: 100, maxEn: 100, hp: 100, en: 100, lvl: 1, reqExp: 100, exp: 0 },
+    cache: { maxHp: 100, maxEn: 100, hp: 100, en: 100, lvl: 1, reqExp: 100, exp: 0, profs: {} },
     charName: "",
     unlockedSkills: [],
     lastSkillsStr: "",
     
-    // NOVIDADE: A memória da Hotbar do Path of Exile 2
     hotbar: { '1': null, '2': null, '3': null, '4': null, '5': null, '6': null, '7': null, '8': null, '9': null },
     assignTargetSlot: null,
 
@@ -20,7 +19,7 @@ const UISystem = {
 
     confirmKill: function(isYes) {
         document.getElementById('kill-modal').style.display = 'none';
-        if(isYes && TargetSystem.currentTargetID) NetworkSystem.queueCommand(`action=confirm_kill&target=\ref${TargetSystem.currentTargetID}`);
+        if(isYes && TargetSystem.currentTargetID) NetworkSystem.queueCommand(`action=confirm_kill&target=${TargetSystem.currentTargetID}`);
     },
 
     addLog: function(msg, typeClass) {
@@ -48,8 +47,6 @@ const UISystem = {
     },
     hideTooltip: function() { document.getElementById('tooltip').style.display = 'none'; },
 
-    // --- NOVIDADE ARQUITETURAL: Geração da UI Orientada a Dados ---
-    
     loadHotbarMemory: function() {
         if(!this.charName) return;
         const saved = localStorage.getItem(`poe2_hotbar_${this.charName}`);
@@ -107,7 +104,7 @@ const UISystem = {
 
         for(const [sId, sDef] of Object.entries(window.GameSkills)) {
             if(sId === "_COMMENT_DOCUMENTATION") continue;
-            if(sDef.macro !== null) continue; // Esconde habilidades básicas com atalhos fixos
+            if(sDef.macro !== null) continue; 
             if(!this.unlockedSkills.includes(sId)) continue; 
 
             const btn = document.createElement('div');
@@ -129,15 +126,6 @@ const UISystem = {
         this.assignTargetSlot = null;
     },
 
-    assignSkillToSlot: function(skillId) {
-        if(this.assignTargetSlot) {
-            this.hotbar[this.assignTargetSlot] = skillId;
-            this.saveHotbarMemory();
-            this.renderHotbar();
-        }
-        this.closeAssignPopup();
-    },
-
     buildSkillsUI: function() {
         if(!window.GameSkills) return;
         
@@ -145,27 +133,53 @@ const UISystem = {
         const tabsContent = document.getElementById('skills-tabs-content');
         tabsHeader.innerHTML = ''; tabsContent.innerHTML = '';
         
-        const categories = {};
+        // CORREÇÃO: Abas base e customizadas combinadas
+        const standardCategories = ["Combate", "Vontade", "Especial", "Classes"];
+        const categoryGroups = {};
+        standardCategories.forEach(c => categoryGroups[c] = []);
+
         for(const [sId, sDef] of Object.entries(window.GameSkills)) {
             if(sId === "_COMMENT_DOCUMENTATION") continue;
             const cat = sDef.category || "Outros";
-            if(!categories[cat]) categories[cat] = [];
-            categories[cat].push({id: sId, def: sDef});
+            if(!categoryGroups[cat]) categoryGroups[cat] = [];
+            categoryGroups[cat].push({id: sId, def: sDef});
         }
         
-        let first = true;
-        for(const cat in categories) {
+        let firstActive = null;
+
+        for(const cat in categoryGroups) {
+            const skillsList = categoryGroups[cat];
+            let hasUnlocked = false;
+            
+            skillsList.forEach(skill => {
+                const isUnlocked = (skill.def.macro !== null) || this.unlockedSkills.includes(skill.id);
+                if(isUnlocked) hasUnlocked = true;
+            });
+
             const btn = document.createElement('button');
-            btn.className = `tab-btn ${first ? 'active' : ''}`;
-            btn.innerText = cat;
-            btn.onclick = (e) => this.switchSkillTab(`tab-cat-${cat}`, e.target);
+            
+            // CORREÇÃO: Lógica responsiva de abas desativadas
+            if(skillsList.length === 0 || !hasUnlocked) {
+                btn.className = 'tab-btn';
+                btn.disabled = true;
+                btn.innerText = cat;
+                btn.title = `Nenhuma habilidade de ${cat} desbloqueada no momento.`;
+            } else {
+                btn.className = 'tab-btn';
+                btn.innerText = cat;
+                btn.onclick = (e) => this.switchSkillTab(`tab-cat-${cat}`, e.target);
+                if(!firstActive) {
+                    btn.classList.add('active');
+                    firstActive = cat;
+                }
+            }
             tabsHeader.appendChild(btn);
             
             const content = document.createElement('div');
             content.id = `tab-cat-${cat}`;
-            content.className = `tab-content ${first ? 'active' : ''}`;
+            content.className = `tab-content ${firstActive === cat ? 'active' : ''}`;
             
-            categories[cat].forEach(skill => {
+            skillsList.forEach(skill => {
                 const sId = skill.id;
                 const sDef = skill.def;
                 const isUnlocked = (sDef.macro !== null) || this.unlockedSkills.includes(sId);
@@ -177,26 +191,38 @@ const UISystem = {
                 card.className = "skill-card";
                 if(!isUnlocked) card.style.opacity = "0.5";
                 
-                let macroTxt = sDef.macro ? `[${sDef.macro}]` : `(Slot de Hotbar)`;
+                let macroTxt = sDef.macro ? `[${sDef.macro}]` : `(Slot Hotbar)`;
                 if(!isUnlocked) macroTxt = "[Não Aprendida]";
                 
-                let iconChar = sDef.name.substring(0, 2);
+                // CORREÇÃO: Ícone padrão ✨
+                let iconChar = "✨";
                 if(sDef.requiresWeaponTag === "sword") iconChar = "⚔️";
                 else if(sDef.requiresWeaponTag === "gun") iconChar = "🔫";
                 else if(sDef.type === "melee") iconChar = "👊";
+                
+                let lvlTxt = "1";
+                let pct = 0;
+                
+                // CORREÇÃO: Resgate da EXP das habilidades base para montagem inicial
+                if(this.cache.profs && this.cache.profs[sId]) {
+                    const prof = this.cache.profs[sId];
+                    lvlTxt = prof.lvl || 1;
+                    if(prof.req > 0) pct = (prof.exp / prof.req) * 100;
+                }
                 
                 card.innerHTML = `
                     <div class="skill-icon" style="color:${c}; border-color:${c};">${iconChar}</div>
                     <div class="skill-info">
                         <div class="skill-name" style="color: ${c}">${sDef.name} <span style="font-size:10px; color:#aaa; float:right">${macroTxt}</span></div>
                         <div class="skill-desc">EN: ${sDef.energyCost || 0} | CD: ${(sDef.cooldown/1000).toFixed(1)}s</div>
+                        <div class="skill-bar-bg"><div class="skill-bar-fill" id="bar-${sId}" style="width: ${pct}%"></div></div>
                     </div>
+                    <div class="skill-lvl">Lv.<span id="lvl-${sId}">${lvlTxt}</span></div>
                 `;
                 content.appendChild(card);
             });
             
             tabsContent.appendChild(content);
-            first = false;
         }
     },
 
@@ -207,9 +233,15 @@ const UISystem = {
         document.getElementById(tabId).classList.add('active');
     },
 
-    // ----------------------------------------------------------------------
-
     updatePersonalStatus: function(me) {
+        // Inicializa as proficiências base recebidas do servidor antes de recriar/atualizar a UI
+        this.cache.profs = {
+            'basic_fist': { lvl: me.pp, exp: me.pp_x, req: me.pp_r },
+            'basic_kick': { lvl: me.pk, exp: me.pk_x, req: me.pk_r },
+            'basic_sword': { lvl: me.ps, exp: me.ps_x, req: me.ps_r },
+            'basic_gun': { lvl: me.pg, exp: me.pg_x, req: me.pg_r }
+        };
+
         if(me.skills) {
             const str = JSON.stringify(me.skills);
             if (this.lastSkillsStr !== str) {
@@ -218,6 +250,16 @@ const UISystem = {
                 this.buildSkillsUI();
             }
         }
+        
+        // CORREÇÃO (Performance): Atualiza dinamicamente as larguras das barras de XP sem recriar o painel inteiro!
+        for(let sId in this.cache.profs) {
+            const prof = this.cache.profs[sId];
+            const bar = document.getElementById(`bar-${sId}`);
+            const lvl = document.getElementById(`lvl-${sId}`);
+            if(bar && prof.req > 0) bar.style.width = Math.max(0, Math.min(100, (prof.exp / prof.req) * 100)) + "%";
+            if(lvl) lvl.innerText = prof.lvl || 1;
+        }
+
         if(me.nick && this.charName !== me.nick) {
             this.charName = me.nick;
             this.loadHotbarMemory();
