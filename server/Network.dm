@@ -189,12 +189,10 @@ mob
 					del(I)
 					RequestInventoryUpdate()
 
-
 		if(action == "execute_skill" && in_game)
 			if(is_resting || is_fainted) return
 			var/s_id = href_list["skill_id"]
 			
-			// Blindagem contra injeção da chave de documentação
 			if(s_id == "_COMMENT_DOCUMENTATION") return
 			
 			var/list/skill_data = GlobalSkillsData[s_id]
@@ -284,9 +282,10 @@ mob
 					var/local_z = (dx * s) + (dz * c)
 					var/local_x = (dx * c) - (dz * s)
 
-					var/pad = 1.0 
-					var/half_l = (box_len / 2) + pad
-					var/half_w = (box_wid / 2) + pad
+					var/pad_w = 1.0 
+					var/pad_l = 1.5 
+					var/half_l = (box_len / 2) + pad_l
+					var/half_w = (box_wid / 2) + pad_w
 
 					if(abs(local_z - fwd_off) > half_l || abs(local_x) > half_w)
 						src << output("<span style='color:red'><b>Servidor:</b> Hit Negado - OBB Matemática.</span>", "map3d:addLog")
@@ -316,44 +315,43 @@ mob
 					return 
 
 			// =========================================================================
-			// A NOVA MATEMÁTICA DE DANO AVANÇADA (100% Data-Driven do JSON)
+			// CORREÇÃO CRÍTICA: MATEMÁTICA ESTRITA (Fim do Escalonamento Quadrático)
 			// =========================================================================
 
 			var/base_dmg = skill_data["power"]
 			if(!base_dmg) base_dmg = 0
 			
-			// 1. Acoplamento de Arma: Se for físico ou tiro, o dano da arma soma ao Poder Base da skill
-			if(skill_data["scaling"] == "physical") base_dmg += calc_atk
-			else if(skill_data["scaling"] == "ranged") base_dmg += calc_ratk
-
-			// 2. Coleta o Nível atual da Habilidade do Jogador
 			var/s_lvl = 1
 			if(s_id == "basic_sword") s_lvl = prof_sword_lvl
 			else if(s_id == "basic_kick") s_lvl = prof_kick_lvl
 			else if(s_id == "basic_fist") s_lvl = prof_punch_lvl
 			else if(s_id == "basic_gun") s_lvl = prof_gun_lvl
-			// (Aqui no futuro entraremos com a leitura de skill_levels[] para magias)
 
-			// 3. Aplica os Pesos dos Atributos definidos no JSON
-			var/stat_mult = 1.0
+			// Calcula a soma dos atributos influentes
+			var/stat_sum = 0
 			var/list/weights = skill_data["statWeights"]
 			if(weights && istype(weights, /list))
-				stat_mult = 0
-				if(weights["str"]) stat_mult += src.strength * weights["str"]
-				if(weights["agi"]) stat_mult += src.agility * weights["agi"]
-				if(weights["vit"]) stat_mult += src.vitality * weights["vit"]
-				if(weights["dex"]) stat_mult += src.dexterity * weights["dex"]
-				if(weights["von"]) stat_mult += src.willpower * weights["von"]
-				if(weights["sor"]) stat_mult += src.luck * weights["sor"]
-				if(stat_mult < 0.1) stat_mult = 0.1 // Garante que nunca zere o dano caso não tenha atributos
-			
+				if(weights["str"]) stat_sum += src.strength * weights["str"]
+				if(weights["agi"]) stat_sum += src.agility * weights["agi"]
+				if(weights["vit"]) stat_sum += src.vitality * weights["vit"]
+				if(weights["dex"]) stat_sum += src.dexterity * weights["dex"]
+				if(weights["von"]) stat_sum += src.willpower * weights["von"]
+				if(weights["sor"]) stat_sum += src.luck * weights["sor"]
+			if(stat_sum < 1) stat_sum = 1 
+
 			var/level_scale = skill_data["levelScale"]
 			if(!level_scale) level_scale = 0
 
-			// 4. A FÓRMULA FINAL SUGERIDA: Power * (50% str + 30% agi...) + (Coef_Nivel * Nivel_Skill)
-			var/raw_damage = (base_dmg * stat_mult) + (s_lvl * level_scale)
+			// Extrai apenas o ataque da arma de forma linear
+			var/equip_atk = 0
+			if(skill_data["scaling"] == "physical" && slot_hand && istype(slot_hand, /obj/item/weapon))
+				equip_atk = slot_hand:atk
+			else if(skill_data["scaling"] == "ranged" && slot_hand && istype(slot_hand, /obj/item/weapon))
+				equip_atk = slot_hand:ratk
 
-			// 5. Multiplicador de Combo
+			// FÓRMULA PEDIDA: Power * (Weights_Sum) + (Level * Coef) + Weapon
+			var/raw_damage = (base_dmg * stat_sum) + (s_lvl * level_scale) + equip_atk
+
 			var/damage_mult = 1.0
 			if(skill_data["type"] == "melee")
 				var/list/combos = skill_data["combos"]
@@ -361,9 +359,8 @@ mob
 					var/list/combo = combos[c_step]
 					if(combo["damageMult"]) damage_mult = combo["damageMult"]
 
-			var/damage = round(raw_damage * damage_mult + rand(0, 3))
+			var/damage = round((raw_damage * damage_mult) + rand(0, 3))
 			
-			// 6. Crítico e Defesa
 			var/is_crit = 0
 			if(rand(1, 100) <= calc_crit)
 				is_crit = 1
@@ -378,7 +375,6 @@ mob
 			var/crit_txt = is_crit ? " <b style='color:#f1c40f'>CRÍTICO!</b>" : ""
 			src.pending_visuals += list(list("type"="dmg", "val"=damage, "tid"=target_ref))
 
-			// Feedback de XP e Log
 			var/xp_type = ""
 			if(s_id == "basic_sword") xp_type = "sword"
 			else if(s_id == "basic_kick") xp_type = "kick"
