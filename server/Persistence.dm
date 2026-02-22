@@ -105,7 +105,6 @@ mob
 		F["deaths"] << src.deaths
 		F["starters"] << src.received_starters 
 		
-		// NOVIDADE: Gravação Estrita de Memória Avançada
 		F["skill_levels"] << src.skill_levels
 		F["skill_exps"] << src.skill_exps
 		F["hotbar"] << src.hotbar
@@ -116,47 +115,49 @@ mob
 		if(!fexists("[SAVE_DIR][src.ckey]_slot[slot].sav")) return 0
 		var/savefile/F = new("[SAVE_DIR][src.ckey]_slot[slot].sav")
 
-		if(F["name"])     F["name"]     >> src.name; else src.name = "Sem nome"
-		if(F["level"])    F["level"]    >> src.level; else src.level = 1
-		if(F["exp"])      F["exp"]      >> src.experience; else src.experience = 0
-		if(F["stat_pts"]) F["stat_pts"] >> src.stat_points; else src.stat_points = 0
-		if(F["gold"])     F["gold"]     >> src.gold; else src.gold = 0
-		if(F["hp"])       F["hp"]       >> src.current_hp; else src.current_hp = 50
-		if(F["en"])       F["en"]       >> src.current_energy; else src.current_energy = 50
-		if(F["str"])      F["str"]      >> src.strength; else src.strength = 5
-		if(F["vit"])      F["vit"]      >> src.vitality; else src.vitality = 5
-		if(F["agi"])      F["agi"]      >> src.agility; else src.agility = 5
-		if(F["dex"])      F["dex"]      >> src.dexterity; else src.dexterity = 5
-		if(F["von"])      F["von"]      >> src.willpower; else src.willpower = 5
-		if(F["sor"])      F["sor"]      >> src.luck; else src.luck = 5
-		if(F["p_punch"])  F["p_punch"]  >> prof_punch_lvl;  else prof_punch_lvl = 1
-		if(F["exp_punch"]) F["exp_punch"] >> prof_punch_exp; else prof_punch_exp = 0
-		if(F["p_kick"])   F["p_kick"]   >> prof_kick_lvl;   else prof_kick_lvl = 1
-		if(F["exp_kick"]) F["exp_kick"] >> prof_kick_exp; else prof_kick_exp = 0
-		if(F["p_sword"])  F["p_sword"]  >> prof_sword_lvl;  else prof_sword_lvl = 1
-		if(F["exp_sword"]) F["exp_sword"] >> prof_sword_exp; else prof_sword_exp = 0
-		if(F["p_gun"])    F["p_gun"]    >> prof_gun_lvl; else prof_gun_lvl = 1
-		if(F["exp_gun"])  F["exp_gun"]  >> prof_gun_exp;    else prof_gun_exp = 0
-		if(F["pos_x"])    F["pos_x"]    >> src.real_x; else src.real_x = 0
-		if(F["pos_y"])    F["pos_y"]    >> src.real_y; else src.real_y = 0
-		if(F["pos_z"])    F["pos_z"]    >> src.real_z; else src.real_z = 0
-		if(F["skin"])     F["skin"]     >> src.skin_color; else src.skin_color = "FFD1A3"
-		if(F["cloth"])    F["cloth"]    >> src.cloth_color; else src.cloth_color = "3366CC"
-		if(F["inventory"]) F["inventory"] >> src.contents
-		if(F["slot_hand"]) F["slot_hand"] >> src.slot_hand
-		if(F["slot_head"]) F["slot_head"] >> src.slot_head
-		if(F["slot_body"]) F["slot_body"] >> src.slot_body
-		if(F["slot_legs"]) F["slot_legs"] >> src.slot_legs
-		if(F["slot_feet"]) F["slot_feet"] >> src.slot_feet
-		if(F["gender"])   F["gender"]   >> src.char_gender; else src.char_gender = "Male"
-		if(F["kills"])    F["kills"]    >> src.kills; else src.kills = 0
-		if(F["deaths"])   F["deaths"]   >> src.deaths; else src.deaths = 0
-		if(F["starters"]) F["starters"] >> src.received_starters; else src.received_starters = 0
+		// CORREÇÃO CRÍTICA ARQUITETURAL: Extração cega à prova de falsos-negativos
+		F["name"] >> src.name; if(!src.name) src.name = "Sem nome"
+		F["level"] >> src.level; if(isnull(src.level)) src.level = 1
+		F["exp"] >> src.experience; if(isnull(src.experience)) src.experience = 0
+		F["stat_pts"] >> src.stat_points; if(isnull(src.stat_points)) src.stat_points = 0
+		F["gold"] >> src.gold; if(isnull(src.gold)) src.gold = 0
+		F["hp"] >> src.current_hp; if(isnull(src.current_hp)) src.current_hp = 50
+		F["en"] >> src.current_energy; if(isnull(src.current_energy)) src.current_energy = 50
+		F["str"] >> src.strength; if(isnull(src.strength)) src.strength = 5
+		F["vit"] >> src.vitality; if(isnull(src.vitality)) src.vitality = 5
+		F["agi"] >> src.agility; if(isnull(src.agility)) src.agility = 5
+		F["dex"] >> src.dexterity; if(isnull(src.dexterity)) src.dexterity = 5
+		F["von"] >> src.willpower; if(isnull(src.willpower)) src.willpower = 5
+		F["sor"] >> src.luck; if(isnull(src.luck)) src.luck = 5
+		
+		F["p_punch"] >> prof_punch_lvl; if(isnull(prof_punch_lvl)) prof_punch_lvl = 1
+		F["exp_punch"] >> prof_punch_exp; if(isnull(prof_punch_exp)) prof_punch_exp = 0
+		F["p_kick"] >> prof_kick_lvl; if(isnull(prof_kick_lvl)) prof_kick_lvl = 1
+		F["exp_kick"] >> prof_kick_exp; if(isnull(prof_kick_exp)) prof_kick_exp = 0
+		F["p_sword"] >> prof_sword_lvl; if(isnull(prof_sword_lvl)) prof_sword_lvl = 1
+		F["exp_sword"] >> prof_sword_exp; if(isnull(prof_sword_exp)) prof_sword_exp = 0
+		F["p_gun"] >> prof_gun_lvl; if(isnull(prof_gun_lvl)) prof_gun_lvl = 1
+		F["exp_gun"] >> prof_gun_exp; if(isnull(prof_gun_exp)) prof_gun_exp = 0
+		
+		F["pos_x"] >> src.real_x; if(isnull(src.real_x)) src.real_x = 0
+		F["pos_y"] >> src.real_y; if(isnull(src.real_y)) src.real_y = 0
+		F["pos_z"] >> src.real_z; if(isnull(src.real_z)) src.real_z = 0
+		F["skin"] >> src.skin_color; if(!src.skin_color) src.skin_color = "FFD1A3"
+		F["cloth"] >> src.cloth_color; if(!src.cloth_color) src.cloth_color = "3366CC"
+		F["inventory"] >> src.contents
+		F["slot_hand"] >> src.slot_hand
+		F["slot_head"] >> src.slot_head
+		F["slot_body"] >> src.slot_body
+		F["slot_legs"] >> src.slot_legs
+		F["slot_feet"] >> src.slot_feet
+		F["gender"] >> src.char_gender; if(!src.char_gender) src.char_gender = "Male"
+		F["kills"] >> src.kills; if(isnull(src.kills)) src.kills = 0
+		F["deaths"] >> src.deaths; if(isnull(src.deaths)) src.deaths = 0
+		F["starters"] >> src.received_starters; if(isnull(src.received_starters)) src.received_starters = 0
 
-		// NOVIDADE: Carregamento Estrito de Memória Avançada
-		if(F["skill_levels"]) F["skill_levels"] >> src.skill_levels; else src.skill_levels = list()
-		if(F["skill_exps"]) F["skill_exps"] >> src.skill_exps; else src.skill_exps = list()
-		if(F["hotbar"]) F["hotbar"] >> src.hotbar; else src.hotbar = list("1"=null, "2"=null, "3"=null, "4"=null, "5"=null, "6"=null, "7"=null, "8"=null, "9"=null)
+		F["skill_levels"] >> src.skill_levels; if(!istype(src.skill_levels, /list)) src.skill_levels = list()
+		F["skill_exps"] >> src.skill_exps; if(!istype(src.skill_exps, /list)) src.skill_exps = list()
+		F["hotbar"] >> src.hotbar; if(!istype(src.hotbar, /list)) src.hotbar = list("1"=null, "2"=null, "3"=null, "4"=null, "5"=null, "6"=null, "7"=null, "8"=null, "9"=null)
 
 		if(src.level < 1) src.level = 1
 		if(src.experience < 0) src.experience = 0
