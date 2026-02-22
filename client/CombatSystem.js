@@ -95,6 +95,8 @@ const CombatSystem = {
     },
 
     executeSkill: function(skillId) {
+        if(skillId === "_COMMENT_DOCUMENTATION") return;
+        
         if(this.isAttacking || !EntityManager.isCharacterReady || EntityManager.isResting || EntityManager.isFainted) return;
         
         const skillDef = window.GameSkills ? window.GameSkills[skillId] : null;
@@ -183,7 +185,6 @@ const CombatSystem = {
                         if(equippedItem && GameDefinitions[equippedItem] && GameDefinitions[equippedItem].gameplay) {
                             projData = GameDefinitions[equippedItem].gameplay.projectile;
                         }
-                        // CORREÇÃO: Passando o skillId para o construtor do projétil!
                         if(projData) CombatVisualSystem.fireProjectile(EntityManager.playerGroup, projData, true, skillId);
                     }
                 } 

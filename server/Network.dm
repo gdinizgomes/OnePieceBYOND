@@ -189,9 +189,13 @@ mob
 					del(I)
 					RequestInventoryUpdate()
 
+
 		if(action == "execute_skill" && in_game)
 			if(is_resting || is_fainted) return
 			var/s_id = href_list["skill_id"]
+			
+			// Blindagem contra injeção da chave de documentação
+			if(s_id == "_COMMENT_DOCUMENTATION") return
 			
 			var/list/skill_data = GlobalSkillsData[s_id]
 			if(!skill_data) return
@@ -226,6 +230,8 @@ mob
 
 		if(action == "register_hit" && in_game)
 			var/s_id = href_list["skill_id"]
+			if(s_id == "_COMMENT_DOCUMENTATION") return
+			
 			var/list/skill_data = GlobalSkillsData[s_id]
 			if(!skill_data) return
 			
@@ -278,12 +284,9 @@ mob
 					var/local_z = (dx * s) + (dz * c)
 					var/local_x = (dx * c) - (dz * s)
 
-					// CORREÇÃO CRÍTICA (Lag Compensation):
-					// Profundidade aumentada de 1.0 para 1.5, perdoando alvos que correm para trás com ping alto.
-					var/pad_w = 1.0 
-					var/pad_l = 1.5 
-					var/half_l = (box_len / 2) + pad_l
-					var/half_w = (box_wid / 2) + pad_w
+					var/pad = 1.0 
+					var/half_l = (box_len / 2) + pad
+					var/half_w = (box_wid / 2) + pad
 
 					if(abs(local_z - fwd_off) > half_l || abs(local_x) > half_w)
 						src << output("<span style='color:red'><b>Servidor:</b> Hit Negado - OBB Matemática.</span>", "map3d:addLog")
@@ -312,32 +315,56 @@ mob
 					src << output("<span class='log-hit' style='color:#95a5a6'>Errou o alvo! (Esquiva)</span>", "map3d:addLog")
 					return 
 
+			// =========================================================================
+			// A NOVA MATEMÁTICA DE DANO AVANÇADA (100% Data-Driven do JSON)
+			// =========================================================================
+
 			var/base_dmg = skill_data["power"]
 			if(!base_dmg) base_dmg = 0
 			
-			var/is_crit = 0
-			var/damage_mult = 1.0
-			var/stat_scale = 0
+			// 1. Acoplamento de Arma: Se for físico ou tiro, o dano da arma soma ao Poder Base da skill
+			if(skill_data["scaling"] == "physical") base_dmg += calc_atk
+			else if(skill_data["scaling"] == "ranged") base_dmg += calc_ratk
 
+			// 2. Coleta o Nível atual da Habilidade do Jogador
+			var/s_lvl = 1
+			if(s_id == "basic_sword") s_lvl = prof_sword_lvl
+			else if(s_id == "basic_kick") s_lvl = prof_kick_lvl
+			else if(s_id == "basic_fist") s_lvl = prof_punch_lvl
+			else if(s_id == "basic_gun") s_lvl = prof_gun_lvl
+			// (Aqui no futuro entraremos com a leitura de skill_levels[] para magias)
+
+			// 3. Aplica os Pesos dos Atributos definidos no JSON
+			var/stat_mult = 1.0
+			var/list/weights = skill_data["statWeights"]
+			if(weights && istype(weights, /list))
+				stat_mult = 0
+				if(weights["str"]) stat_mult += src.strength * weights["str"]
+				if(weights["agi"]) stat_mult += src.agility * weights["agi"]
+				if(weights["vit"]) stat_mult += src.vitality * weights["vit"]
+				if(weights["dex"]) stat_mult += src.dexterity * weights["dex"]
+				if(weights["von"]) stat_mult += src.willpower * weights["von"]
+				if(weights["sor"]) stat_mult += src.luck * weights["sor"]
+				if(stat_mult < 0.1) stat_mult = 0.1 // Garante que nunca zere o dano caso não tenha atributos
+			
+			var/level_scale = skill_data["levelScale"]
+			if(!level_scale) level_scale = 0
+
+			// 4. A FÓRMULA FINAL SUGERIDA: Power * (50% str + 30% agi...) + (Coef_Nivel * Nivel_Skill)
+			var/raw_damage = (base_dmg * stat_mult) + (s_lvl * level_scale)
+
+			// 5. Multiplicador de Combo
+			var/damage_mult = 1.0
 			if(skill_data["type"] == "melee")
 				var/list/combos = skill_data["combos"]
 				if(combos && c_step <= combos.len)
 					var/list/combo = combos[c_step]
-					damage_mult = combo["damageMult"]
+					if(combo["damageMult"]) damage_mult = combo["damageMult"]
 
-			if(skill_data["scaling"] == "physical")
-				base_dmg += calc_atk
-				if(s_id == "basic_sword") stat_scale = prof_sword_lvl * 2
-				else if(s_id == "basic_kick") stat_scale = prof_kick_lvl * 2
-				else stat_scale = prof_punch_lvl * 2
-			else if(skill_data["scaling"] == "ranged")
-				base_dmg += calc_ratk
-				stat_scale = prof_gun_lvl * 2
-			else if(skill_data["scaling"] == "magical")
-				stat_scale = src.willpower * skill_data["mult"]
-
-			var/damage = round((base_dmg + stat_scale + rand(0, 3)) * damage_mult)
+			var/damage = round(raw_damage * damage_mult + rand(0, 3))
 			
+			// 6. Crítico e Defesa
+			var/is_crit = 0
 			if(rand(1, 100) <= calc_crit)
 				is_crit = 1
 				damage = round(damage * 1.5) 
@@ -346,15 +373,24 @@ mob
 			damage -= def_reduction
 			if(damage < 1) damage = 1
 			
-			var/crit_txt = is_crit ? " <b style='color:#f1c40f'>CRÍTICO!</b>" : ""
+			// =========================================================================
 
+			var/crit_txt = is_crit ? " <b style='color:#f1c40f'>CRÍTICO!</b>" : ""
 			src.pending_visuals += list(list("type"="dmg", "val"=damage, "tid"=target_ref))
+
+			// Feedback de XP e Log
+			var/xp_type = ""
+			if(s_id == "basic_sword") xp_type = "sword"
+			else if(s_id == "basic_kick") xp_type = "kick"
+			else if(s_id == "basic_fist") xp_type = "fist"
+			else if(s_id == "basic_gun") xp_type = "gun"
 
 			if(istype(target, /mob/npc))
 				var/mob/npc/N = target
 				if(N.npc_type == "prop")
 					src << output("<span class='log-hit' style='color:orange'>TREINO: [damage] dmg[crit_txt]</span>", "map3d:addLog")
 					GainExperience(5)
+					if(xp_type != "") GainWeaponExp(xp_type, 3)
 				else
 					src << output("<span class='log-hit'>HIT em [N.name]! Dano: [damage][crit_txt]</span>", "map3d:addLog")
 					N.current_hp -= damage
@@ -362,6 +398,7 @@ mob
 						src << output("<span class='log-hit' style='color:red'>[N.name] eliminado!</span>", "map3d:addLog")
 						N.current_hp = N.max_hp; N.real_x = rand(-10, 10); N.real_z = rand(-10, 10)
 					GainExperience(10)
+					if(xp_type != "") GainWeaponExp(xp_type, 5)
 			else 
 				var/mob/T = target
 				src << output("<span class='log-hit'>HIT em [T.name]! Dano: [damage][crit_txt]</span>", "map3d:addLog")
@@ -373,6 +410,7 @@ mob
 					else { src << output("<span class='log-hit' style='color:orange'>Você derrotou [T.name]! Ele está desmaiado.</span>", "map3d:addLog"); T.GoFaint() }
 				
 				GainExperience(10)
+				if(xp_type != "") GainWeaponExp(xp_type, 5)
 				T.UpdateVisuals()
 
 		if(action == "add_stat" && in_game)
