@@ -90,6 +90,20 @@ const UISystem = {
     },
     hideTooltip: function() { document.getElementById('tooltip').style.display = 'none'; },
 
+    loadHotbarMemory: function() {
+        if(!this.charName) return;
+        const saved = localStorage.getItem(`poe2_hotbar_${this.charName}`);
+        if(saved) {
+            try { this.hotbar = JSON.parse(saved); } catch(e){}
+        }
+        this.renderHotbar();
+    },
+
+    saveHotbarMemory: function() {
+        if(!this.charName) return;
+        localStorage.setItem(`poe2_hotbar_${this.charName}`, JSON.stringify(this.hotbar));
+    },
+
     renderHotbar: function() {
         const container = document.getElementById('hotbar');
         if(!container) return;
@@ -163,7 +177,6 @@ const UISystem = {
     assignSkillToSlot: function(skillId) {
         if(this.assignTargetSlot) {
             this.hotbar[this.assignTargetSlot] = skillId;
-            // NOVIDADE: A Hotbar agora avisa diretamente o BYOND no momento do clique
             if(typeof window.NetworkSystem !== 'undefined') {
                 window.NetworkSystem.queueCommand(`action=update_hotbar&slot=${this.assignTargetSlot}&skill_id=${skillId || "null"}`);
             }
@@ -235,15 +248,17 @@ const UISystem = {
                 const sDef = skill.def;
                 const isUnlocked = (sDef.macro !== null) || this.unlockedSkills.includes(sId);
                 
+                // CORREÇÃO CRÍTICA (Ocultação Total de Segredos): Se o jogador não tem 
+                // acesso à skill especial, o JavaScript ABORTA a renderização dela na aba!
+                if(!isUnlocked) return;
+                
                 const rarityColors = { basic: "#ccc", uncommon: "#2ecc71", rare: "#3498db", legend: "#f1c40f", ultimate: "#e74c3c" };
                 const c = rarityColors[sDef.rarity] || "#fff";
                 
                 const card = document.createElement('div');
                 card.className = "skill-card";
-                if(!isUnlocked) card.style.opacity = "0.5";
                 
                 let macroTxt = sDef.macro ? `[${sDef.macro}]` : `(Slot Hotbar)`;
-                if(!isUnlocked) macroTxt = "[Não Aprendida]";
                 
                 let iconChar = "✨";
                 if(sDef.requiresWeaponTag === "sword") iconChar = "⚔️";
@@ -309,16 +324,21 @@ const UISystem = {
             if(lvl) lvl.innerText = prof.lvl || 1;
         }
         
-        // NOVIDADE: O Cliente se alimenta unicamente da Hotbar enviada pelo servidor!
+        // CORREÇÃO CRÍTICA DA HOTBAR (Sync Estrito): Agora o JS força a leitura rigorosa
+        // dos Nulls enviados pelo BYOND, e obriga a Hotbar a ser apagada caso a skill suma!
         if(me.hotbar) {
             let changed = false;
             for(let i=1; i<=9; i++) {
-                if(this.hotbar[i.toString()] !== me.hotbar[i.toString()]) {
+                const serverSkill = me.hotbar[i.toString()] || null;
+                if(this.hotbar[i.toString()] !== serverSkill) {
                     changed = true;
-                    this.hotbar[i.toString()] = me.hotbar[i.toString()];
+                    this.hotbar[i.toString()] = serverSkill;
                 }
             }
-            if(changed) this.renderHotbar();
+            if(changed) {
+                this.saveHotbarMemory(); // Força salvar no cachê do navegador para reforço!
+                this.renderHotbar();
+            }
         }
 
         document.getElementById('name-display').innerText = me.nick || "Unknown";

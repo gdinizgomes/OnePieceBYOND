@@ -17,7 +17,6 @@ mob
 				skills_text = json_encode(GlobalSkillsData)
 			src << output(skills_text, "map3d:receberSkills")
 			
-		// NOVIDADE: Ponte para atualizar a Hotbar pelo Cliente
 		if(action == "update_hotbar" && in_game)
 			var/slot = href_list["slot"]
 			var/skill = href_list["skill_id"]
@@ -205,6 +204,12 @@ mob
 			
 			var/list/skill_data = GlobalSkillsData[s_id]
 			if(!skill_data) return
+
+			// CORREÇÃO CRÍTICA DE SEGURANÇA: Se a magia for especial, valida se o 
+			// jogador realmente possui ela na lista de desbloqueios, impedindo hackers de burlar os requisitos!
+			if(skill_data["macro"] == null)
+				if(!unlocked_skills || !(s_id in unlocked_skills))
+					return 
 			
 			if(skill_cooldowns[s_id] && skill_cooldowns[s_id] > world.time) return
 			var/cost = skill_data["energyCost"]
@@ -331,7 +336,7 @@ mob
 			else if(s_id == "basic_fist") s_lvl = prof_punch_lvl
 			else if(s_id == "basic_gun") s_lvl = prof_gun_lvl
 			else
-				if(skill_levels && skill_levels[s_id]) s_lvl = skill_levels[s_id]
+				if(skill_levels && !isnull(skill_levels[s_id])) s_lvl = skill_levels[s_id]
 
 			var/stat_sum = 0
 			var/list/weights = skill_data["statWeights"]
@@ -382,7 +387,6 @@ mob
 			else if(s_id == "basic_fist") xp_type = "fist"
 			else if(s_id == "basic_gun") xp_type = "gun"
 
-			// NOVIDADE: As Skills Especiais agora ganham Nível ao acertar inimigos!
 			if(istype(target, /mob/npc))
 				var/mob/npc/N = target
 				if(N.npc_type == "prop")

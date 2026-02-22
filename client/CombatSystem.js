@@ -104,6 +104,13 @@ const CombatSystem = {
             console.warn("Skill não encontrada no JSON:", skillId);
             return;
         }
+        
+        // CORREÇÃO CRÍTICA (Prevenção de Ataques Inválidos Front-End): 
+        // Impede que atalhos residuais no teclado disparem magias que o jogador não tem mais direito!
+        if(skillDef.macro === null && typeof UISystem !== 'undefined' && !UISystem.unlockedSkills.includes(skillId)) {
+            UISystem.addLog("<span style='color:#e74c3c'>Você esqueceu como usar esta habilidade.</span>", "log-miss");
+            return;
+        }
 
         const now = Date.now();
         if (this.localSkillCooldowns[skillId] && this.localSkillCooldowns[skillId] > now) return;
