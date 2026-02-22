@@ -192,7 +192,6 @@ const UISystem = {
             return;
         }
         
-        // CORREÇÃO CRÍTICA (Preservação de Aba): Memoriza qual aba você estava olhando!
         let currentActiveTab = null;
         const activeContent = document.querySelector('.tab-content.active');
         if (activeContent) {
@@ -241,7 +240,6 @@ const UISystem = {
                 btn.innerText = cat;
                 btn.onclick = () => this.switchSkillTab(`tab-cat-${cat}`, btnId);
                 
-                // Abre a aba que você estava olhando antes do JS redesenhar a janela
                 if(currentActiveTab === cat) {
                     btn.classList.add('active');
                     firstActive = cat;
@@ -335,12 +333,11 @@ const UISystem = {
             if(lvl) lvl.innerText = prof.lvl || 1;
         }
         
-        // CORREÇÃO CRÍTICA DO PISCA-PISCA: A Hotbar só é tocada se houver MUDANÇAS do servidor.
         if(me.hotbar) {
             let changed = false;
             for(let i=1; i<=9; i++) {
                 let serverSkill = me.hotbar[i.toString()];
-                if (serverSkill === "") serverSkill = null; // Burlando o bug do BYOND
+                if (serverSkill === "") serverSkill = null; 
                 
                 if(this.hotbar[i.toString()] !== serverSkill) {
                     changed = true;
@@ -364,12 +361,13 @@ const UISystem = {
         document.getElementById('stat-kills').innerText = me.kills || 0;
         document.getElementById('stat-deaths').innerText = me.deaths || 0;
 
+        // CORREÇÃO CRÍTICA (Visual): Arredondamento do HP e Energia para eliminar as casas decimais indesejadas
         this.cache.maxHp = me.max_hp; this.cache.hp = me.hp;
-        document.getElementById('hp-text').innerText = `${me.hp}/${me.max_hp}`;
+        document.getElementById('hp-text').innerText = `${Math.round(me.hp)}/${Math.round(me.max_hp)}`;
         document.getElementById('hp-bar-fill').style.width = Math.max(0, Math.min(100, (me.hp / me.max_hp) * 100)) + "%";
 
         this.cache.maxEn = me.max_en; this.cache.en = me.en;
-        document.getElementById('en-text').innerText = `${me.en}/${me.max_en}`;
+        document.getElementById('en-text').innerText = `${Math.round(me.en)}/${Math.round(me.max_en)}`;
         document.getElementById('en-bar-fill').style.width = Math.max(0, Math.min(100, (me.en / me.max_en) * 100)) + "%";
 
         this.cache.reqExp = me.req_exp; this.cache.exp = me.exp;

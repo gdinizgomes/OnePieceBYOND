@@ -73,8 +73,9 @@ const TargetSystem = {
         const maxHp = target.maxHp || 100;
         const pct = Math.max(0, Math.min(100, (hp / maxHp) * 100));
         
+        // CORREÇÃO CRÍTICA: Arredonda os HPs do Painel de Alvo
         document.getElementById('target-hp-fill').style.width = pct + "%";
-        document.getElementById('target-hp-text').innerText = `${Math.floor(hp)}/${maxHp}`;
+        document.getElementById('target-hp-text').innerText = `${Math.round(hp)}/${Math.round(maxHp)}`;
 
         for (const id in EntityManager.otherPlayers) {
             if(EntityManager.otherPlayers[id].label) {

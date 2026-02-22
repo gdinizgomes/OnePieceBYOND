@@ -179,8 +179,6 @@ const EntityManager = {
         for(let id in this.otherPlayers) {
             const other = this.otherPlayers[id];
             
-            // CORREÇÃO CRÍTICA (Interação Seletiva): Filtra props de árvores e foca apenas em 
-            // Vendedores, Enfermeiras ou Jogadores desmaiados para permitir o [X].
             const isInteractableNPC = other.isNPC && (other.npcType === 'vendor' || other.npcType === 'nurse');
             const isFaintedPlayer = !other.isNPC && other.fainted;
 
@@ -292,7 +290,6 @@ const EntityManager = {
             if(moving) {
                 this.lastActionTime = Date.now(); 
                 
-                // NOVIDADE: Fuga Dinâmica da Loja. Se você se mover, as janelas de loja fecham para não travar a tela.
                 if(UISystem.state.shopOpen) UISystem.toggleShop();
                 if(UISystem.state.lootOpen) UISystem.closeLoot();
 
@@ -347,7 +344,16 @@ const EntityManager = {
         }
 
         if(typeof Engine !== 'undefined') {
-            Engine.camera.position.set(this.playerGroup.position.x + Math.sin(Input.camAngle)*7, this.playerGroup.position.y + 5, this.playerGroup.position.z + Math.cos(Input.camAngle)*7);
+            // CORREÇÃO CRÍTICA (Micro-stutters): Aplicada Interpolação (Lerp) na Câmera
+            // para que ela siga o jogador com fluidez absoluta mesmo se a taxa de frames oscilar.
+            const idealX = this.playerGroup.position.x + Math.sin(Input.camAngle)*7;
+            const idealY = this.playerGroup.position.y + 5;
+            const idealZ = this.playerGroup.position.z + Math.cos(Input.camAngle)*7;
+
+            Engine.camera.position.x = lerp(Engine.camera.position.x, idealX, 0.4 * timeScale);
+            Engine.camera.position.y = lerp(Engine.camera.position.y, idealY, 0.4 * timeScale);
+            Engine.camera.position.z = lerp(Engine.camera.position.z, idealZ, 0.4 * timeScale);
+
             Engine.camera.lookAt(this.playerGroup.position.x, this.playerGroup.position.y + 1.5, this.playerGroup.position.z);
         }
         
@@ -388,8 +394,9 @@ const EntityManager = {
             if(typeof Engine !== 'undefined') {
                 const tempV = new THREE.Vector3(mesh.position.x, mesh.position.y + 2, mesh.position.z); tempV.project(Engine.camera);
                 other.label.style.display = (Math.abs(tempV.z) > 1) ? 'none' : 'block'; 
-                other.label.style.left = (tempV.x * .5 + .5) * window.innerWidth + 'px'; 
-                other.label.style.top = (-(tempV.y * .5) + .5) * window.innerHeight + 'px';
+                // CORREÇÃO CRÍTICA (Tremedeira UI): O Math.round trava os pixels na tela para evitar Jitter no painel HTML
+                other.label.style.left = Math.round((tempV.x * .5 + .5) * window.innerWidth) + 'px'; 
+                other.label.style.top = Math.round((-(tempV.y * .5) + .5) * window.innerHeight) + 'px';
             }
         }
     }
