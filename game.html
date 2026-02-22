@@ -44,9 +44,17 @@
         #controls-help { position: absolute; bottom: 20px; left: 20px; background: rgba(0,0,0,0.5); color: #ccc; padding: 10px; border-radius: 5px; font-size: 11px; font-family: monospace; pointer-events: auto; }
 
         #hotbar { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); display: flex; gap: 8px; pointer-events: auto; }
-        .hotbar-slot { width: 44px; height: 44px; background: rgba(30, 30, 30, 0.8); border: 2px solid #555; border-radius: 5px; display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; box-shadow: 0 4px 6px rgba(0,0,0,0.5); cursor: pointer; }
+        .hotbar-slot { width: 44px; height: 44px; background: rgba(30, 30, 30, 0.8); border: 2px solid #555; border-radius: 5px; display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; box-shadow: 0 4px 6px rgba(0,0,0,0.5); cursor: pointer; transition: 0.2s; }
+        .hotbar-slot:hover { border-color: #9b59b6; background: rgba(50, 30, 50, 0.9); }
         .hotbar-key { position: absolute; top: -8px; left: -8px; background: #9b59b6; color: white; font-size: 10px; font-weight: bold; padding: 2px 5px; border-radius: 3px; border: 1px solid black; }
         .cooldown-overlay { position: absolute; bottom: 0; left: 0; width: 100%; height: 0%; background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center; color: white; font-size: 12px; font-weight: bold; overflow: hidden; pointer-events: none; }
+
+        /* NOVIDADE: Janela Popup estilo PoE2 para atribuição modular */
+        #skill-assign-popup { position: absolute; bottom: 80px; left: 50%; transform: translateX(-50%); background: rgba(20,20,30,0.98); border: 2px solid #9b59b6; padding: 10px; border-radius: 8px; display: none; z-index: 2000; flex-direction: column; gap: 5px; width: 220px; box-shadow: 0 0 15px rgba(0,0,0,0.8); pointer-events: auto; }
+        .assign-btn { background: #333; color: white; border: 1px solid #555; padding: 8px; cursor: pointer; text-align: left; border-radius: 4px; font-weight: bold; transition: 0.2s; font-size: 12px; display: flex; justify-content: space-between; }
+        .assign-btn:hover { background: #555; border-color: #9b59b6; }
+        .assign-btn.empty { background: #5a1e1e; border-color: #e74c3c; text-align: center; justify-content: center; }
+        .assign-btn.empty:hover { background: #e74c3c; }
 
         #stat-window { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 480px; background: rgba(20, 20, 30, 0.95); color: white; border: 2px solid #d4af37; border-radius: 10px; padding: 20px; display: none; pointer-events: auto; z-index: 100; box-shadow: 0 0 20px rgba(0,0,0,0.8); }
         .stat-header { display: flex; justify-content: space-between; border-bottom: 1px solid #555; padding-bottom: 10px; margin-bottom: 10px; }
@@ -72,13 +80,11 @@
         .tab-content::-webkit-scrollbar-thumb { background: #9b59b6; border-radius: 4px; }
         
         .skill-card { background: rgba(255,255,255,0.05); padding: 12px; margin-bottom: 10px; border-radius: 6px; display: flex; align-items: center; border: 1px solid #444; }
-        .skill-icon { width: 44px; height: 44px; background: #222; border-radius: 5px; display: flex; justify-content: center; align-items: center; font-size: 24px; margin-right: 15px; border: 1px solid #555; box-shadow: inset 0 0 10px #000; }
+        .skill-icon { width: 44px; height: 44px; background: #222; border-radius: 5px; display: flex; justify-content: center; align-items: center; font-size: 24px; margin-right: 15px; border: 1px solid #555; box-shadow: inset 0 0 10px #000; text-transform: uppercase; font-weight:bold; }
         .skill-info { flex: 1; }
-        .skill-name { font-weight: bold; font-size: 15px; margin-bottom: 2px; color: #f1c40f; }
+        .skill-name { font-weight: bold; font-size: 15px; margin-bottom: 2px; }
         .skill-desc { font-size: 11px; color: #ccc; margin-bottom: 8px; line-height: 1.2; }
-        .skill-bar-bg { width: 100%; height: 8px; background: #111; border-radius: 4px; overflow: hidden; border: 1px solid #333; }
-        .skill-bar-fill { height: 100%; background: #2ecc71; width: 0%; transition: width 0.3s; }
-        .skill-lvl { font-weight: bold; font-size: 16px; color: white; width: 50px; text-align: right; margin-left: 10px; }
+        .skill-lvl { font-weight: bold; font-size: 14px; color: white; text-align: right; margin-left: 10px; }
         
         #inventory-window, #loot-window { position: absolute; top: 50%; right: 10%; transform: translateY(-50%); width: 320px; background: rgba(20, 20, 30, 0.95); border: 2px solid #3498db; border-radius: 10px; padding: 15px; display: none; pointer-events: auto; color: white; z-index: 100; flex-direction: column; }
         #loot-window { border-color: #e74c3c; right: auto; left: 10%; }
@@ -147,7 +153,6 @@
 
         <div class="char-info">
             <div class="lethality-btn" id="lethality-toggle" onclick="toggleLethal()" title="Modo Letalidade: OFF (Matar jogadores)">💀</div>
-
             <div id="name-display" style="font-size: 18px; font-weight: bold; width: 80%;">Loading...</div>
             <div style="font-size: 12px; color: #aaa;">Lvl <span id="lvl-display">0</span></div>
             <div style="font-size:10px;">HP <span id="hp-text"></span></div> <div class="bar-container"><div id="hp-bar-fill" class="hp-bar"></div></div>
@@ -160,24 +165,17 @@
         <div id="controls-help">
             <strong>CONTROLES:</strong><br>
             [W,A,S,D] Mover<br>[SHIFT] Correr<br>[Espaço] Pular<br>
-            [A] Soco &nbsp; [S] Chute<br>[D] Espada [F] Arma<br>
-            [R] Descansar<br>[C] Stats [I] Itens [K] Habilidades<br>[TAB] Alvo
+            [A, S, D, F] Ataques Básicos<br>[1-9] Hotbar Especial<br>
+            [R] Descansar<br>[C] Stats [I] Itens [K] Habilidades
         </div>
 
-        <div id="hotbar">
-            <div class="hotbar-slot" onclick="window.CombatSystem.executeSkill('fireball')">
-                <div class="hotbar-key">1</div>
-                <div style="color:#f39c12; font-size:10px;">Fogo</div>
-                <div class="cooldown-overlay" id="cd-fireball"></div>
-            </div>
-            <div class="hotbar-slot" onclick="window.CombatSystem.executeSkill('iceball')">
-                <div class="hotbar-key">2</div>
-                <div style="color:#00ffff; font-size:10px;">Gelo</div>
-                <div class="cooldown-overlay" id="cd-iceball"></div>
-            </div>
-            <div class="hotbar-slot"><div class="hotbar-key">3</div><div class="cooldown-overlay"></div></div>
-            <div class="hotbar-slot"><div class="hotbar-key">4</div><div class="cooldown-overlay"></div></div>
+        <div id="skill-assign-popup">
+            <div style="text-align:center; font-size:12px; margin-bottom:5px; color:#aaa; font-weight:bold;">ATRIBUIR HABILIDADE</div>
+            <div id="assign-skill-list" style="display:flex; flex-direction:column; gap:5px; max-height:200px; overflow-y:auto;"></div>
+            <button onclick="UISystem.closeAssignPopup()" style="margin-top:5px; background:none; color:#aaa; border:none; cursor:pointer; font-size:11px;">Cancelar</button>
         </div>
+
+        <div id="hotbar"></div> 
 
         <div id="stat-window">
             <div class="stat-header">
@@ -228,19 +226,10 @@
 
         <div id="skills-window">
             <div class="skills-header">LIVRO DE HABILIDADES</div>
-            <div class="tabs-header">
-                <button class="tab-btn active" onclick="switchTab('tab-combate', this)">Combate</button>
-                <button class="tab-btn" disabled title="Habilidades baseadas em Haki (Indisponível no momento)">Vontade</button>
-                <button class="tab-btn" disabled title="Akuma no Mi e Conquistas (Indisponível no momento)">Especial</button>
-                <button class="tab-btn" disabled title="Árvores de Classe: Marinha, Pirata... (Indisponível no momento)">Classes</button>
-            </div>
-            
-            <div id="tab-combate" class="tab-content active">
-                <div class="skill-card"><div class="skill-icon">👊</div><div class="skill-info"><div class="skill-name">Combate Corpo-a-Corpo</div><div class="skill-desc">Melhora os danos e combos usando os punhos.</div><div class="skill-bar-bg"><div class="skill-bar-fill" id="bar-punch"></div></div></div><div class="skill-lvl">Lv.<span id="prof-punch">1</span></div></div>
-                <div class="skill-card"><div class="skill-icon">🦵</div><div class="skill-info"><div class="skill-name">Artes Marciais (Chute)</div><div class="skill-desc">Refina os movimentos e impactos com os pés.</div><div class="skill-bar-bg"><div class="skill-bar-fill" id="bar-kick"></div></div></div><div class="skill-lvl">Lv.<span id="prof-kick">1</span></div></div>
-                <div class="skill-card"><div class="skill-icon">⚔️</div><div class="skill-info"><div class="skill-name">Esgrima</div><div class="skill-desc">Proficiência em ataques cortantes e combos com espadas.</div><div class="skill-bar-bg"><div class="skill-bar-fill" id="bar-sword"></div></div></div><div class="skill-lvl">Lv.<span id="prof-sword">1</span></div></div>
-                <div class="skill-card"><div class="skill-icon">🔫</div><div class="skill-info"><div class="skill-name">Artilharia</div><div class="skill-desc">Manuseio avançado, aumentando danos com armas de fogo.</div><div class="skill-bar-bg"><div class="skill-bar-fill" id="bar-gun"></div></div></div><div class="skill-lvl">Lv.<span id="prof-gun">1</span></div></div>
-            </div>
+            <div class="tabs-header" id="skills-tabs-header">
+                </div>
+            <div id="skills-tabs-content">
+                </div>
             <div style="text-align: center; padding: 15px; border-top: 1px solid #444; background: rgba(0,0,0,0.2);"><button onclick="toggleSkills()" style="padding: 5px 20px; cursor: pointer;">Fechar</button></div>
         </div>
 

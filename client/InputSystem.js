@@ -17,6 +17,7 @@ const InputSystem = {
             else if (UISystem.state.skillsOpen) UISystem.toggleSkills();
             else if (UISystem.state.shopOpen) UISystem.toggleShop();
             else if (UISystem.state.lootOpen) UISystem.closeLoot();
+            else if (UISystem.assignTargetSlot !== null) UISystem.closeAssignPopup(); // Fecha popup de atalhos
             else {
                 TargetSystem.deselectTarget();
                 if(document.getElementById('kill-modal').style.display === 'block') UISystem.confirmKill(false);
@@ -33,9 +34,15 @@ const InputSystem = {
         if(k === 'r' && !NetworkSystem.blockSync) { NetworkSystem.blockSync = true; EntityManager.lastActionTime = Date.now(); NetworkSystem.queueCommand(`action=toggle_rest`); setTimeout(() => { NetworkSystem.blockSync = false; }, 500); }
         if(e.key === 'Shift') EntityManager.isRunning = true;
 
-        // CORREÇÃO: O InputSystem agora obedece cegamente ao JSON Universal
-        if(k === '1') CombatSystem.executeSkill("fireball");
-        if(k === '2') CombatSystem.executeSkill("iceball");
+        // NOVIDADE TÉCNICA: Acionamento Dinâmico de Hotbar (1 ao 9)
+        if(k >= '1' && k <= '9') {
+            const mappedSkill = UISystem.hotbar[k];
+            if(mappedSkill) {
+                CombatSystem.executeSkill(mappedSkill);
+            } else {
+                UISystem.addLog(`<span style='color:#7f8c8d'>O slot [${k}] está vazio.</span>`, "log-miss");
+            }
+        }
     },
 
     handleKeyUp: function(e) {
@@ -46,7 +53,6 @@ const InputSystem = {
         if(EntityManager.isFainted) return; 
         const k = e.detail;
         
-        // CORREÇÃO: O InputSystem agora obedece cegamente ao JSON Universal
         if(k === 'd') CombatSystem.executeSkill("basic_sword"); 
         else if(k === 'f') CombatSystem.executeSkill("basic_gun"); 
         else if(k === 'a') CombatSystem.executeSkill("basic_fist"); 

@@ -1,9 +1,8 @@
 #define SAVE_DIR "saves/"
 
-// Constantes de sincronização do heartbeat
-#define VISION_RANGE  40.0  // Distância máxima de visibilidade entre entidades
-#define SYNC_FREQ     20    // Ticks entre full syncs de visuais
-#define VISUAL_LAG    5     // Janela de ticks para enviar visuais sujos
+#define VISION_RANGE  40.0  
+#define SYNC_FREQ     20    
+#define VISUAL_LAG    5     
 
 var/global/datum/game_controller/SSserver
 var/global/list/GlobalSkillsData = list()
@@ -28,7 +27,6 @@ world/New()
 	else
 		world.log << "ERRO CRITICO: shared/SkillDefinitions.json nao encontrado no pacote!"
 	
-	// NOVIDADE: O mundo acorda, lembra do que estava no chão na última sessão e recarrega.
 	LoadWorldState()
 		
 	if(!SSserver)
@@ -40,7 +38,6 @@ world/New()
 	new /mob/npc/nurse()
 	new /mob/npc/prop/log()
 
-// NOVIDADE: Ação de encerramento. Salva os itens do chão antes do servidor desligar oficialmente.
 world/Del()
 	SaveWorldState()
 	..()
@@ -52,7 +49,6 @@ datum/game_controller
 	var/ground_dirty_tick = 0
 	var/list/global_events = list()
 
-	// Serializa visuais de equipamento de uma mob para o pacote de sync
 	proc/SerializeEquipment(mob/M)
 		var/list/eq = list("it"="","eq_h"="","eq_b"="","eq_l"="","eq_f"="")
 		if(M.slot_hand) eq["it"]   = M.slot_hand.id_visual
@@ -67,10 +63,7 @@ datum/game_controller
 		while(running)
 			server_tick++
 			
-			// NOVIDADE: Auto-save preventivo do chão a cada 600 ticks (~60 segundos)
-			// Garante que o progresso da economia não seja perdido em caso de crash (falta de luz) do host.
-			if(server_tick % 600 == 0)
-				SaveWorldState()
+			if(server_tick % 600 == 0) SaveWorldState()
 			
 			try
 				var/full_sync = (server_tick % SYNC_FREQ == 0)
@@ -139,7 +132,8 @@ datum/game_controller
 					var/list/my_eq = SerializeEquipment(M)
 					var/list/my_stats = list(
 						"my_id" = "\ref[M]",
-						"me" = list("loaded" = 1, "x" = M.R2(M.real_x), "y" = M.R2(M.real_y), "z" = M.R2(M.real_z), "rot" = M.R2(M.real_rot), "nick" = M.name, "class" = M.char_class, "lvl" = M.level, "exp" = M.experience, "req_exp" = M.req_experience, "pts" = M.stat_points, "str" = M.strength, "vit" = M.vitality, "agi" = M.agility, "dex" = M.dexterity, "von" = M.willpower, "sor" = M.luck, "atk" = M.calc_atk, "ratk" = M.calc_ratk, "def" = M.calc_def, "hit" = M.calc_hit, "flee" = M.calc_flee, "crit" = M.calc_crit, "gold" = M.gold, "hp" = M.current_hp, "max_hp" = M.max_hp, "en" = M.current_energy, "max_en" = M.max_energy, "pp" = M.prof_punch_lvl, "pp_x" = M.prof_punch_exp, "pp_r" = M.GetProficiencyReq(M.prof_punch_lvl), "pk" = M.prof_kick_lvl,  "pk_x" = M.prof_kick_exp,  "pk_r" = M.GetProficiencyReq(M.prof_kick_lvl), "ps" = M.prof_sword_lvl, "ps_x" = M.prof_sword_exp, "ps_r" = M.GetProficiencyReq(M.prof_sword_lvl), "pg" = M.prof_gun_lvl,   "pg_x" = M.prof_gun_exp,   "pg_r" = M.GetProficiencyReq(M.prof_gun_lvl), "mspd" = M.calc_move_speed, "jmp" = M.calc_jump_power, "rest" = M.is_resting, "ft" = M.is_fainted, "rem" = faint_rem, "skin" = M.skin_color, "cloth" = M.cloth_color, "gen" = M.char_gender, "it" = my_eq["it"], "eq_h" = my_eq["eq_h"], "eq_b" = my_eq["eq_b"], "eq_l" = my_eq["eq_l"], "eq_f" = my_eq["eq_f"], "kills" = M.kills, "deaths" = M.deaths, "lethal" = M.lethality_mode),
+						// NOVIDADE: Adicionado a key "skills" ao final da lista de status pessoal!
+						"me" = list("loaded" = 1, "x" = M.R2(M.real_x), "y" = M.R2(M.real_y), "z" = M.R2(M.real_z), "rot" = M.R2(M.real_rot), "nick" = M.name, "class" = M.char_class, "lvl" = M.level, "exp" = M.experience, "req_exp" = M.req_experience, "pts" = M.stat_points, "str" = M.strength, "vit" = M.vitality, "agi" = M.agility, "dex" = M.dexterity, "von" = M.willpower, "sor" = M.luck, "atk" = M.calc_atk, "ratk" = M.calc_ratk, "def" = M.calc_def, "hit" = M.calc_hit, "flee" = M.calc_flee, "crit" = M.calc_crit, "gold" = M.gold, "hp" = M.current_hp, "max_hp" = M.max_hp, "en" = M.current_energy, "max_en" = M.max_energy, "pp" = M.prof_punch_lvl, "pp_x" = M.prof_punch_exp, "pp_r" = M.GetProficiencyReq(M.prof_punch_lvl), "pk" = M.prof_kick_lvl,  "pk_x" = M.prof_kick_exp,  "pk_r" = M.GetProficiencyReq(M.prof_kick_lvl), "ps" = M.prof_sword_lvl, "ps_x" = M.prof_sword_exp, "ps_r" = M.GetProficiencyReq(M.prof_sword_lvl), "pg" = M.prof_gun_lvl,   "pg_x" = M.prof_gun_exp,   "pg_r" = M.GetProficiencyReq(M.prof_gun_lvl), "mspd" = M.calc_move_speed, "jmp" = M.calc_jump_power, "rest" = M.is_resting, "ft" = M.is_fainted, "rem" = faint_rem, "skin" = M.skin_color, "cloth" = M.cloth_color, "gen" = M.char_gender, "it" = my_eq["it"], "eq_h" = my_eq["eq_h"], "eq_b" = my_eq["eq_b"], "eq_l" = my_eq["eq_l"], "eq_f" = my_eq["eq_f"], "kills" = M.kills, "deaths" = M.deaths, "lethal" = M.lethality_mode, "skills" = M.unlocked_skills),
 						"evts" = M.pending_visuals
 					)
 					
@@ -210,7 +204,7 @@ mob
 			try
 				SaveCharacter()
 			catch(var/exception/e)
-				world.log << "ERRO ao salvar [src.name] no logout: [e.name] | [e.file]:[e.line]"
+				world.log << "ERRO ao salvar no logout: [e.name]"
 			in_game = 0
 		char_loaded = 0
 		del(src)
