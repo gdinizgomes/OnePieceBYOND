@@ -177,8 +177,15 @@ const EntityManager = {
         const hint = document.getElementById('interaction-hint');
         let npcNear = false;
         for(let id in this.otherPlayers) {
-            if(this.otherPlayers[id].isNPC || (this.otherPlayers[id].fainted && !this.otherPlayers[id].isNPC)) { 
-                 let d = this.playerGroup ? this.playerGroup.position.distanceTo(this.otherPlayers[id].mesh.position) : 999;
+            const other = this.otherPlayers[id];
+            
+            // CORREÇÃO CRÍTICA (Interação Seletiva): Filtra props de árvores e foca apenas em 
+            // Vendedores, Enfermeiras ou Jogadores desmaiados para permitir o [X].
+            const isInteractableNPC = other.isNPC && (other.npcType === 'vendor' || other.npcType === 'nurse');
+            const isFaintedPlayer = !other.isNPC && other.fainted;
+
+            if(isInteractableNPC || isFaintedPlayer) { 
+                 let d = this.playerGroup ? this.playerGroup.position.distanceTo(other.mesh.position) : 999;
                  if(d < 3.0) npcNear = true;
             }
         }
@@ -191,12 +198,11 @@ const EntityManager = {
         const me = packet.me; 
         this.myID = packet.my_id;
 
-        // CORREÇÃO CRÍTICA (Intercepção de Dados): Carrega as Definições do JSON enviadas pelo Servidor
         if(packet.skills_data) {
             window.GameSkills = packet.skills_data;
             if(typeof UISystem !== 'undefined') {
                 UISystem.addLog("<span style='color:#2ecc71'>[Sistema Data-Driven Sincronizado]</span>", "log-hit");
-                UISystem.lastSkillsStr = ""; // Força a recriação limpa do HTML
+                UISystem.lastSkillsStr = ""; 
             }
         }
 
@@ -285,6 +291,10 @@ const EntityManager = {
 
             if(moving) {
                 this.lastActionTime = Date.now(); 
+                
+                // NOVIDADE: Fuga Dinâmica da Loja. Se você se mover, as janelas de loja fecham para não travar a tela.
+                if(UISystem.state.shopOpen) UISystem.toggleShop();
+                if(UISystem.state.lootOpen) UISystem.closeLoot();
 
                 const len = Math.sqrt(inputX*inputX + inputZ*inputZ);
                 if(len > 0) { inputX /= len; inputZ /= len; }

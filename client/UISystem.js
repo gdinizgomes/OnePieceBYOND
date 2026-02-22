@@ -10,32 +10,56 @@ const UISystem = {
     hotbar: { '1': null, '2': null, '3': null, '4': null, '5': null, '6': null, '7': null, '8': null, '9': null },
     assignTargetSlot: null,
 
+    // NOVIDADE: Fecha todas as janelas para evitar sobreposição suja
+    closeAllWindows: function() {
+        this.state.invOpen = false; document.getElementById('inventory-window').style.display = 'none';
+        this.state.statOpen = false; document.getElementById('stat-window').style.display = 'none';
+        this.state.shopOpen = false; document.getElementById('shop-window').style.display = 'none';
+        this.state.skillsOpen = false; document.getElementById('skills-window').style.display = 'none';
+        this.closeLoot();
+        this.closeAssignPopup();
+    },
+
     toggleInventory: function() { 
-        this.state.invOpen = !this.state.invOpen; 
-        document.getElementById('inventory-window').style.display = this.state.invOpen ? 'flex' : 'none'; 
-        if(this.state.invOpen && typeof window.NetworkSystem !== 'undefined') window.NetworkSystem.queueCommand('action=request_inventory');
+        const wasOpen = this.state.invOpen;
+        this.closeAllWindows();
+        if(!wasOpen) {
+            this.state.invOpen = true; 
+            document.getElementById('inventory-window').style.display = 'flex'; 
+            if(typeof window.NetworkSystem !== 'undefined') window.NetworkSystem.queueCommand('action=request_inventory');
+        }
     },
     
     toggleStats: function() { 
-        this.state.statOpen = !this.state.statOpen; 
-        document.getElementById('stat-window').style.display = this.state.statOpen ? 'block' : 'none'; 
-        if(this.state.statOpen && typeof window.NetworkSystem !== 'undefined') window.NetworkSystem.queueCommand('action=request_status');
+        const wasOpen = this.state.statOpen;
+        this.closeAllWindows();
+        if(!wasOpen) {
+            this.state.statOpen = true; 
+            document.getElementById('stat-window').style.display = 'block'; 
+            if(typeof window.NetworkSystem !== 'undefined') window.NetworkSystem.queueCommand('action=request_status');
+        }
     },
     
     toggleShop: function() { 
-        this.state.shopOpen = !this.state.shopOpen; 
-        document.getElementById('shop-window').style.display = this.state.shopOpen ? 'flex' : 'none'; 
-        if(!this.state.shopOpen) {
-            document.querySelectorAll('.btn-sell').forEach(b => b.style.display = 'none');
+        if(this.state.shopOpen) {
+            this.closeAllWindows();
         }
     },
     
     toggleSkills: function() { 
-        this.state.skillsOpen = !this.state.skillsOpen; 
-        document.getElementById('skills-window').style.display = this.state.skillsOpen ? 'flex' : 'none'; 
+        const wasOpen = this.state.skillsOpen;
+        this.closeAllWindows();
+        if(!wasOpen) {
+            this.state.skillsOpen = true; 
+            document.getElementById('skills-window').style.display = 'flex'; 
+        }
     },
     
-    closeLoot: function() { this.state.lootOpen = false; this.state.lootTargetRef = ""; document.getElementById('loot-window').style.display = 'none'; },
+    closeLoot: function() { 
+        this.state.lootOpen = false; 
+        this.state.lootTargetRef = ""; 
+        document.getElementById('loot-window').style.display = 'none'; 
+    },
 
     confirmKill: function(isYes) {
         document.getElementById('kill-modal').style.display = 'none';
@@ -83,6 +107,7 @@ const UISystem = {
 
     renderHotbar: function() {
         const container = document.getElementById('hotbar');
+        if(!container) return;
         container.innerHTML = '';
         
         for(let i = 1; i <= 9; i++) {
@@ -122,10 +147,16 @@ const UISystem = {
         emptyBtn.onclick = () => this.assignSkillToSlot(null);
         list.appendChild(emptyBtn);
 
+        // NOVIDADE: Verifica quais habilidades já estão equipadas em OUTROS slots!
+        const currentEquipped = Object.values(this.hotbar);
+
         for(const [sId, sDef] of Object.entries(window.GameSkills)) {
             if(sId === "_COMMENT_DOCUMENTATION") continue;
             if(sDef.macro !== null) continue; 
             if(!this.unlockedSkills.includes(sId)) continue; 
+            
+            // Se já está na hotbar E não é o slot que clicamos agora, oculta!
+            if(currentEquipped.includes(sId) && this.hotbar[this.assignTargetSlot] !== sId) continue;
 
             const btn = document.createElement('div');
             btn.className = "assign-btn";
@@ -156,8 +187,6 @@ const UISystem = {
     },
 
     buildSkillsUI: function() {
-        // CORREÇÃO CRÍTICA (Prevenção de Aborto Silencioso): 
-        // Se as skills não estiverem na memória do JS, pede de volta ao Servidor instantaneamente!
         if(!window.GameSkills) {
             if(typeof window.NetworkSystem !== 'undefined') window.NetworkSystem.queueCommand('action=request_skills');
             return;
@@ -237,19 +266,24 @@ const UISystem = {
                 
                 let lvlTxt = "1";
                 let pct = 0;
+                let expTooltip = "0 / 0 EXP";
                 
                 if(this.cache.profs && this.cache.profs[sId]) {
                     const prof = this.cache.profs[sId];
                     lvlTxt = prof.lvl || 1;
-                    if(prof.req > 0) pct = (prof.exp / prof.req) * 100;
+                    if(prof.req > 0) {
+                        pct = Math.max(0, Math.min(100, (prof.exp / prof.req) * 100));
+                        expTooltip = `${prof.exp} / ${prof.req} EXP`;
+                    }
                 }
                 
+                // NOVIDADE: title na bar-bg mostra a exp exata quando o mouse passa em cima
                 card.innerHTML = `
                     <div class="skill-icon" style="color:${c}; border-color:${c};">${iconChar}</div>
                     <div class="skill-info">
                         <div class="skill-name" style="color: ${c}">${sDef.name} <span style="font-size:10px; color:#aaa; float:right">${macroTxt}</span></div>
                         <div class="skill-desc">EN: ${sDef.energyCost || 0} | CD: ${(sDef.cooldown/1000).toFixed(1)}s</div>
-                        <div class="skill-bar-bg"><div class="skill-bar-fill" id="bar-${sId}" style="width: ${pct}%"></div></div>
+                        <div class="skill-bar-bg" title="${expTooltip}"><div class="skill-bar-fill" id="bar-${sId}" style="width: ${pct}%"></div></div>
                     </div>
                     <div class="skill-lvl">Lv.<span id="lvl-${sId}">${lvlTxt}</span></div>
                 `;
@@ -288,7 +322,10 @@ const UISystem = {
             const prof = this.cache.profs[sId];
             const bar = document.getElementById(`bar-${sId}`);
             const lvl = document.getElementById(`lvl-${sId}`);
-            if(bar && prof.req > 0) bar.style.width = Math.max(0, Math.min(100, (prof.exp / prof.req) * 100)) + "%";
+            if(bar && prof.req > 0) {
+                bar.style.width = Math.max(0, Math.min(100, (prof.exp / prof.req) * 100)) + "%";
+                bar.parentElement.title = `${prof.exp} / ${prof.req} EXP`;
+            }
             if(lvl) lvl.innerText = prof.lvl || 1;
         }
 

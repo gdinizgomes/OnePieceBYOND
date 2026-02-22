@@ -11,13 +11,13 @@ function receberDadosPessoal(json) {
     if(typeof EntityManager !== 'undefined') EntityManager.syncPersonal(packet);
 }
 
-// CORREÇÃO: Força a UI a construir as abas caso o BYOND mande a request separada
 function receberSkills(json) {
     try { 
         window.GameSkills = JSON.parse(json); 
         if(typeof UISystem !== 'undefined') {
             UISystem.addLog("<span style='color:#2ecc71'>[Sistema Data-Driven Carregado]</span>", "log-hit");
             UISystem.buildSkillsUI(); 
+            UISystem.renderHotbar(); // Garante render após o JSON chegar!
         }
     } catch(e) {
         console.error("Falha ao processar JSON de Skills", e);
@@ -46,7 +46,8 @@ function openShop(json) {
     items.forEach(it => {
         const itemDiv = document.createElement('div');
         itemDiv.className = 'shop-item';
-        const imgName = `${it.typepath.split('/').pop()}_img.png`;
+        // CORREÇÃO CRÍTICA DO ÍCONE DA LOJA: Usa a ID estrita em vez do typepath complexo
+        const imgName = `${it.id}_img.png`;
         
         itemDiv.innerHTML = `
             <img src="${imgName}" onerror="this.src='default_item.png'">
@@ -59,8 +60,8 @@ function openShop(json) {
         list.appendChild(itemDiv);
     });
     
-    // CORREÇÃO DA DINÂMICA: Abrir a loja força o Inventário a abrir junto 
-    // para mostrar os botões de "Vender", restaurando o fluxo que você pediu!
+    // Força abrir a mochila logo ao lado para dinâmica de venda
+    UISystem.closeAllWindows();
     UISystem.state.shopOpen = true;
     document.getElementById('shop-window').style.display = 'flex';
     
@@ -73,6 +74,7 @@ function openLootWindow(json) {
     if(typeof UISystem === 'undefined') return;
     let data; try { data = JSON.parse(json); } catch(e) { return; }
     
+    UISystem.closeAllWindows();
     UISystem.state.lootOpen = true;
     UISystem.state.lootTargetRef = data.target_ref;
     
@@ -128,7 +130,11 @@ function loadInventory(json) {
             let innerHTML = `<img src="${imgName}" class="inv-icon" onerror="this.src='default_item.png'">`;
             if(it.amount > 1) innerHTML += `<div class="inv-qty">${it.amount}</div>`;
             
-            let btnEquip = it.equipped ? `<button class="action-btn" onclick="window.NetworkSystem.queueCommand('action=unequip_item&slot=${it.slot}')">Desequipar</button>` : `<button class="action-btn" onclick="window.NetworkSystem.queueCommand('action=equip_item&ref=${it.ref}')">Equipar</button>`;
+            // NOVIDADE: Remove o botão Equipar/Desequipar se a loja ou loot estiver aberto!
+            let btnEquip = '';
+            if(!UISystem.state.shopOpen && !UISystem.state.lootOpen) {
+                btnEquip = it.equipped ? `<button class="action-btn" onclick="window.NetworkSystem.queueCommand('action=unequip_item&slot=${it.slot}')">Desequipar</button>` : `<button class="action-btn" onclick="window.NetworkSystem.queueCommand('action=equip_item&ref=${it.ref}')">Equipar</button>`;
+            }
             
             innerHTML += `<div class="inv-actions">
                 ${btnEquip}
@@ -141,7 +147,6 @@ function loadInventory(json) {
         grid.appendChild(slot);
     }
     
-    // Atualiza os botões de venda caso a loja esteja aberta
     if(UISystem.state.shopOpen) {
         document.querySelectorAll('.btn-sell').forEach(b => b.style.display = 'block');
     }
