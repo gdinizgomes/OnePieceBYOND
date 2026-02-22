@@ -32,7 +32,7 @@
         "requiresWeaponTag": null,
         "requirements": {
             "level": null, "str": null, "agi": null, "vit": null, "dex": null, "von": null, "sor": null,
-            "class": null, "devil_fruit": null, "skill_deps": null
+            "class": null, "devil_fruit": null, "skill_deps": null, "kills": null
         },
         "energyCost": 2,
         "cooldown": 0,
@@ -62,7 +62,7 @@
         "requiresWeaponTag": null,
         "requirements": {
             "level": null, "str": null, "agi": null, "vit": null, "dex": null, "von": null, "sor": null,
-            "class": null, "devil_fruit": null, "skill_deps": null
+            "class": null, "devil_fruit": null, "skill_deps": null, "kills": null
         },
         "energyCost": 3,
         "cooldown": 0,
@@ -92,7 +92,7 @@
         "requiresWeaponTag": "sword",
         "requirements": {
             "level": null, "str": null, "agi": null, "vit": null, "dex": null, "von": null, "sor": null,
-            "class": null, "devil_fruit": null, "skill_deps": null
+            "class": null, "devil_fruit": null, "skill_deps": null, "kills": null
         },
         "energyCost": 4,
         "cooldown": 0,
@@ -122,7 +122,7 @@
         "requiresWeaponTag": "gun",
         "requirements": {
             "level": null, "str": null, "agi": null, "vit": null, "dex": null, "von": null, "sor": null,
-            "class": null, "devil_fruit": null, "skill_deps": null
+            "class": null, "devil_fruit": null, "skill_deps": null, "kills": null
         },
         "energyCost": 5,
         "cooldown": 500,
@@ -148,7 +148,7 @@
         "requiresWeaponTag": null,
         "requirements": {
             "level": 5, "str": null, "agi": null, "vit": null, "dex": null, "von": 10, "sor": null,
-            "class": null, "devil_fruit": null, "skill_deps": { "basic_fist": 5 }
+            "class": null, "devil_fruit": null, "skill_deps": { "basic_fist": 5 }, "kills": null
         },
         "energyCost": 15,
         "cooldown": 2000,
@@ -173,8 +173,8 @@
         "scaling": "magical",
         "requiresWeaponTag": null,
         "requirements": {
-            "level": 10, "str": null, "agi": null, "vit": null, "dex": null, "von": 15, "sor": 10,
-            "class": null, "devil_fruit": null, "skill_deps": { "fireball": 2 }
+            "level": 20, "str": null, "agi": null, "vit": null, "dex": null, "von": 15, "sor": 10,
+            "class": null, "devil_fruit": null, "skill_deps": { "fireball": 2 }, "kills": null
         },
         "energyCost": 20,
         "cooldown": 3000,
