@@ -164,8 +164,6 @@ const EntityManager = {
         if(packet.t && packet.evts) {
             packet.evts.forEach(evt => {
                 if (evt.type === "skill_cast") {
-                    // CORREÇÃO CRÍTICA: Se o lançador da magia for VOCÊ, o cliente ignora 
-                    // a ordem do servidor pois ele já fez a Previsão Visual (Evita clones)
                     if(evt.caster === this.myID) return; 
 
                     let originMesh = null;
@@ -192,6 +190,15 @@ const EntityManager = {
     syncPersonal: function(packet) {
         const me = packet.me; 
         this.myID = packet.my_id;
+
+        // CORREÇÃO CRÍTICA (Intercepção de Dados): Carrega as Definições do JSON enviadas pelo Servidor
+        if(packet.skills_data) {
+            window.GameSkills = packet.skills_data;
+            if(typeof UISystem !== 'undefined') {
+                UISystem.addLog("<span style='color:#2ecc71'>[Sistema Data-Driven Sincronizado]</span>", "log-hit");
+                UISystem.lastSkillsStr = ""; // Força a recriação limpa do HTML
+            }
+        }
 
         if(me.loaded == 1 && !this.isCharacterReady) {
             this.playerGroup = CharFactory.createCharacter(me.skin || "FFCCAA", me.cloth || "FF0000"); 

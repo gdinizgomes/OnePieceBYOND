@@ -126,14 +126,25 @@ const UISystem = {
         this.assignTargetSlot = null;
     },
 
+    // CORREÇÃO CRÍTICA (Erro JS Linha 117): Função recolocada!
+    assignSkillToSlot: function(skillId) {
+        if(this.assignTargetSlot) {
+            this.hotbar[this.assignTargetSlot] = skillId;
+            this.saveHotbarMemory();
+            this.renderHotbar();
+        }
+        this.closeAssignPopup();
+    },
+
     buildSkillsUI: function() {
         if(!window.GameSkills) return;
         
         const tabsHeader = document.getElementById('skills-tabs-header');
         const tabsContent = document.getElementById('skills-tabs-content');
+        if(!tabsHeader || !tabsContent) return;
+        
         tabsHeader.innerHTML = ''; tabsContent.innerHTML = '';
         
-        // CORREÇÃO: Abas base e customizadas combinadas
         const standardCategories = ["Combate", "Vontade", "Especial", "Classes"];
         const categoryGroups = {};
         standardCategories.forEach(c => categoryGroups[c] = []);
@@ -158,7 +169,6 @@ const UISystem = {
 
             const btn = document.createElement('button');
             
-            // CORREÇÃO: Lógica responsiva de abas desativadas
             if(skillsList.length === 0 || !hasUnlocked) {
                 btn.className = 'tab-btn';
                 btn.disabled = true;
@@ -194,7 +204,6 @@ const UISystem = {
                 let macroTxt = sDef.macro ? `[${sDef.macro}]` : `(Slot Hotbar)`;
                 if(!isUnlocked) macroTxt = "[Não Aprendida]";
                 
-                // CORREÇÃO: Ícone padrão ✨
                 let iconChar = "✨";
                 if(sDef.requiresWeaponTag === "sword") iconChar = "⚔️";
                 else if(sDef.requiresWeaponTag === "gun") iconChar = "🔫";
@@ -203,7 +212,6 @@ const UISystem = {
                 let lvlTxt = "1";
                 let pct = 0;
                 
-                // CORREÇÃO: Resgate da EXP das habilidades base para montagem inicial
                 if(this.cache.profs && this.cache.profs[sId]) {
                     const prof = this.cache.profs[sId];
                     lvlTxt = prof.lvl || 1;
@@ -234,7 +242,6 @@ const UISystem = {
     },
 
     updatePersonalStatus: function(me) {
-        // Inicializa as proficiências base recebidas do servidor antes de recriar/atualizar a UI
         this.cache.profs = {
             'basic_fist': { lvl: me.pp, exp: me.pp_x, req: me.pp_r },
             'basic_kick': { lvl: me.pk, exp: me.pk_x, req: me.pk_r },
@@ -251,7 +258,6 @@ const UISystem = {
             }
         }
         
-        // CORREÇÃO (Performance): Atualiza dinamicamente as larguras das barras de XP sem recriar o painel inteiro!
         for(let sId in this.cache.profs) {
             const prof = this.cache.profs[sId];
             const bar = document.getElementById(`bar-${sId}`);

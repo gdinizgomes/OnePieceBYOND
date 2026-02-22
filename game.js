@@ -22,6 +22,143 @@ window.receberSkills = function(json) {
     }
 };
 
+// --- FUNÇÕES GLOBAIS DE PONTES DE INTERFACE (CHAMADAS PELO SERVIDOR) ---
+window.mostrarNotificacao = function(msg) {
+    if(typeof UISystem !== 'undefined') UISystem.showNotification(msg);
+};
+
+window.addLog = function(msg) {
+    if(typeof UISystem !== 'undefined') UISystem.addLog(msg);
+};
+
+window.askKillConfirm = function(ref) {
+    if(typeof TargetSystem !== 'undefined') TargetSystem.currentTargetID = ref;
+    document.getElementById('kill-modal').style.display = 'block';
+};
+
+window.openShop = function(json) {
+    if(typeof UISystem === 'undefined') return;
+    let items; try { items = JSON.parse(json); } catch(e) { return; }
+    
+    const list = document.getElementById('shop-list');
+    list.innerHTML = '';
+    items.forEach(it => {
+        const itemDiv = document.createElement('div');
+        itemDiv.className = 'shop-item';
+        const imgName = `${it.typepath.split('/').pop()}_img.png`;
+        
+        itemDiv.innerHTML = `
+            <img src="${imgName}" onerror="this.src='default_item.png'">
+            <div class="shop-details">
+                <div class="shop-name">${it.name}</div>
+                <div class="shop-price">${it.price} Berries</div>
+            </div>
+            <button class="btn-buy" onclick="window.NetworkSystem.queueCommand('action=buy_item&type=${it.typepath}')">Comprar</button>
+        `;
+        list.appendChild(itemDiv);
+    });
+    
+    UISystem.state.shopOpen = true;
+    document.getElementById('shop-window').style.display = 'flex';
+};
+
+window.openLootWindow = function(json) {
+    if(typeof UISystem === 'undefined') return;
+    let data; try { data = JSON.parse(json); } catch(e) { return; }
+    
+    UISystem.state.lootOpen = true;
+    UISystem.state.lootTargetRef = data.target_ref;
+    
+    document.getElementById('loot-target-name').innerText = data.target_name;
+    document.getElementById('loot-gold').innerText = data.gold;
+    document.getElementById('loot-window').style.display = 'flex';
+    
+    const grid = document.getElementById('loot-grid');
+    grid.innerHTML = '';
+    
+    const allItems = [...data.equipped, ...data.inventory];
+    
+    for(let i = 0; i < 12; i++) {
+        const slot = document.createElement('div');
+        slot.className = 'inv-slot';
+        const it = allItems[i];
+        
+        if(it) {
+            if(it.equipped) slot.classList.add('equipped');
+            
+            const imgName = `${it.ref.split('_').slice(1).join('_')}_img.png`; 
+            let innerHTML = `<img src="${imgName}" class="inv-icon" onerror="this.src='default_item.png'">`;
+            if(it.amount > 1) innerHTML += `<div class="inv-qty">${it.amount}</div>`;
+            
+            innerHTML += `<div class="inv-actions">
+                <button class="action-btn" onclick="window.NetworkSystem.queueCommand('action=rob_item&target=${data.target_ref}&ref=${it.ref}')">Roubar / Dropar</button>
+            </div>`;
+            
+            slot.innerHTML = innerHTML;
+        }
+        grid.appendChild(slot);
+    }
+};
+
+window.loadInventory = function(json) {
+    if(typeof UISystem === 'undefined') return;
+    let items; try { items = JSON.parse(json); } catch(e) { return; }
+    
+    const grid = document.getElementById('inv-grid');
+    grid.innerHTML = '';
+    
+    for(let i = 0; i < 12; i++) {
+        const slot = document.createElement('div');
+        slot.className = 'inv-slot';
+        const it = items[i];
+        
+        if(it) {
+            let tooltipContent = `<strong>${it.name}</strong><br>${it.desc}<br><span style='color:#3498db'>${it.power}</span><br><span style='color:#f1c40f'>Valor: ${Math.max(1, Math.floor(it.price/10))} Berries</span>`;
+            slot.onmousemove = (e) => UISystem.showTooltip(tooltipContent, e.clientX, e.clientY);
+            slot.onmouseleave = () => UISystem.hideTooltip();
+            
+            const imgName = `${it.id}_img.png`;
+            let innerHTML = `<img src="${imgName}" class="inv-icon" onerror="this.src='default_item.png'">`;
+            if(it.amount > 1) innerHTML += `<div class="inv-qty">${it.amount}</div>`;
+            
+            let btnEquip = it.equipped ? `<button class="action-btn" onclick="window.NetworkSystem.queueCommand('action=unequip_item&slot=${it.slot}')">Desequipar</button>` : `<button class="action-btn" onclick="window.NetworkSystem.queueCommand('action=equip_item&ref=${it.ref}')">Equipar</button>`;
+            
+            innerHTML += `<div class="inv-actions">
+                ${btnEquip}
+                <button class="action-btn btn-sell" onclick="window.NetworkSystem.queueCommand('action=sell_item&ref=${it.ref}')">Vender</button>
+                <button class="action-btn btn-trash" onclick="window.NetworkSystem.queueCommand('action=drop_item&amount=${it.amount}&ref=${it.ref}')">Dropar</button>
+            </div>`;
+            
+            slot.innerHTML = innerHTML;
+        }
+        grid.appendChild(slot);
+    }
+    
+    if(UISystem.state.shopOpen) {
+        document.querySelectorAll('.btn-sell').forEach(b => b.style.display = 'block');
+    }
+};
+
+window.updateStatusMenu = function(json) {
+    let data; try { data = JSON.parse(json); } catch(e) { return; }
+    const eq = data.equip;
+    
+    const slots = ['head', 'body', 'hand', 'legs', 'feet'];
+    slots.forEach(slot => {
+        const el = document.getElementById(`slot-${slot}`);
+        if(el) {
+            el.innerHTML = `<label>${slot}</label>`;
+            if(eq[slot]) {
+                el.innerHTML += `<img src="${eq[slot].id}_img.png" class="equip-icon" title="${eq[slot].name}" onerror="this.src='default_item.png'">`;
+                el.onclick = () => window.NetworkSystem.queueCommand(`action=unequip_item&slot=${slot}`);
+            } else {
+                el.onclick = null;
+            }
+        }
+    });
+};
+// -----------------------------------------------------------------------------
+
 const GameLoop = {
     lastFrameTime: performance.now(),
     TARGET_FPS: 60,
