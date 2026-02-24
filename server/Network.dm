@@ -131,9 +131,8 @@ mob
 					var/mob/npc/vendor/V = M
 					var/list/shop_items = list()
 					
-					// --- INÍCIO DA MELHORIA: Leitura de Propriedades Estáticas (Memory Safe) ---
 					for(var/path in V.stock)
-						var/obj/item/P = path // Coerção de tipo para acessar variáveis do Typepath
+						var/obj/item/P = path 
 						var/i_name = initial(P.name)
 						var/i_id = initial(P.id_visual)
 						var/i_price = initial(P.price)
@@ -141,7 +140,6 @@ mob
 						if(!i_desc) i_desc = "Sem descrição"
 						
 						shop_items += list(list("name"=i_name, "id"=i_id, "price"=i_price, "desc"=i_desc, "typepath"="[path]"))
-					// --- FIM DA MELHORIA ---
 					
 					src << output(json_encode(shop_items), "map3d:openShop")
 					RequestInventoryUpdate()
@@ -197,7 +195,6 @@ mob
 			if(!typepath || !ispath(typepath, /obj/item)) return
 			if(!(typepath in nearby_vendor.stock)) return
 
-			// --- INÍCIO DA MELHORIA: Verificação de custo sem instanciar item fantasma ---
 			var/obj/item/P = typepath
 			var/item_price = initial(P.price)
 			var/item_name = initial(P.name)
@@ -207,14 +204,12 @@ mob
 					src << output("Mochila cheia!", "map3d:mostrarNotificacao")
 				else
 					src.gold -= item_price
-					// Agora sim, criamos o objeto APENAS se o jogador efetivamente comprou
 					var/obj/item/new_item = new typepath()
 					new_item.loc = src
 					src << output("Comprou [item_name]!", "map3d:mostrarNotificacao")
 					RequestInventoryUpdate()
 			else 
 				src << output("Ouro insuficiente!", "map3d:mostrarNotificacao")
-			// --- FIM DA MELHORIA ---
 
 		if(action == "sell_item" && in_game)
 			var/ref_id = href_list["ref"]
@@ -258,10 +253,19 @@ mob
 			if(href_list["rot"]) src.real_rot = text2num(href_list["rot"])
 			
 			hit_targets_this_swing = list()
+
+			// --- INÍCIO DA MELHORIA: Eventos de Ação Universais ---
+			// Agora o servidor avisa globalmente TODOS OS TIPOS de ação (soco, espada, tiro, magia)
+			if(SSserver)
+				var/is_proj = 0
+				if(skill_data["type"] == "projectile") is_proj = 1
+				SSserver.global_events += list(list("type" = "action", "skill" = s_id, "caster" = "\ref[src]", "step" = combo_step, "is_proj" = is_proj))
+			// --- FIM DA MELHORIA ---
 			
 			if(skill_data["type"] == "projectile") 
 				max_targets_per_swing = skill_data["pierce"] ? 10 : 1
 				projectile_window = world.time + 30 
+				// Mantido temporariamente para não quebrar o cliente visual antes do próximo passo
 				if(skill_data["visualDef"])
 					if(SSserver) SSserver.global_events += list(list("type" = "skill_cast", "skill" = s_id, "caster" = "\ref[src]", "x" = src.real_x, "z" = src.real_z))
 			else 
@@ -411,7 +415,15 @@ mob
 			if(damage < 1) damage = 1
 
 			var/crit_txt = is_crit ? " <b style='color:#f1c40f'>CRÍTICO!</b>" : ""
+			
+			// Mantido para o hit local original
 			src.pending_visuals += list(list("type"="dmg", "val"=damage, "tid"=target_ref))
+
+			// --- INÍCIO DA MELHORIA: Broadcast Global de Impactos (Hit) ---
+			// Transmitimos o impacto na fila Global para que os Observers saibam que o projétil colidiu.
+			if(SSserver)
+				SSserver.global_events += list(list("type" = "hit", "skill" = s_id, "caster" = "\ref[src]", "target" = target_ref, "dmg" = damage, "crit" = is_crit))
+			// --- FIM DA MELHORIA ---
 
 			var/xp_type = ""
 			if(s_id == "basic_sword") xp_type = "sword"

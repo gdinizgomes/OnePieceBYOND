@@ -70,7 +70,7 @@ const CombatVisualSystem = {
         setTimeout(() => { div.remove(); }, 1000);
     },
 
-    fireProjectile: function(originMesh, projectileDef, isMine, skillId) {
+    fireProjectile: function(originMesh, projectileDef, isMine, skillId, ownerRef) {
         const s = projectileDef.scale || [0.1, 0.1, 0.1];
         const bullet = this.getProjectile(projectileDef.color, s);
         
@@ -83,9 +83,6 @@ const CombatVisualSystem = {
         bullet.position.copy(originMesh.position); 
         bullet.position.y += 1.05; 
         
-        // CORREÇÃO CRÍTICA (Alinhamento Perfeito):
-        // Removemos o 'lookAt' convergente que entortava os tiros.
-        // O tiro agora sai do peito de forma perfeitamente reta no eixo Z.
         bullet.position.x += sin * 0.5; 
         bullet.position.z += cos * 0.5; 
         
@@ -98,7 +95,7 @@ const CombatVisualSystem = {
             mesh: bullet, dirX: dX, dirY: dY, dirZ: dZ, 
             speed: projectileDef.speed, distTraveled: 0, 
             maxDist: projectileDef.range || 10, isMine: isMine,
-            skillId: skillId
+            skillId: skillId, ownerRef: ownerRef
         });
     },
 
@@ -126,16 +123,12 @@ const CombatVisualSystem = {
         hitboxMesh.material.transparent = true;
         hitboxMesh.material.opacity = 0.5; 
         
-        // CORREÇÃO (Invisibilidade): Ocular apenas a borda (material), 
-        // mantendo os filhos (o visual da magia 3D) visíveis!
         hitboxMesh.material.visible = Config.DEBUG_HITBOXES;
 
         if (def.visualDef && GameDefinitions[def.visualDef]) {
             const skinData = GameDefinitions[def.visualDef];
             const skinMesh = CharFactory.createFromDef(def.visualDef, skinData.visual);
             
-            // CORREÇÃO (Dupla Escala/Estaca Torta):
-            // Anula a escala do pai (hitbox) na pele visual para não achatar o modelo.
             if(def.hitboxSize) {
                 skinMesh.scale.set(
                     1 / def.hitboxSize[0],
@@ -165,6 +158,34 @@ const CombatVisualSystem = {
             dirX: dX, dirY: dY, dirZ: dZ,
             distTraveled: 0, hasHit: [] 
         });
+    },
+
+    destroyProjectileFrom: function(ownerRef, skillId) {
+        if (!ownerRef) return;
+        
+        // --- INÍCIO DA MELHORIA: Validação de Pierce e Skill Match ---
+        if (skillId && window.GameSkills && window.GameSkills[skillId]) {
+            if (window.GameSkills[skillId].pierce === true) {
+                return; // Ignora a destruição se a magia perfura. Deixa ela viver até o range maximo!
+            }
+        }
+
+        // Varre a lista de projéteis padrão
+        for (let i = this.activeProjectiles.length - 1; i >= 0; i--) {
+            if (this.activeProjectiles[i].ownerRef === ownerRef && this.activeProjectiles[i].skillId === skillId) {
+                this.releaseProjectile(this.activeProjectiles[i].mesh);
+                this.activeProjectiles.splice(i, 1);
+            }
+        }
+
+        // Varre a lista de magias Data-Driven
+        for (let i = this.activeSkillProjectiles.length - 1; i >= 0; i--) {
+            if (this.activeSkillProjectiles[i].ownerRef === ownerRef && this.activeSkillProjectiles[i].skillId === skillId) {
+                this.releaseProjectile(this.activeSkillProjectiles[i].mesh);
+                this.activeSkillProjectiles.splice(i, 1);
+            }
+        }
+        // --- FIM DA MELHORIA ---
     },
 
     checkAccurateCollision: function(objRef, targetMesh) {

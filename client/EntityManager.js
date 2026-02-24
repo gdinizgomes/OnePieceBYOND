@@ -137,14 +137,6 @@ const EntityManager = {
                 }
                 
                 if(other.hpFill && other.maxHp > 0) other.hpFill.style.width = Math.max(0, Math.min(100, (other.currentHp / other.maxHp) * 100)) + "%";
-                
-                if (other.attacking && other.attackType) {
-                    const sDef = window.GameSkills ? window.GameSkills[other.attackType] : null;
-                    if(sDef && sDef.scaling === "ranged" && !other.hasFiredThisCycle) {
-                        CombatVisualSystem.fireProjectile(mesh, { speed: 0.6, color: 0xFFFF00 }, false, other.attackType); 
-                        other.hasFiredThisCycle = true; setTimeout(() => { other.hasFiredThisCycle = false; }, 500); 
-                    }
-                }
             }
         }
         
@@ -165,11 +157,32 @@ const EntityManager = {
             packet.evts.forEach(evt => {
                 if (evt.type === "skill_cast") {
                     if(evt.caster === this.myID) return; 
-
                     let originMesh = null;
                     if(this.otherPlayers[evt.caster]) originMesh = this.otherPlayers[evt.caster].mesh;
+                    if(originMesh && typeof CombatVisualSystem !== 'undefined') CombatVisualSystem.fireSkillProjectile(originMesh, evt.skill, evt.caster);
+                }
+
+                if (evt.type === "action") {
+                    if (evt.caster === this.myID) return; 
+                    let originMesh = null;
+                    if (this.otherPlayers[evt.caster]) originMesh = this.otherPlayers[evt.caster].mesh;
                     
-                    if(originMesh) CombatVisualSystem.fireSkillProjectile(originMesh, evt.skill, evt.caster);
+                    if (originMesh) {
+                        if (evt.is_proj === 1 && typeof CombatVisualSystem !== 'undefined') {
+                            CombatVisualSystem.fireSkillProjectile(originMesh, evt.skill, evt.caster);
+                        }
+                    }
+                }
+
+                if (evt.type === "hit") {
+                    if (typeof CombatVisualSystem !== 'undefined') {
+                        if (evt.caster !== this.myID) {
+                            CombatVisualSystem.spawnDamageNumber(evt.target, evt.dmg);
+                        }
+                        
+                        // --- MELHORIA: Passamos também a evt.skill para o sistema validar o Pierce ---
+                        CombatVisualSystem.destroyProjectileFrom(evt.caster, evt.skill);
+                    }
                 }
             });
         }
@@ -344,8 +357,6 @@ const EntityManager = {
         }
 
         if(typeof Engine !== 'undefined') {
-            // CORREÇÃO CRÍTICA (Micro-stutters): Aplicada Interpolação (Lerp) na Câmera
-            // para que ela siga o jogador com fluidez absoluta mesmo se a taxa de frames oscilar.
             const idealX = this.playerGroup.position.x + Math.sin(Input.camAngle)*7;
             const idealY = this.playerGroup.position.y + 5;
             const idealZ = this.playerGroup.position.z + Math.cos(Input.camAngle)*7;
@@ -394,7 +405,6 @@ const EntityManager = {
             if(typeof Engine !== 'undefined') {
                 const tempV = new THREE.Vector3(mesh.position.x, mesh.position.y + 2, mesh.position.z); tempV.project(Engine.camera);
                 other.label.style.display = (Math.abs(tempV.z) > 1) ? 'none' : 'block'; 
-                // CORREÇÃO CRÍTICA (Tremedeira UI): O Math.round trava os pixels na tela para evitar Jitter no painel HTML
                 other.label.style.left = Math.round((tempV.x * .5 + .5) * window.innerWidth) + 'px'; 
                 other.label.style.top = Math.round((-(tempV.y * .5) + .5) * window.innerHeight) + 'px';
             }
