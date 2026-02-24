@@ -4,6 +4,8 @@ proc/get_dist_euclid(x1, z1, x2, z2)
 	return sqrt((x1-x2)**2 + (z1-z2)**2)
 
 mob
+	var/tmp/last_pos_update = 0 // Variável de controle de tempo para o Anti-Speedhack
+
 	proc/get_dist_euclid(x1, z1, x2, z2)
 		return ::get_dist_euclid(x1, z1, x2, z2)
 
@@ -69,10 +71,24 @@ mob
 				var/new_z = text2num(href_list["z"])
 				var/new_rot = text2num(href_list["rot"])
 
+				var/time_passed = world.time - last_pos_update
+				if(time_passed < 0) time_passed = 0
+
+				if(time_passed < 1 && last_pos_update != 0) return
+
 				var/dist = get_dist_euclid(src.real_x, src.real_z, new_x, new_z)
-				var/max_allowed = (calc_move_speed * 1.5) * 30
-				if(max_allowed < 3.0) max_allowed = 3.0 
+				
+				var/frames_passed = (time_passed / 10) * 60
+				if(frames_passed > 60) frames_passed = 60
+				if(frames_passed < 6) frames_passed = 6 
+
+				var/speed_mult = (href_list["run"] == "1") ? 1.5 : 1.0
+				var/max_allowed = calc_move_speed * frames_passed * speed_mult * 1.5
+				if(max_allowed < 2.0) max_allowed = 2.0 
+
 				if(dist > max_allowed) return 
+				
+				last_pos_update = world.time
 				
 				real_x = new_x; real_y = new_y; real_z = new_z; real_rot = new_rot
 				if(real_x > 29) real_x = 29; if(real_x < -29) real_x = -29
@@ -114,10 +130,19 @@ mob
 				if(istype(M, /mob/npc/vendor))
 					var/mob/npc/vendor/V = M
 					var/list/shop_items = list()
+					
+					// --- INÍCIO DA MELHORIA: Leitura de Propriedades Estáticas (Memory Safe) ---
 					for(var/path in V.stock)
-						var/obj/item/tmpI = new path()
-						shop_items += list(list("name"=tmpI.name, "id"=tmpI.id_visual, "price"=tmpI.price, "desc"=(tmpI.description ? tmpI.description : "Sem descrição"), "typepath"="[path]"))
-						del(tmpI) 
+						var/obj/item/P = path // Coerção de tipo para acessar variáveis do Typepath
+						var/i_name = initial(P.name)
+						var/i_id = initial(P.id_visual)
+						var/i_price = initial(P.price)
+						var/i_desc = initial(P.description)
+						if(!i_desc) i_desc = "Sem descrição"
+						
+						shop_items += list(list("name"=i_name, "id"=i_id, "price"=i_price, "desc"=i_desc, "typepath"="[path]"))
+					// --- FIM DA MELHORIA ---
+					
 					src << output(json_encode(shop_items), "map3d:openShop")
 					RequestInventoryUpdate()
 				else if(istype(M, /mob/npc/nurse))
@@ -172,15 +197,24 @@ mob
 			if(!typepath || !ispath(typepath, /obj/item)) return
 			if(!(typepath in nearby_vendor.stock)) return
 
-			var/obj/item/temp = new typepath()
-			if(src.gold >= temp.price)
-				if(contents.len >= INVENTORY_MAX) { src << output("Mochila cheia!", "map3d:mostrarNotificacao"); del(temp) }
+			// --- INÍCIO DA MELHORIA: Verificação de custo sem instanciar item fantasma ---
+			var/obj/item/P = typepath
+			var/item_price = initial(P.price)
+			var/item_name = initial(P.name)
+
+			if(src.gold >= item_price)
+				if(contents.len >= INVENTORY_MAX) 
+					src << output("Mochila cheia!", "map3d:mostrarNotificacao")
 				else
-					src.gold -= temp.price
-					temp.loc = src
-					src << output("Comprou [temp.name]!", "map3d:mostrarNotificacao")
+					src.gold -= item_price
+					// Agora sim, criamos o objeto APENAS se o jogador efetivamente comprou
+					var/obj/item/new_item = new typepath()
+					new_item.loc = src
+					src << output("Comprou [item_name]!", "map3d:mostrarNotificacao")
 					RequestInventoryUpdate()
-			else { src << output("Ouro insuficiente!", "map3d:mostrarNotificacao"); del(temp) }
+			else 
+				src << output("Ouro insuficiente!", "map3d:mostrarNotificacao")
+			// --- FIM DA MELHORIA ---
 
 		if(action == "sell_item" && in_game)
 			var/ref_id = href_list["ref"]
