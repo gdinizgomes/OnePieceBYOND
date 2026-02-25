@@ -5,6 +5,7 @@ proc/get_dist_euclid(x1, z1, x2, z2)
 
 mob
 	var/tmp/last_pos_update = 0 
+	var/tmp/global_cooldown = 0 // --- INÍCIO DA MELHORIA: Variável do GCD ---
 
 	proc/get_dist_euclid(x1, z1, x2, z2)
 		return ::get_dist_euclid(x1, z1, x2, z2)
@@ -227,6 +228,12 @@ mob
 
 		if(action == "execute_skill" && in_game)
 			if(is_resting || is_fainted) return
+			
+			// --- INÍCIO DA MELHORIA: Global Cooldown (GCD) Anti-Macro Burst ---
+			// Rejeita silenciosamente pacotes que chegam com menos de 200ms de diferença do último ataque
+			if(world.time < global_cooldown) return 
+			// --- FIM DA MELHORIA ---
+			
 			var/s_id = href_list["skill_id"]
 			
 			if(s_id == "_COMMENT_DOCUMENTATION") return
@@ -254,7 +261,6 @@ mob
 			
 			hit_targets_this_swing = list()
 
-			// Broadcast Global UNIFICADO. Removemos o evento legado `skill_cast` que criava duplicatas.
 			if(SSserver)
 				var/is_proj = 0
 				if(skill_data["type"] == "projectile") is_proj = 1
@@ -268,6 +274,10 @@ mob
 				attack_window = world.time + 10 
 				
 			active_skill_hits["[s_id]"] = list()
+			
+			// Trava de processamento concorrente definida para 2 ticks (200ms)
+			global_cooldown = world.time + 2
+			
 			spawn(3) is_attacking = 0
 
 		if(action == "register_hit" && in_game)
