@@ -30,10 +30,39 @@ const NetworkSystem = {
     },
 
     queueCommand: function(cmdString) {
-        // Descarta comandos mais velhos quando fila está cheia (evita lag exponencial)
-        if (this.commandQueue.length >= this.MAX_QUEUE_SIZE) {
-            this.commandQueue.shift();  // Remove o mais antigo
+        // --- INÍCIO DA MELHORIA: Deduplicação e Prioridade de Pacotes (Prevenção de Input Lag) ---
+        
+        // 1. DEDUPLICAÇÃO DE VOLÁTEIS: Se for um pacote de movimento, evitamos poluir a fila.
+        // Basta sobrescrever a última posição que ainda não foi enviada pela posição mais recente.
+        if (cmdString.startsWith("action=update_pos")) {
+            for (let i = this.commandQueue.length - 1; i >= 0; i--) {
+                if (this.commandQueue[i].startsWith("action=update_pos")) {
+                    this.commandQueue[i] = cmdString; // Atualiza o pacote no lugar dele
+                    return; // Sai da função sem aumentar a fila!
+                }
+            }
         }
+
+        // 2. PROTEÇÃO DE EVENTOS CRÍTICOS: Se a fila atingir o limite máximo
+        if (this.commandQueue.length >= this.MAX_QUEUE_SIZE) {
+            let removedVolatile = false;
+            
+            // Tentamos sacrificar um pacote de movimento (volátil) primeiro para dar espaço
+            for (let i = 0; i < this.commandQueue.length; i++) {
+                if (this.commandQueue[i].startsWith("action=update_pos")) {
+                    this.commandQueue.splice(i, 1);
+                    removedVolatile = true;
+                    break;
+                }
+            }
+            
+            // Se não houvesse movimento na fila, jogamos fora o mais antigo como última emergência
+            if (!removedVolatile) {
+                this.commandQueue.shift(); 
+            }
+        }
+        // --- FIM DA MELHORIA ---
+
         this.commandQueue.push(cmdString);
     },
 
