@@ -4,7 +4,7 @@ proc/get_dist_euclid(x1, z1, x2, z2)
 	return sqrt((x1-x2)**2 + (z1-z2)**2)
 
 mob
-	var/tmp/last_pos_update = 0 // Variável de controle de tempo para o Anti-Speedhack
+	var/tmp/last_pos_update = 0 
 
 	proc/get_dist_euclid(x1, z1, x2, z2)
 		return ::get_dist_euclid(x1, z1, x2, z2)
@@ -254,20 +254,15 @@ mob
 			
 			hit_targets_this_swing = list()
 
-			// --- INÍCIO DA MELHORIA: Eventos de Ação Universais ---
-			// Agora o servidor avisa globalmente TODOS OS TIPOS de ação (soco, espada, tiro, magia)
+			// Broadcast Global UNIFICADO. Removemos o evento legado `skill_cast` que criava duplicatas.
 			if(SSserver)
 				var/is_proj = 0
 				if(skill_data["type"] == "projectile") is_proj = 1
 				SSserver.global_events += list(list("type" = "action", "skill" = s_id, "caster" = "\ref[src]", "step" = combo_step, "is_proj" = is_proj))
-			// --- FIM DA MELHORIA ---
 			
 			if(skill_data["type"] == "projectile") 
 				max_targets_per_swing = skill_data["pierce"] ? 10 : 1
 				projectile_window = world.time + 30 
-				// Mantido temporariamente para não quebrar o cliente visual antes do próximo passo
-				if(skill_data["visualDef"])
-					if(SSserver) SSserver.global_events += list(list("type" = "skill_cast", "skill" = s_id, "caster" = "\ref[src]", "x" = src.real_x, "z" = src.real_z))
 			else 
 				max_targets_per_swing = 3
 				attack_window = world.time + 10 
@@ -416,14 +411,10 @@ mob
 
 			var/crit_txt = is_crit ? " <b style='color:#f1c40f'>CRÍTICO!</b>" : ""
 			
-			// Mantido para o hit local original
 			src.pending_visuals += list(list("type"="dmg", "val"=damage, "tid"=target_ref))
 
-			// --- INÍCIO DA MELHORIA: Broadcast Global de Impactos (Hit) ---
-			// Transmitimos o impacto na fila Global para que os Observers saibam que o projétil colidiu.
 			if(SSserver)
 				SSserver.global_events += list(list("type" = "hit", "skill" = s_id, "caster" = "\ref[src]", "target" = target_ref, "dmg" = damage, "crit" = is_crit))
-			// --- FIM DA MELHORIA ---
 
 			var/xp_type = ""
 			if(s_id == "basic_sword") xp_type = "sword"

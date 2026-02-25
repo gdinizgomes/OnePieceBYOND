@@ -155,15 +155,10 @@ const EntityManager = {
 
         if(packet.t && packet.evts) {
             packet.evts.forEach(evt => {
-                if (evt.type === "skill_cast") {
-                    if(evt.caster === this.myID) return; 
-                    let originMesh = null;
-                    if(this.otherPlayers[evt.caster]) originMesh = this.otherPlayers[evt.caster].mesh;
-                    if(originMesh && typeof CombatVisualSystem !== 'undefined') CombatVisualSystem.fireSkillProjectile(originMesh, evt.skill, evt.caster);
-                }
 
+                // INÍCIO DA MELHORIA ARQUITETURAL
                 if (evt.type === "action") {
-                    if (evt.caster === this.myID) return; 
+                    if (evt.caster === this.myID) return; // O atirador cria a própria magia preditivamente.
                     let originMesh = null;
                     if (this.otherPlayers[evt.caster]) originMesh = this.otherPlayers[evt.caster].mesh;
                     
@@ -178,12 +173,17 @@ const EntityManager = {
                     if (typeof CombatVisualSystem !== 'undefined') {
                         if (evt.caster !== this.myID) {
                             CombatVisualSystem.spawnDamageNumber(evt.target, evt.dmg);
+                            
+                            // Apenas os Observers confiam no servidor para DESTRUIR a malha visual
+                            CombatVisualSystem.destroyProjectileFrom(evt.caster, evt.skill);
+                        } else {
+                            // Se nós formos o atirador, apenas mostramos o dano! 
+                            // O código de colisão local já gerencia a vida útil e perfuração das nossas magias!
+                            CombatVisualSystem.spawnDamageNumber(evt.target, evt.dmg);
                         }
-                        
-                        // --- MELHORIA: Passamos também a evt.skill para o sistema validar o Pierce ---
-                        CombatVisualSystem.destroyProjectileFrom(evt.caster, evt.skill);
                     }
                 }
+                // FIM DA MELHORIA ARQUITETURAL
             });
         }
         

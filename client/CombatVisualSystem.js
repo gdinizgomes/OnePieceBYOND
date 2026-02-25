@@ -163,14 +163,14 @@ const CombatVisualSystem = {
     destroyProjectileFrom: function(ownerRef, skillId) {
         if (!ownerRef) return;
         
-        // --- INÍCIO DA MELHORIA: Validação de Pierce e Skill Match ---
         if (skillId && window.GameSkills && window.GameSkills[skillId]) {
-            if (window.GameSkills[skillId].pierce === true) {
-                return; // Ignora a destruição se a magia perfura. Deixa ela viver até o range maximo!
+            const pVal = window.GameSkills[skillId].pierce;
+            // Correção Vital: BYOND envia booleanos via JSON como '1' ou '0'. O comparador restrito quebrava a lógica.
+            if (pVal === true || pVal === 1 || pVal === "1") {
+                return; // Ignora a destruição se a magia perfura.
             }
         }
 
-        // Varre a lista de projéteis padrão
         for (let i = this.activeProjectiles.length - 1; i >= 0; i--) {
             if (this.activeProjectiles[i].ownerRef === ownerRef && this.activeProjectiles[i].skillId === skillId) {
                 this.releaseProjectile(this.activeProjectiles[i].mesh);
@@ -178,14 +178,12 @@ const CombatVisualSystem = {
             }
         }
 
-        // Varre a lista de magias Data-Driven
         for (let i = this.activeSkillProjectiles.length - 1; i >= 0; i--) {
             if (this.activeSkillProjectiles[i].ownerRef === ownerRef && this.activeSkillProjectiles[i].skillId === skillId) {
                 this.releaseProjectile(this.activeSkillProjectiles[i].mesh);
                 this.activeSkillProjectiles.splice(i, 1);
             }
         }
-        // --- FIM DA MELHORIA ---
     },
 
     checkAccurateCollision: function(objRef, targetMesh) {
@@ -286,7 +284,9 @@ const CombatVisualSystem = {
                         
                         p.hasHit.push(id);
                         
-                        if (!p.def.pierce) {
+                        // Fix preventivo para a predição local usando a mesma lógica relaxada de tipo
+                        const pVal = p.def.pierce;
+                        if (pVal !== true && pVal !== 1 && pVal !== "1") {
                             this.releaseProjectile(p.mesh); 
                             p.distTraveled = 99999; 
                             break; 
