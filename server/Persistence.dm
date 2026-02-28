@@ -13,7 +13,7 @@ proc/SaveWorldState()
 	for(var/obj/item/I in global_ground_items)
 		if(!I) continue
 		var/list/idata = list(
-			"item_id" = I.item_id, // Mudança Crucial: Salva a ID
+			"item_id" = I.item_id, 
 			"x" = I.real_x,
 			"y" = I.real_y,
 			"z" = I.real_z,
@@ -142,7 +142,16 @@ mob
 		F["pos_z"] >> src.real_z; if(isnull(src.real_z)) src.real_z = 0
 		F["skin"] >> src.skin_color; if(!src.skin_color) src.skin_color = "FFD1A3"
 		F["cloth"] >> src.cloth_color; if(!src.cloth_color) src.cloth_color = "3366CC"
+		
 		F["inventory"] >> src.contents
+		
+		// --- INÍCIO DA BLINDAGEM DE DADOS ---
+		// O BYOND carrega a mochila do Save, mas os stats podem estar antigos.
+		// Forçamos o item a buscar o JSON atualizado!
+		for(var/obj/item/I in src.contents)
+			I.SyncData()
+		// --- FIM DA BLINDAGEM ---
+		
 		F["slot_hand"] >> src.slot_hand
 		F["slot_head"] >> src.slot_head
 		F["slot_body"] >> src.slot_body

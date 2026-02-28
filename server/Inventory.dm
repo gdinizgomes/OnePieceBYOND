@@ -2,6 +2,8 @@
 #define INVENTORY_MAX 12  
 
 var/obj/ground_holder = null 
+// --- INÍCIO DA MELHORIA: Starter Items Configuráveis ---
+var/global/list/StarterItems = list("sword_wood", "head_bandana")
 
 mob
 	proc/SerializeItem(obj/item/I, equipped = 0)
@@ -12,23 +14,24 @@ mob
 		if(I.def > 0)        p_str += "DEF: [I.def] "
 		if(I.crit_bonus > 0) p_str += "CRIT: +[I.crit_bonus]% "
 		if(p_str == "")      p_str = "Visual"
-		return list("name"=I.name, "desc"=desc_txt, "ref"="\ref[I]", "amount"=I.amount, "id"=I.id_visual, "power"=p_str, "price"=I.price, "equipped"=equipped)
+		return list("name"=I.name, "desc"=desc_txt, "ref"="\ref[I]", "amount"=I.amount, "id"=I.id_visual, "power"=p_str, "price"=I.price, "sell_price"=I.sell_price, "equipped"=equipped)
 
 	proc/GiveStarterItems()
 		if(src.received_starters) return
 		src.received_starters = 1
 		
-		var/has_weapon = 0
-		var/has_bandana = 0
-		for(var/obj/item/I in contents)
-			if(I.item_id == "sword_wood") has_weapon = 1
-			if(I.item_id == "head_bandana") has_bandana = 1
-		
-		// Construtor Data-Driven instanciando IDs
-		if(!has_weapon && !slot_hand) new /obj/item(src, "sword_wood")
-		if(!has_bandana && !slot_head) new /obj/item(src, "head_bandana")
+		for(var/i_id in StarterItems)
+			var/has_item = 0
+			for(var/obj/item/I in contents)
+				if(I.item_id == i_id) { has_item = 1; break }
+			
+			if(!has_item)
+				var/obj/item/new_item = new /obj/item(src, i_id)
+				if(new_item.slot == "hand" && !slot_hand) EquipItem(new_item)
+				else if(new_item.slot == "head" && !slot_head) EquipItem(new_item)
 		
 		src << output("Itens iniciais verificados!", "map3d:mostrarNotificacao")
+	// --- FIM DA MELHORIA ---
 
 	proc/EquipItem(obj/item/I)
 		if(!I || !(I in contents)) return
@@ -127,7 +130,6 @@ mob
 		if(target)
 			var/stacked = 0
 			for(var/obj/item/invItem in contents)
-				// Comparação baseada no ID Data-Driven
 				if(invItem.item_id == target.item_id && invItem.amount < invItem.max_stack)
 					var/space = invItem.max_stack - invItem.amount
 					if(target.amount <= space)

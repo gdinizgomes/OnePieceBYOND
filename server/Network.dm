@@ -205,14 +205,13 @@ mob
 					src << output("Mochila cheia!", "map3d:mostrarNotificacao")
 				else
 					src.gold -= data["price"]
-					// --- INÍCIO DA CORREÇÃO: Remoção da variável não utilizada ---
 					new /obj/item(src, item_id)
-					// --- FIM DA CORREÇÃO ---
 					src << output("Comprou [data["name"]]!", "map3d:mostrarNotificacao")
 					RequestInventoryUpdate()
 			else 
 				src << output("Ouro insuficiente!", "map3d:mostrarNotificacao")
 
+		// --- INÍCIO DA MELHORIA: Venda usando o Preço de Venda do JSON ---
 		if(action == "sell_item" && in_game)
 			var/ref_id = href_list["ref"]
 			var/obj/item/I = locate(ref_id)
@@ -220,12 +219,12 @@ mob
 				if(I == slot_hand || I == slot_head || I == slot_body || I == slot_legs || I == slot_feet)
 					src << output("Desequipe antes de vender!", "map3d:mostrarNotificacao")
 				else
-					var/val = round(I.price / 10)
-					if(val < 1) val = 1
+					var/val = I.sell_price 
 					src.gold += val
 					src << output("Vendeu [I.name] por [val] Berries.", "map3d:mostrarNotificacao")
 					del(I)
 					RequestInventoryUpdate()
+		// --- FIM DA MELHORIA ---
 
 		if(action == "execute_skill" && in_game)
 			if(is_resting || is_fainted) return

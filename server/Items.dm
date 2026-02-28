@@ -20,6 +20,7 @@ obj/item
 	var/def = 0
 	var/crit_bonus = 0
 	var/price = 0
+	var/sell_price = 1 // Novo campo para economia dinâmica
 	var/description = ""
 	var/amount = 1
 	var/max_stack = 5 
@@ -31,24 +32,34 @@ obj/item
 	var/range = 1.0 
 	var/projectile_speed = 0 
 
-	// O Construtor intercepta a criação e injeta os dados do JSON
+	// Atualiza os status do item baseados na versão mais recente do JSON
+	proc/SyncData()
+		if(src.item_id && GlobalItemsData[src.item_id])
+			var/list/data = GlobalItemsData[src.item_id]
+			src.name = data["name"]
+			src.id_visual = data["id_visual"]
+			src.slot = data["slot"]
+			if(!isnull(data["atk"])) src.atk = data["atk"]
+			if(!isnull(data["ratk"])) src.ratk = data["ratk"]
+			if(!isnull(data["def"])) src.def = data["def"]
+			if(!isnull(data["crit_bonus"])) src.crit_bonus = data["crit_bonus"]
+			if(!isnull(data["price"])) src.price = data["price"]
+			
+			// Se o item não tiver um sell_price no JSON, usa o padrão (10% do preço de compra)
+			if(!isnull(data["sell_price"])) src.sell_price = data["sell_price"]
+			else src.sell_price = round(src.price / 10)
+			if(src.sell_price < 1) src.sell_price = 1
+
+			if(!isnull(data["description"])) src.description = data["description"]
+			if(!isnull(data["max_stack"])) src.max_stack = data["max_stack"]
+			if(!isnull(data["shop_tags"])) src.shop_tags = data["shop_tags"]
+			if(!isnull(data["despawn_time"])) src.despawn_time = data["despawn_time"]
+			if(!isnull(data["range"])) src.range = data["range"]
+			if(!isnull(data["projectile_speed"])) src.projectile_speed = data["projectile_speed"]
+
+	// O Construtor invoca a Sincronização
 	New(newloc, build_id)
 		..()
 		if(build_id)
 			src.item_id = build_id
-			var/list/data = GlobalItemsData[build_id]
-			if(data)
-				src.name = data["name"]
-				src.id_visual = data["id_visual"]
-				src.slot = data["slot"]
-				if(!isnull(data["atk"])) src.atk = data["atk"]
-				if(!isnull(data["ratk"])) src.ratk = data["ratk"]
-				if(!isnull(data["def"])) src.def = data["def"]
-				if(!isnull(data["crit_bonus"])) src.crit_bonus = data["crit_bonus"]
-				if(!isnull(data["price"])) src.price = data["price"]
-				if(!isnull(data["description"])) src.description = data["description"]
-				if(!isnull(data["max_stack"])) src.max_stack = data["max_stack"]
-				if(!isnull(data["shop_tags"])) src.shop_tags = data["shop_tags"]
-				if(!isnull(data["despawn_time"])) src.despawn_time = data["despawn_time"]
-				if(!isnull(data["range"])) src.range = data["range"]
-				if(!isnull(data["projectile_speed"])) src.projectile_speed = data["projectile_speed"]
+			SyncData()
