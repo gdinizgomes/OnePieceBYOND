@@ -1,7 +1,7 @@
 // server/Inventory.dm
-#define INVENTORY_MAX 12  // Tamanho máximo da mochila — altere aqui para refletir em todo o servidor
+#define INVENTORY_MAX 12  
 
-var/obj/ground_holder = null // Recipiente global para itens caídos (Evita que a engine ignore loc = null)
+var/obj/ground_holder = null 
 
 mob
 	proc/SerializeItem(obj/item/I, equipped = 0)
@@ -15,18 +15,18 @@ mob
 		return list("name"=I.name, "desc"=desc_txt, "ref"="\ref[I]", "amount"=I.amount, "id"=I.id_visual, "power"=p_str, "price"=I.price, "equipped"=equipped)
 
 	proc/GiveStarterItems()
-		// NOVIDADE: Proteção contra itens duplicados. Só ganha o kit na criação do char.
 		if(src.received_starters) return
 		src.received_starters = 1
 		
 		var/has_weapon = 0
 		var/has_bandana = 0
 		for(var/obj/item/I in contents)
-			if(istype(I, /obj/item/weapon/sword_wood)) has_weapon = 1
-			if(istype(I, /obj/item/armor/head_bandana)) has_bandana = 1
+			if(I.item_id == "sword_wood") has_weapon = 1
+			if(I.item_id == "head_bandana") has_bandana = 1
 		
-		if(!has_weapon && !slot_hand) new /obj/item/weapon/sword_wood(src)
-		if(!has_bandana && !slot_head) new /obj/item/armor/head_bandana(src)
+		// Construtor Data-Driven instanciando IDs
+		if(!has_weapon && !slot_hand) new /obj/item(src, "sword_wood")
+		if(!has_bandana && !slot_head) new /obj/item(src, "head_bandana")
 		
 		src << output("Itens iniciais verificados!", "map3d:mostrarNotificacao")
 
@@ -90,9 +90,8 @@ mob
 			dropped_item = I
 		else
 			I.amount -= amount_to_drop
-			var/obj/item/NewI = new I.type()
+			var/obj/item/NewI = new /obj/item(global.ground_holder, I.item_id)
 			NewI.amount = amount_to_drop
-			NewI.loc = global.ground_holder 
 			NewI.real_x = src.real_x
 			NewI.real_z = src.real_z
 			NewI.real_y = 0
@@ -101,9 +100,7 @@ mob
 			
 		if(SSserver) SSserver.ground_dirty_tick = SSserver.server_tick
 		
-		// CORREÇÃO CRÍTICA (ATOMICIDADE): Salva o mundo no disco instantaneamente após dropar
 		SaveWorldState() 
-		
 		RequestInventoryUpdate()
 
 		if(dropped_item && dropped_item.despawn_time > 0)
@@ -111,7 +108,7 @@ mob
 				if(dropped_item && (dropped_item in global_ground_items))
 					global_ground_items -= dropped_item
 					if(SSserver) SSserver.ground_dirty_tick = SSserver.server_tick
-					SaveWorldState() // Salva o mundo no disco ao deletar o item expirado
+					SaveWorldState() 
 					del(dropped_item)
 
 	proc/TrashItem(obj/item/I)
@@ -130,13 +127,14 @@ mob
 		if(target)
 			var/stacked = 0
 			for(var/obj/item/invItem in contents)
-				if(invItem.type == target.type && invItem.amount < invItem.max_stack)
+				// Comparação baseada no ID Data-Driven
+				if(invItem.item_id == target.item_id && invItem.amount < invItem.max_stack)
 					var/space = invItem.max_stack - invItem.amount
 					if(target.amount <= space)
 						invItem.amount += target.amount
 						global_ground_items -= target
 						if(SSserver) SSserver.ground_dirty_tick = SSserver.server_tick
-						SaveWorldState() // CORREÇÃO: Grava a remoção do item do chão instantaneamente
+						SaveWorldState() 
 						del(target)
 						stacked = 1
 						break
@@ -144,7 +142,7 @@ mob
 				if(contents.len >= INVENTORY_MAX) { src << output("Mochila cheia!", "map3d:mostrarNotificacao"); return }
 				global_ground_items -= target
 				if(SSserver) SSserver.ground_dirty_tick = SSserver.server_tick
-				SaveWorldState() // CORREÇÃO: Grava a remoção do item do chão instantaneamente
+				SaveWorldState() 
 				target.loc = src 
 				src.contents |= target 
 				src << output("Pegou item!", "map3d:mostrarNotificacao")

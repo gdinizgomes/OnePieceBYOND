@@ -1,5 +1,4 @@
 // server/Persistence.dm
-// Módulo de Gerenciamento de Dados, Salvamento e Carregamento (Save/Load)
 
 #define SAVE_VERSION 2
 
@@ -14,7 +13,7 @@ proc/SaveWorldState()
 	for(var/obj/item/I in global_ground_items)
 		if(!I) continue
 		var/list/idata = list(
-			"type" = I.type,
+			"item_id" = I.item_id, // Mudança Crucial: Salva a ID
 			"x" = I.real_x,
 			"y" = I.real_y,
 			"z" = I.real_z,
@@ -36,10 +35,9 @@ proc/LoadWorldState()
 	if(!global.ground_holder) global.ground_holder = new /obj()
 
 	for(var/list/idata in items_data)
-		var/typepath = idata["type"]
-		if(ispath(typepath, /obj/item))
-			var/obj/item/I = new typepath()
-			I.loc = global.ground_holder
+		var/i_id = idata["item_id"]
+		if(i_id)
+			var/obj/item/I = new /obj/item(global.ground_holder, i_id)
 			I.real_x = idata["x"]
 			I.real_y = idata["y"]
 			I.real_z = idata["z"]
@@ -158,7 +156,6 @@ mob
 		F["skill_levels"] >> src.skill_levels; if(!istype(src.skill_levels, /list)) src.skill_levels = list()
 		F["skill_exps"] >> src.skill_exps; if(!istype(src.skill_exps, /list)) src.skill_exps = list()
 		
-		// CORREÇÃO CRÍTICA (Bypass do Bug BYOND): Inicializa as strings da Hotbar!
 		F["hotbar"] >> src.hotbar; if(!istype(src.hotbar, /list)) src.hotbar = list("1"="", "2"="", "3"="", "4"="", "5"="", "6"="", "7"="", "8"="", "9"="")
 		
 		F["unlocked_skills"] >> src.unlocked_skills; if(!istype(src.unlocked_skills, /list)) src.unlocked_skills = list()

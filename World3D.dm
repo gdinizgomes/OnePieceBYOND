@@ -28,6 +28,7 @@ world/New()
 		world.log << "ERRO CRITICO: shared/SkillDefinitions.json nao encontrado no pacote!"
 	
 	LoadWorldState()
+	LoadItemDefinitions()
 		
 	if(!SSserver)
 		SSserver = new()

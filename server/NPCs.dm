@@ -66,19 +66,25 @@ mob/npc/vendor
 	char_gender = "Male"
 	var/list/stock = list()
 	
+	// --- INÍCIO DA MELHORIA: Filtro Flexível ---
+	var/shop_tag_filter = "armorer" // O que este NPC vende?
+	
 	New()
 		..()
 		real_x = 2
 		real_z = 2
 		real_y = 0
 		real_rot = 3.14
-		patrol_x = real_x; patrol_z = real_z  // Vendor não anda, mas inicializa por consistência
+		patrol_x = real_x; patrol_z = real_z
 
-		// Usa initial() para ler atributos sem instanciar objetos temporários
-		for(var/T in typesof(/obj/item))
-			if(T == /obj/item) continue  // Ignora tipo base
-			if(initial(T:shop_tags) == "armorer")
-				stock += T
+		// Aguardamos 5 ticks (meio segundo) para garantir que o world/New() 
+		// já terminou de carregar o JSON do disco rígido para a memória antes de lermos.
+		spawn(5)
+			for(var/item_id in GlobalItemsData)
+				var/list/data = GlobalItemsData[item_id]
+				if(data && data["shop_tags"] == src.shop_tag_filter)
+					stock += item_id // Adiciona a String (ID) ao inventário do NPC
+	// --- FIM DA MELHORIA ---
 
 mob/npc/nurse
 	name = "Enfermeira"

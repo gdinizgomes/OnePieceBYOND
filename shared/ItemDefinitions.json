@@ -1,0 +1,84 @@
+{
+    "_COMMENT_DOCUMENTATION": {
+        "name": "Nome do item",
+        "id_visual": "ID para invocar o objeto 3D no cliente",
+        "slot": "hand, head, body, legs, feet ou none",
+        "atk": "Poder de ataque corpo a corpo",
+        "ratk": "Poder de ataque à distância",
+        "def": "Resistência de armadura",
+        "crit_bonus": "Bônus de crítico (%)",
+        "price": "Preço de compra em Berries",
+        "description": "Descrição do item",
+        "max_stack": "Limite de empilhamento",
+        "shop_tags": "Filtros para NPCs",
+        "despawn_time": "Ticks até sumir do chão (6000 = 10min)",
+        "range": "Alcance do ataque básico com a arma",
+        "projectile_speed": "Velocidade do tiro"
+    },
+    "sword_wood": {
+        "name": "Espada de Treino", "id_visual": "weapon_sword_wood", "slot": "hand",
+        "atk": 8, "ratk": 0, "def": 0, "crit_bonus": 0, "price": 50,
+        "description": "Uma espada de madeira para treinar.",
+        "max_stack": 1, "shop_tags": "armorer", "despawn_time": 6000, "range": 3.0, "projectile_speed": 0
+    },
+    "sword_iron": {
+        "name": "Espada de Ferro", "id_visual": "weapon_sword_iron", "slot": "hand",
+        "atk": 16, "ratk": 0, "def": 0, "crit_bonus": 0, "price": 100,
+        "description": "Lâmina afiada e resistente.",
+        "max_stack": 1, "shop_tags": "armorer", "despawn_time": 6000, "range": 3.0, "projectile_speed": 0
+    },
+    "sword_silver": {
+        "name": "Espada de Prata", "id_visual": "weapon_sword_silver", "slot": "hand",
+        "atk": 25, "ratk": 0, "def": 0, "crit_bonus": 5, "price": 500,
+        "description": "Brilha com a luz da lua. Crítico alto.",
+        "max_stack": 1, "shop_tags": "armorer", "despawn_time": 12000, "range": 3.5, "projectile_speed": 0
+    },
+    "gun_wood": {
+        "name": "Pistola de Brinquedo", "id_visual": "weapon_gun_wood", "slot": "hand",
+        "atk": 0, "ratk": 12, "def": 0, "crit_bonus": 0, "price": 80,
+        "description": "Dispara rolhas.",
+        "max_stack": 1, "shop_tags": "armorer", "despawn_time": 6000, "range": 10.0, "projectile_speed": 0.6
+    },
+    "gun_flintlock": {
+        "name": "Pistola Velha", "id_visual": "weapon_gun_flintlock", "slot": "hand",
+        "atk": 0, "ratk": 25, "def": 0, "crit_bonus": 0, "price": 250,
+        "description": "Cheira a pólvora queimada.",
+        "max_stack": 1, "shop_tags": "armorer", "despawn_time": 6000, "range": 14.0, "projectile_speed": 3.6
+    },
+    "gun_silver": {
+        "name": "Pistola de Combate", "id_visual": "weapon_gun_silver", "slot": "hand",
+        "atk": 0, "ratk": 40, "def": 0, "crit_bonus": 10, "price": 800,
+        "description": "Alta precisão.",
+        "max_stack": 1, "shop_tags": "armorer", "despawn_time": 6000, "range": 22.0, "projectile_speed": 7.2
+    },
+    "head_bandana": {
+        "name": "Bandana Vermelha", "id_visual": "armor_head_bandana", "slot": "head",
+        "atk": 0, "ratk": 0, "def": 1, "crit_bonus": 0, "price": 300000,
+        "description": "Um pano simples para a cabeça.",
+        "max_stack": 1, "shop_tags": "armorer", "despawn_time": 6000, "range": 0, "projectile_speed": 0
+    },
+    "head_bandana_black": {
+        "name": "Bandana Preta", "id_visual": "armor_head_bandana_black", "slot": "head",
+        "atk": 0, "ratk": 0, "def": 1, "crit_bonus": 0, "price": 35,
+        "description": "Estilo pirata clássico.",
+        "max_stack": 1, "shop_tags": "armorer", "despawn_time": 6000, "range": 0, "projectile_speed": 0
+    },
+    "body_shirt": {
+        "name": "Camisa de Marinheiro", "id_visual": "armor_body_shirt", "slot": "body",
+        "atk": 0, "ratk": 0, "def": 4, "crit_bonus": 0, "price": 50,
+        "description": "Uniforme padrão.",
+        "max_stack": 1, "shop_tags": "armorer", "despawn_time": 6000, "range": 0, "projectile_speed": 0
+    },
+    "legs_pants": {
+        "name": "Calça de Linho", "id_visual": "armor_legs_pants", "slot": "legs",
+        "atk": 0, "ratk": 0, "def": 2, "crit_bonus": 0, "price": 40,
+        "description": "Confortável para correr.",
+        "max_stack": 1, "shop_tags": "armorer", "despawn_time": 6000, "range": 0, "projectile_speed": 0
+    },
+    "feet_boots": {
+        "name": "Botas de Couro", "id_visual": "armor_feet_boots", "slot": "feet",
+        "atk": 0, "ratk": 0, "def": 2, "crit_bonus": 0, "price": 60,
+        "description": "Protege os pés.",
+        "max_stack": 1, "shop_tags": "armorer", "despawn_time": 6000, "range": 0, "projectile_speed": 0
+    }
+}

@@ -5,7 +5,7 @@ proc/get_dist_euclid(x1, z1, x2, z2)
 
 mob
 	var/tmp/last_pos_update = 0 
-	var/tmp/global_cooldown = 0 // --- INÍCIO DA MELHORIA: Variável do GCD ---
+	var/tmp/global_cooldown = 0 
 
 	proc/get_dist_euclid(x1, z1, x2, z2)
 		return ::get_dist_euclid(x1, z1, x2, z2)
@@ -132,15 +132,17 @@ mob
 					var/mob/npc/vendor/V = M
 					var/list/shop_items = list()
 					
-					for(var/path in V.stock)
-						var/obj/item/P = path 
-						var/i_name = initial(P.name)
-						var/i_id = initial(P.id_visual)
-						var/i_price = initial(P.price)
-						var/i_desc = initial(P.description)
+					for(var/i_id in V.stock)
+						var/list/data = GlobalItemsData[i_id]
+						if(!data) continue
+						
+						var/i_name = data["name"]
+						var/i_vis = data["id_visual"]
+						var/i_price = data["price"]
+						var/i_desc = data["description"]
 						if(!i_desc) i_desc = "Sem descrição"
 						
-						shop_items += list(list("name"=i_name, "id"=i_id, "price"=i_price, "desc"=i_desc, "typepath"="[path]"))
+						shop_items += list(list("name"=i_name, "id"=i_vis, "price"=i_price, "desc"=i_desc, "typepath"=i_id))
 					
 					src << output(json_encode(shop_items), "map3d:openShop")
 					RequestInventoryUpdate()
@@ -192,22 +194,21 @@ mob
 					break
 			if(!nearby_vendor) return  
 
-			var/typepath = text2path(href_list["type"])
-			if(!typepath || !ispath(typepath, /obj/item)) return
-			if(!(typepath in nearby_vendor.stock)) return
+			var/item_id = href_list["type"]
+			if(!(item_id in nearby_vendor.stock)) return
 
-			var/obj/item/P = typepath
-			var/item_price = initial(P.price)
-			var/item_name = initial(P.name)
+			var/list/data = GlobalItemsData[item_id]
+			if(!data) return
 
-			if(src.gold >= item_price)
+			if(src.gold >= data["price"])
 				if(contents.len >= INVENTORY_MAX) 
 					src << output("Mochila cheia!", "map3d:mostrarNotificacao")
 				else
-					src.gold -= item_price
-					var/obj/item/new_item = new typepath()
-					new_item.loc = src
-					src << output("Comprou [item_name]!", "map3d:mostrarNotificacao")
+					src.gold -= data["price"]
+					// --- INÍCIO DA CORREÇÃO: Remoção da variável não utilizada ---
+					new /obj/item(src, item_id)
+					// --- FIM DA CORREÇÃO ---
+					src << output("Comprou [data["name"]]!", "map3d:mostrarNotificacao")
 					RequestInventoryUpdate()
 			else 
 				src << output("Ouro insuficiente!", "map3d:mostrarNotificacao")
@@ -229,10 +230,7 @@ mob
 		if(action == "execute_skill" && in_game)
 			if(is_resting || is_fainted) return
 			
-			// --- INÍCIO DA MELHORIA: Global Cooldown (GCD) Anti-Macro Burst ---
-			// Rejeita silenciosamente pacotes que chegam com menos de 200ms de diferença do último ataque
 			if(world.time < global_cooldown) return 
-			// --- FIM DA MELHORIA ---
 			
 			var/s_id = href_list["skill_id"]
 			
@@ -275,7 +273,6 @@ mob
 				
 			active_skill_hits["[s_id]"] = list()
 			
-			// Trava de processamento concorrente definida para 2 ticks (200ms)
 			global_cooldown = world.time + 2
 			
 			spawn(3) is_attacking = 0
@@ -394,10 +391,10 @@ mob
 			if(!level_scale) level_scale = 0
 
 			var/equip_atk = 0
-			if(skill_data["scaling"] == "physical" && slot_hand && istype(slot_hand, /obj/item/weapon))
-				equip_atk = slot_hand:atk
-			else if(skill_data["scaling"] == "ranged" && slot_hand && istype(slot_hand, /obj/item/weapon))
-				equip_atk = slot_hand:ratk
+			if(skill_data["scaling"] == "physical" && slot_hand)
+				equip_atk = slot_hand.atk
+			else if(skill_data["scaling"] == "ranged" && slot_hand)
+				equip_atk = slot_hand.ratk
 
 			var/raw_damage = (base_dmg * stat_sum) + (s_lvl * level_scale) + equip_atk
 
