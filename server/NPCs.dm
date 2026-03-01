@@ -32,13 +32,11 @@ mob/npc
 	var/patrol_z = 0
 	var/patrol_radius = 5.0  
 
-	// --- INÍCIO DA MELHORIA: Equipamentos Visuais Base ---
 	var/equip_hand = ""
 	var/equip_head = ""
 	var/equip_body = ""
 	var/equip_legs = ""
 	var/equip_feet = ""
-	// --- FIM DA MELHORIA ---
 
 	New()
 		..()
@@ -57,7 +55,7 @@ mob/npc
 			var/dir = pick(0, 90, 180, 270)
 			real_rot = (dir * 3.14159 / 180)
 			for(var/i=1 to 10)
-				src.is_running = 1 // Ativa a animação de perna!
+				src.is_running = 1 
 				if(dir==0)   real_z-=0.1
 				if(dir==180) real_z+=0.1
 				if(dir==90)  real_x+=0.1
@@ -65,7 +63,7 @@ mob/npc
 				real_x = clamp(real_x, max(patrol_x - patrol_radius, -29), min(patrol_x + patrol_radius, 29))
 				real_z = clamp(real_z, max(patrol_z - patrol_radius, -29), min(patrol_z + patrol_radius, 29))
 				sleep(1)
-			src.is_running = 0 // Repouso
+			src.is_running = 0 
 			sleep(rand(20, 50))
 
 
@@ -74,6 +72,7 @@ mob/npc/enemy
 	var/mob_id = ""
 	var/mob_rank = "normal"
 	var/mob_speed = 0.05
+	var/mob_exp = 10 // --- INÍCIO DA MELHORIA: XP Dinâmica ---
 	
 	var/mob/aggro_target = null
 	var/aggro_range = 6.0
@@ -97,14 +96,11 @@ mob/npc/enemy
 		if(data["visuals"])
 			src.skin_color = data["visuals"]["skin"]
 			src.cloth_color = data["visuals"]["cloth"]
-			
-			// --- INÍCIO DA MELHORIA: Lê as roupas do Mob ---
 			if(data["visuals"]["hand"]) src.equip_hand = data["visuals"]["hand"]
 			if(data["visuals"]["head"]) src.equip_head = data["visuals"]["head"]
 			if(data["visuals"]["body"]) src.equip_body = data["visuals"]["body"]
 			if(data["visuals"]["legs"]) src.equip_legs = data["visuals"]["legs"]
 			if(data["visuals"]["feet"]) src.equip_feet = data["visuals"]["feet"]
-			// --- FIM DA MELHORIA ---
 		
 		src.mob_rank = data["rank"]
 		src.level = data["level"]
@@ -117,6 +113,8 @@ mob/npc/enemy
 			src.calc_atk = data["stats"]["atk"]
 			src.calc_def = data["stats"]["def"]
 			src.calc_flee = data["stats"]["flee"]
+			if(!isnull(data["stats"]["exp"])) src.mob_exp = data["stats"]["exp"]
+			else src.mob_exp = src.level * 5
 		
 		if(data["behavior"])
 			src.aggro_range = data["behavior"]["aggro_range"]
@@ -145,19 +143,29 @@ mob/npc/enemy
 				var/attacked = 0
 				if(world.time > next_attack_time && mob_skills.len > 0)
 					for(var/list/sk in mob_skills)
-						if(dist <= sk["range"])
-							src.is_running = 0 // Pára para atacar!
-							ExecuteSkill(sk["id"], aggro_target)
+						var/s_id = sk["id"]
+						
+						// --- INÍCIO DA MELHORIA: Busca o alcance real da Habilidade ---
+						var/list/s_data = GlobalSkillsData[s_id]
+						if(!s_data) continue
+						
+						var/s_range = 1.5 // Range default se a skill for cega
+						if(!isnull(s_data["range"])) s_range = s_data["range"]
+						
+						if(dist <= s_range)
+							src.is_running = 0 
+							ExecuteSkill(s_id, aggro_target)
 							next_attack_time = world.time + sk["cooldown"]
 							attacked = 1
 							break
+						// --- FIM DA MELHORIA ---
 				
 				if(!attacked && dist > 1.5) 
 					var/dx = aggro_target.real_x - src.real_x
 					var/dz = aggro_target.real_z - src.real_z
 					var/len = sqrt(dx*dx + dz*dz)
 					if(len > 0)
-						src.is_running = 1 // Perseguindo intensamente!
+						src.is_running = 1 
 						src.real_x += (dx/len) * mob_speed * 2 
 						src.real_z += (dz/len) * mob_speed * 2
 						src.real_rot = GetDirAngleInRadians(dx, dz)
@@ -175,7 +183,7 @@ mob/npc/enemy
 					var/dir = pick(0, 90, 180, 270)
 					real_rot = (dir * 3.14159 / 180)
 					for(var/i=1 to 5)
-						src.is_running = 1 // Patrulhando
+						src.is_running = 1 
 						if(dir==0)   real_z-=0.1
 						if(dir==180) real_z+=0.1
 						if(dir==90)  real_x+=0.1
@@ -183,7 +191,7 @@ mob/npc/enemy
 						real_x = clamp(real_x, max(patrol_x - patrol_radius, -29), min(patrol_x + patrol_radius, 29))
 						real_z = clamp(real_z, max(patrol_z - patrol_radius, -29), min(patrol_z + patrol_radius, 29))
 						sleep(2)
-					src.is_running = 0 // Parado a observar
+					src.is_running = 0 
 					sleep(rand(20, 40)) 
 
 	proc/ExecuteSkill(skill_id, mob/target)

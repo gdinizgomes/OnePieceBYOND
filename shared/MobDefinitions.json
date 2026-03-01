@@ -1,16 +1,16 @@
 {
     "_COMMENT_DOCUMENTATION": {
-        "rank": "normal, elite ou boss (Para UI futura)",
-        "behavior": "aggro_range (Visão), chase_range (Até onde persegue), attack_cooldown (Tempo mínimo entre qualquer ataque)",
-        "combat": "Lista de skills que o monstro pode usar (Lê do SkillDefinitions.json)",
-        "loot": "Lista de drops. chance: 100.0 = 100%, 0.5 = 0.5%"
+        "rank": "normal, elite ou boss",
+        "behavior": "aggro_range, chase_range",
+        "combat": "Lista de skills (Lê do SkillDefinitions.json. Não precisa de range!)",
+        "loot": "Lista de drops"
     },
     "dummy_pirate": {
         "name": "Pirata Capanga",
         "visuals": { "skin": "FFE0BD", "cloth": "8B0000", "hand": "weapon_sword_wood", "head": "armor_head_bandana" },
         "rank": "normal",
         "level": 5,
-        "stats": { "max_hp": 150, "atk": 10, "def": 2, "speed": 0.05, "flee": 2 },
+        "stats": { "max_hp": 150, "atk": 10, "def": 2, "speed": 0.05, "flee": 2, "exp": 25 },
         "behavior": {
             "type": "aggressive",
             "aggro_range": 6.0,
@@ -19,7 +19,7 @@
         },
         "combat": {
             "skills": [
-                { "id": "basic_sword", "range": 2.5, "cooldown": 20 }
+                { "id": "basic_sword", "cooldown": 20 }
             ]
         },
         "loot": [
@@ -32,7 +32,7 @@
         "visuals": { "skin": "FFCCAA", "cloth": "FFFFFF", "hand": "weapon_gun_wood" },
         "rank": "normal",
         "level": 8,
-        "stats": { "max_hp": 100, "atk": 20, "def": 1, "speed": 0.04, "flee": 5 },
+        "stats": { "max_hp": 100, "atk": 20, "def": 1, "speed": 0.04, "flee": 5, "exp": 45 },
         "behavior": {
             "type": "aggressive",
             "aggro_range": 10.0,
@@ -41,7 +41,7 @@
         },
         "combat": {
             "skills": [
-                { "id": "basic_gun", "range": 10.0, "cooldown": 30 }
+                { "id": "basic_gun", "cooldown": 30 }
             ]
         },
         "loot": [

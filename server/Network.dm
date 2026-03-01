@@ -347,12 +347,16 @@ mob
 			active_skill_hits["[s_id]"] = already_hit
 			hit_targets_this_swing += target
 
-			var/target_flee = 0
-			var/target_def = 0
+			// --- INÍCIO DA MELHORIA: Defesa e Flee Lidos Corretamente ---
+			var/target_flee = target.calc_flee
+			var/target_def = target.calc_def
+			
 			if(istype(target, /mob/npc))
-				var/mob/npc/N = target; target_flee = N.level * 2; target_def = N.level * 2
-			else
-				var/mob/T = target; target_flee = T.calc_flee; target_def = T.calc_def
+				var/mob/npc/N = target
+				if(N.npc_type != "enemy")
+					target_flee = N.level * 2 // Prop/Vendor não têm stats no JSON, usamos level base.
+					target_def = N.level * 2
+			// --- FIM DA MELHORIA ---
 			
 			if(skill_data["scaling"] == "physical" || skill_data["scaling"] == "ranged")
 				var/hit_chance = calc_hit - target_flee
@@ -426,13 +430,14 @@ mob
 			else if(s_id == "basic_fist") xp_type = "fist"
 			else if(s_id == "basic_gun") xp_type = "gun"
 
+			// --- INÍCIO DA MELHORIA: Distribuição de EXP Dinâmica (Data-Driven) ---
 			if(istype(target, /mob/npc))
 				var/mob/npc/N = target
 				if(N.npc_type == "prop")
 					src << output("<span class='log-hit' style='color:orange'>TREINO: [damage] dmg[crit_txt]</span>", "map3d:addLog")
-					GainExperience(5)
-					if(xp_type != "") GainWeaponExp(xp_type, 3)
-					else GainSkillExp(s_id, 3) 
+					GainExperience(1) // Troncos não devem farmar o player eternamente.
+					if(xp_type != "") GainWeaponExp(xp_type, 1)
+					else GainSkillExp(s_id, 1) 
 				else if(N.npc_type == "enemy")
 					var/mob/npc/enemy/E = N
 					src << output("<span class='log-hit'>HIT em [E.name]! Dano: [damage][crit_txt]</span>", "map3d:addLog")
@@ -441,9 +446,12 @@ mob
 					
 					if(E.current_hp <= 0)
 						E.Die(src) 
-						GainExperience(10)
-						if(xp_type != "") GainWeaponExp(xp_type, 5)
-						else GainSkillExp(s_id, 5)
+						
+						var/base_exp = E.mob_exp
+						var/wep_exp = max(1, round(base_exp / 4)) // Dá 25% da exp total para a arma/proficiência
+						GainExperience(base_exp)
+						if(xp_type != "") GainWeaponExp(xp_type, wep_exp)
+						else GainSkillExp(s_id, wep_exp)
 			else 
 				var/mob/T = target
 				src << output("<span class='log-hit'>HIT em [T.name]! Dano: [damage][crit_txt]</span>", "map3d:addLog")
@@ -454,10 +462,13 @@ mob
 					if(src.lethality_mode == 1) T.Die(src)
 					else { src << output("<span class='log-hit' style='color:orange'>Você derrotou [T.name]! Ele está desmaiado.</span>", "map3d:addLog"); T.GoFaint() }
 				
-				GainExperience(10)
-				if(xp_type != "") GainWeaponExp(xp_type, 5)
-				else GainSkillExp(s_id, 5)
+					// EXP PVP
+					var/pvp_exp = T.level * 10
+					GainExperience(pvp_exp)
+					if(xp_type != "") GainWeaponExp(xp_type, max(1, round(pvp_exp / 4)))
+					else GainSkillExp(s_id, max(1, round(pvp_exp / 4)))
 				T.UpdateVisuals()
+			// --- FIM DA MELHORIA ---
 
 		if(action == "add_stat" && in_game)
 			if(stat_points > 0)
