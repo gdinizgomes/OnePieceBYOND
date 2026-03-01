@@ -163,19 +163,17 @@ const EntityManager = {
                     
                     if (otherData) {
                         originMesh = otherData.mesh;
-                        
-                        // --- INÍCIO DA MELHORIA: Snap Instantâneo de Rotação ---
-                        // Quando um inimigo ataca, ele fixa a mira na direção final para a hitbox desenhar perfeita
                         if(originMesh) {
                             originMesh.rotation.y = otherData.targetRot;
-                            otherData.startRot = otherData.targetRot; // Quebra o Lerp temporariamente
+                            otherData.startRot = otherData.targetRot; 
                         }
-                        // --- FIM DA MELHORIA ---
                     }
                     
                     if (originMesh) {
                         if (evt.is_proj === 1 && typeof CombatVisualSystem !== 'undefined') {
-                            CombatVisualSystem.fireSkillProjectile(originMesh, evt.skill, evt.caster);
+                            // --- INÍCIO DA MELHORIA: Cliente passa os status da arma para o motor 3D ---
+                            CombatVisualSystem.fireSkillProjectile(originMesh, evt.skill, evt.caster, evt.spd, evt.rng);
+                            // --- FIM DA MELHORIA ---
                         }
                         else if (evt.is_proj === 0 && typeof CombatVisualSystem !== 'undefined') {
                             const sDef = window.GameSkills ? window.GameSkills[evt.skill] : null;
@@ -183,7 +181,6 @@ const EntityManager = {
                                 const combo = sDef.combos[(evt.step || 1) - 1];
                                 if (combo && combo.hitbox) {
                                     const size = { x: combo.hitbox.x, y: 1.5, z: combo.hitbox.z };
-                                    // Aumentado para 300ms para casar perfeitamente com o servidor
                                     CombatVisualSystem.spawnHitbox(originMesh, size, combo.offset, 300, null, 1.0, true);
                                 }
                             }

@@ -73,11 +73,12 @@ mob/npc/enemy
 	var/mob_rank = "normal"
 	var/mob_speed = 0.05
 	var/mob_exp = 10 
+	var/mob_weapon_id = "" // Guarda o ID da arma (Ex: gun_wood)
 	
 	var/mob/aggro_target = null
 	var/aggro_range = 6.0
 	var/chase_range = 12.0
-	var/mob_max_range = 1.5 // --- INÍCIO DA MELHORIA: Alcance ideal de combate ---
+	var/mob_max_range = 1.5 
 	
 	var/list/mob_skills = list()
 	var/list/mob_loot = list()
@@ -97,11 +98,26 @@ mob/npc/enemy
 		if(data["visuals"])
 			src.skin_color = data["visuals"]["skin"]
 			src.cloth_color = data["visuals"]["cloth"]
-			if(data["visuals"]["hand"]) src.equip_hand = data["visuals"]["hand"]
-			if(data["visuals"]["head"]) src.equip_head = data["visuals"]["head"]
-			if(data["visuals"]["body"]) src.equip_body = data["visuals"]["body"]
-			if(data["visuals"]["legs"]) src.equip_legs = data["visuals"]["legs"]
-			if(data["visuals"]["feet"]) src.equip_feet = data["visuals"]["feet"]
+			
+			// --- INÍCIO DA MELHORIA: Lê a Arma do Mob corretamente ---
+			if(data["visuals"]["hand"]) 
+				src.mob_weapon_id = data["visuals"]["hand"]
+				var/list/i_data = GlobalItemsData[src.mob_weapon_id]
+				if(i_data) src.equip_hand = i_data["id_visual"] // Visual pro cliente
+				
+			if(data["visuals"]["head"])
+				var/list/i_data = GlobalItemsData[data["visuals"]["head"]]
+				if(i_data) src.equip_head = i_data["id_visual"]
+			if(data["visuals"]["body"])
+				var/list/i_data = GlobalItemsData[data["visuals"]["body"]]
+				if(i_data) src.equip_body = i_data["id_visual"]
+			if(data["visuals"]["legs"])
+				var/list/i_data = GlobalItemsData[data["visuals"]["legs"]]
+				if(i_data) src.equip_legs = i_data["id_visual"]
+			if(data["visuals"]["feet"])
+				var/list/i_data = GlobalItemsData[data["visuals"]["feet"]]
+				if(i_data) src.equip_feet = i_data["id_visual"]
+			// --- FIM DA MELHORIA ---
 		
 		src.mob_rank = data["rank"]
 		src.level = data["level"]
@@ -131,13 +147,21 @@ mob/npc/enemy
 		if(data["combat"] && data["combat"]["skills"])
 			src.mob_skills = data["combat"]["skills"]
 			
-			// --- INÍCIO DA MELHORIA: Determinar o maior alcance de tiro ---
+			// --- INÍCIO DA MELHORIA: Determinar Maior Alcance (Arma > Skill) ---
+			var/max_rng = 1.5
 			for(var/list/sk in src.mob_skills)
 				var/s_id = sk["id"]
 				var/list/s_data = GlobalSkillsData[s_id]
-				if(s_data && !isnull(s_data["range"]))
-					if(s_data["range"] > src.mob_max_range)
-						src.mob_max_range = s_data["range"]
+				if(s_data)
+					var/r = 1.5
+					if(!isnull(s_data["range"])) r = s_data["range"]
+					
+					if(src.mob_weapon_id && !isnull(s_data["requiresWeaponTag"]))
+						var/list/w_data = GlobalItemsData[src.mob_weapon_id]
+						if(w_data && !isnull(w_data["range"])) r = w_data["range"]
+						
+					if(r > max_rng) max_rng = r
+			src.mob_max_range = max_rng
 			// --- FIM DA MELHORIA ---
 			
 		if(data["loot"])
@@ -165,6 +189,9 @@ mob/npc/enemy
 						
 						var/s_range = 1.5 
 						if(!isnull(s_data["range"])) s_range = s_data["range"]
+						if(src.mob_weapon_id && !isnull(s_data["requiresWeaponTag"]))
+							var/list/w_data = GlobalItemsData[src.mob_weapon_id]
+							if(w_data && !isnull(w_data["range"])) s_range = w_data["range"]
 						
 						if(dist <= s_range)
 							src.is_running = 0 
@@ -173,8 +200,7 @@ mob/npc/enemy
 							attacked = 1
 							break
 				
-				// --- INÍCIO DA MELHORIA: O Mob respeita o próprio alcance ---
-				var/ideal_dist = max(1.5, src.mob_max_range * 0.8) // Se for atirador, vai manter 80% da distância máxima para atirar
+				var/ideal_dist = max(1.5, src.mob_max_range * 0.8) 
 				
 				if(!attacked && dist > ideal_dist && src.is_attacking == 0) 
 					var/dx = aggro_target.real_x - src.real_x
@@ -187,7 +213,6 @@ mob/npc/enemy
 						src.real_rot = GetDirAngleInRadians(dx, dz)
 						src.real_x = clamp(src.real_x, -29, 29)
 						src.real_z = clamp(src.real_z, -29, 29)
-				// --- FIM DA MELHORIA ---
 
 				sleep(2) 
 			else
@@ -217,6 +242,20 @@ mob/npc/enemy
 		
 		var/is_proj = (skill_data["type"] == "projectile") ? 1 : 0
 		
+		// --- INÍCIO DA MELHORIA: Herança de Atributos da Arma ---
+		var/final_range = 5.0
+		var/final_speed = 1.0
+		
+		if(!isnull(skill_data["range"])) final_range = skill_data["range"]
+		if(!isnull(skill_data["speed"])) final_speed = skill_data["speed"]
+		
+		if(src.mob_weapon_id && !isnull(skill_data["requiresWeaponTag"]))
+			var/list/idata = GlobalItemsData[src.mob_weapon_id]
+			if(idata)
+				if(!isnull(idata["range"])) final_range = idata["range"]
+				if(!isnull(idata["projectile_speed"])) final_speed = idata["projectile_speed"]
+		// --- FIM DA MELHORIA ---
+		
 		src.is_attacking = 1
 		src.attack_type = skill_id
 		src.combo_step = 1
@@ -225,35 +264,46 @@ mob/npc/enemy
 		var/dz_face = target.real_z - src.real_z
 		src.real_rot = GetDirAngleInRadians(dx_face, dz_face)
 		
+		// O Evento Global agora carrega a Velocidade e o Range exatos da arma
 		if(SSserver)
-			SSserver.global_events += list(list("type" = "action", "skill" = skill_id, "caster" = "\ref[src]", "step" = 1, "is_proj" = is_proj))
+			SSserver.global_events += list(list("type" = "action", "skill" = skill_id, "caster" = "\ref[src]", "step" = 1, "is_proj" = is_proj, "spd" = final_speed, "rng" = final_range))
 		
 		if(!is_proj)
 			spawn(3) 
 				src.is_attacking = 0
+				
 				if(!src || !target || target.current_hp <= 0 || src.current_hp <= 0) return
 				
 				var/dist = get_dist_euclid(src.real_x, src.real_z, target.real_x, target.real_z)
-				var/max_dist = 5.0
-				if(!isnull(skill_data["range"])) max_dist = skill_data["range"]
-				if(dist > max_dist + 1.0) return 
+				if(dist > final_range + 1.0) return 
 				
 				var/list/combos = skill_data["combos"]
 				if(combos && combos.len >= 1)
 					var/list/combo = combos[1] 
 					var/list/hb = combo["hitbox"]
+					
 					if(hb)
-						var/box_wid = hb["x"]; var/box_len = hb["z"]; var/fwd_off = combo["offset"]
-						var/dx = target.real_x - src.real_x; var/dz = target.real_z - src.real_z
+						var/box_wid = hb["x"]
+						var/box_len = hb["z"]
+						var/fwd_off = combo["offset"]
+
+						var/dx = target.real_x - src.real_x
+						var/dz = target.real_z - src.real_z
+
 						var/rot_deg = src.real_rot * 57.2957795
-						var/s = sin(rot_deg); var/c = cos(rot_deg)
+						var/s = sin(rot_deg)
+						var/c = cos(rot_deg)
+
 						var/local_z = (dx * s) + (dz * c)
 						var/local_x = (dx * c) - (dz * s)
 
-						var/pad_w = 0.4; var/pad_l = 0.5 
-						var/half_l = (box_len / 2) + pad_l; var/half_w = (box_wid / 2) + pad_w
+						var/pad_w = 0.4 
+						var/pad_l = 0.5 
+						var/half_l = (box_len / 2) + pad_l
+						var/half_w = (box_wid / 2) + pad_w
 
-						if(abs(local_z - fwd_off) > half_l || abs(local_x) > half_w) return 
+						if(abs(local_z - fwd_off) > half_l || abs(local_x) > half_w)
+							return 
 				
 				var/target_flee = target.calc_flee
 				var/target_def = target.calc_def
@@ -265,15 +315,21 @@ mob/npc/enemy
 					target << output("<span class='log-hit' style='color:#95a5a6'>Esquivaste do ataque de [src.name]!</span>", "map3d:addLog")
 					return 
 				
-				var/base_dmg = skill_data["power"]; if(!base_dmg) base_dmg = 0
+				var/base_dmg = skill_data["power"]
+				if(!base_dmg) base_dmg = 0
+				
 				var/raw_damage = src.calc_atk + base_dmg
+				
 				var/damage_mult = 1.0
-				if(combos && combos.len >= 1 && combos[1]["damageMult"]) damage_mult = combos[1]["damageMult"]
+				if(combos && combos.len >= 1 && combos[1]["damageMult"]) 
+					damage_mult = combos[1]["damageMult"]
 
 				var/damage = round((raw_damage * damage_mult) + rand(0, 3))
 				
 				var/is_crit = 0
-				if(rand(1, 100) <= src.calc_crit) { is_crit = 1; damage = round(damage * 1.5) }
+				if(rand(1, 100) <= src.calc_crit)
+					is_crit = 1
+					damage = round(damage * 1.5) 
 					
 				var/def_reduction = round(target_def * (skill_data["scaling"] == "magical" ? 0.4 : 0.5))
 				damage -= def_reduction
@@ -284,16 +340,15 @@ mob/npc/enemy
 				target.current_hp -= damage
 				target << output("<span class='log-hit' style='color:red'>Recebeste [damage] de dano de [src.name]![crit_txt]</span>", "map3d:addLog")
 				
-				if(SSserver) SSserver.global_events += list(list("type" = "hit", "skill" = skill_id, "caster" = "\ref[src]", "target" = "\ref[target]", "dmg" = damage, "crit" = is_crit))
+				if(SSserver)
+					SSserver.global_events += list(list("type" = "hit", "skill" = skill_id, "caster" = "\ref[src]", "target" = "\ref[target]", "dmg" = damage, "crit" = is_crit))
 				
 				target.UpdateVisuals()
-				if(target.current_hp <= 0) { target.GoFaint(); src.aggro_target = null }
+				if(target.current_hp <= 0)
+					target.GoFaint()
+					src.aggro_target = null
 		else
-			// --- INÍCIO DA MELHORIA: Delegação do Projétil para a Física do Cliente JS ---
 			spawn(3) src.is_attacking = 0
-			// Para ataques à distância, o servidor lança apenas a animação visual. 
-			// A Deteção do Dano fica a cargo do Three.js (No CombatVisualSystem) que enviará a resposta à rede!
-			// --- FIM DA MELHORIA ---
 
 	Die(mob/killer)
 		killer << output("<span class='log-hit' style='color:#f1c40f'><b>Eliminaste [src.name]!</b></span>", "map3d:addLog")

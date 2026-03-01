@@ -224,7 +224,6 @@ mob
 					del(I)
 					RequestInventoryUpdate()
 
-		// --- INÍCIO DA MELHORIA: Hit de Projétil vindo do Mobs ---
 		if(action == "mob_projectile_hit" && in_game && !is_fainted)
 			var/caster = locate(href_list["caster_ref"])
 			var/s_id = href_list["skill_id"]
@@ -235,10 +234,16 @@ mob
 			var/list/skill_data = GlobalSkillsData[s_id]
 			if(!skill_data) return
 			
-			// Validação local de segurança (Anti-Snipe Hack)
+			// --- INÍCIO DA MELHORIA: Validação do Projétil do Mob via Arma ---
 			var/dist = get_dist_euclid(src.real_x, src.real_z, E.real_x, E.real_z)
 			var/max_dist = skill_data["range"] ? skill_data["range"] + 5.0 : 20.0
+			
+			if(E.mob_weapon_id && !isnull(skill_data["requiresWeaponTag"]))
+				var/list/idata = GlobalItemsData[E.mob_weapon_id]
+				if(idata && !isnull(idata["range"])) max_dist = idata["range"] + 5.0
+				
 			if(dist > max_dist) return
+			// --- FIM DA MELHORIA ---
 			
 			var/target_flee = src.calc_flee
 			var/target_def = src.calc_def
@@ -270,7 +275,6 @@ mob
 			
 			src.UpdateVisuals()
 			if(src.current_hp <= 0) { src.GoFaint(); E.aggro_target = null }
-		// --- FIM DA MELHORIA ---
 
 		if(action == "execute_skill" && in_game)
 			if(is_resting || is_fainted) return
@@ -304,10 +308,21 @@ mob
 			
 			hit_targets_this_swing = list()
 
+			// --- INÍCIO DA MELHORIA: Player passa atributos dinâmicos da Arma ---
+			var/final_range = 5.0
+			var/final_speed = 1.0
+			if(!isnull(skill_data["range"])) final_range = skill_data["range"]
+			if(!isnull(skill_data["speed"])) final_speed = skill_data["speed"]
+			
+			if(slot_hand && !isnull(skill_data["requiresWeaponTag"]))
+				if(slot_hand.range) final_range = slot_hand.range
+				if(slot_hand.projectile_speed) final_speed = slot_hand.projectile_speed
+
 			if(SSserver)
 				var/is_proj = 0
 				if(skill_data["type"] == "projectile") is_proj = 1
-				SSserver.global_events += list(list("type" = "action", "skill" = s_id, "caster" = "\ref[src]", "step" = combo_step, "is_proj" = is_proj))
+				SSserver.global_events += list(list("type" = "action", "skill" = s_id, "caster" = "\ref[src]", "step" = combo_step, "is_proj" = is_proj, "spd" = final_speed, "rng" = final_range))
+			// --- FIM DA MELHORIA ---
 			
 			if(skill_data["type"] == "projectile") 
 				max_targets_per_swing = skill_data["pierce"] ? 10 : 1
@@ -352,11 +367,15 @@ mob
 			if(target in hit_targets_this_swing) return 
 			if(hit_targets_this_swing.len >= max_targets_per_swing) return 
 
-			var/max_dist = skill_data["range"]
-			if(!max_dist) max_dist = 5.0
+			// --- INÍCIO DA MELHORIA: O Range do Player é validado com precisão da Arma ---
+			var/max_dist = 5.0
+			if(!isnull(skill_data["range"])) max_dist = skill_data["range"]
+			if(slot_hand && !isnull(skill_data["requiresWeaponTag"]) && slot_hand.range)
+				max_dist = slot_hand.range
 			
 			var/dist = get_dist_euclid(src.real_x, src.real_z, target.real_x, target.real_z)
 			if(dist > max_dist + 5.0) return 
+			// --- FIM DA MELHORIA ---
 
 			if(dist > 0.1 && skill_data["type"] == "melee") 
 				var/list/combos = skill_data["combos"]

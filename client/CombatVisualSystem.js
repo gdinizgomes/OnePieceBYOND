@@ -120,11 +120,15 @@ const CombatVisualSystem = {
         });
     },
 
-    fireSkillProjectile: function(originMesh, skillId, ownerRef) {
+    // --- INÍCIO DA MELHORIA: Substitui os Atributos Dinâmicos da Arma ---
+    fireSkillProjectile: function(originMesh, skillId, ownerRef, overrideSpeed, overrideRange) {
         const def = window.GameSkills ? window.GameSkills[skillId] : null;
         if(!def || !originMesh) return;
 
         const isMine = (ownerRef === EntityManager.myID);
+        
+        const pSpeed = (overrideSpeed !== undefined && overrideSpeed !== null) ? overrideSpeed : def.speed;
+        const pRange = (overrideRange !== undefined && overrideRange !== null) ? overrideRange : def.range;
 
         const hitboxMesh = this.getProjectile(0x00FF00, def.hitboxSize);
         hitboxMesh.material.wireframe = true;
@@ -164,9 +168,12 @@ const CombatVisualSystem = {
             mesh: hitboxMesh, skillId: skillId, def: def,
             ownerRef: ownerRef, isMine: isMine,
             dirX: dX, dirY: dY, dirZ: dZ,
-            distTraveled: 0, hasHit: [] 
+            distTraveled: 0, hasHit: [],
+            actualSpeed: pSpeed,
+            actualRange: pRange
         });
     },
+    // --- FIM DA MELHORIA ---
 
     destroyProjectileFrom: function(ownerRef, skillId) {
         if (!ownerRef) return;
@@ -293,14 +300,14 @@ const CombatVisualSystem = {
 
         for (let i = this.activeSkillProjectiles.length - 1; i >= 0; i--) {
             const p = this.activeSkillProjectiles[i]; 
-            const moveStep = p.def.speed * timeScale;
+            const moveStep = p.actualSpeed * timeScale;
             
             p.mesh.position.x += p.dirX * moveStep; 
             p.mesh.position.y += p.dirY * moveStep; 
             p.mesh.position.z += p.dirZ * moveStep; 
             p.distTraveled += moveStep;
             
-            // --- INÍCIO DA MELHORIA: O Projétil do Mob reconhece que acertou em ti! ---
+            // --- INÍCIO DA MELHORIA: O fim do "Projétil que Atravessa" ---
             if (p.isMine) { 
                 for (let id in EntityManager.otherPlayers) {
                     if(p.hasHit.includes(id)) continue;
@@ -314,14 +321,14 @@ const CombatVisualSystem = {
                         
                         const pVal = p.def.pierce;
                         if (pVal !== true && pVal !== 1 && pVal !== "1") {
-                            this.releaseProjectile(p.mesh); 
+                            // Removido o this.releaseProjectile(p.mesh) duplicado para salvar a memória RAM (Object Pool). 
+                            // Ele marca a distância como 99999 e deixa o despawner natural debaixo tratar a limpeza.
                             p.distTraveled = 99999; 
                             break; 
                         }
                     }
                 }
             } else if (p.ownerRef && EntityManager.otherPlayers[p.ownerRef] && EntityManager.otherPlayers[p.ownerRef].isNPC) {
-                // Se o projétil pertencer a um NPC e bater em nós, enviamos o pacote especial ao servidor
                 if (this.checkAccurateCollision(p, EntityManager.playerGroup)) {
                     if (!p.hasHit.includes(EntityManager.myID)) {
                         p.hasHit.push(EntityManager.myID);
@@ -330,7 +337,7 @@ const CombatVisualSystem = {
                         }
                         const pVal = p.def.pierce;
                         if (pVal !== true && pVal !== 1 && pVal !== "1") {
-                            this.releaseProjectile(p.mesh); 
+                            // Removido a duplicata visual!
                             p.distTraveled = 99999; 
                         }
                     }
@@ -338,7 +345,7 @@ const CombatVisualSystem = {
             }
             // --- FIM DA MELHORIA ---
             
-            if (p.distTraveled >= p.def.range) { 
+            if (p.distTraveled >= p.actualRange) { 
                 this.releaseProjectile(p.mesh); 
                 this.activeSkillProjectiles.splice(i, 1); 
             }
