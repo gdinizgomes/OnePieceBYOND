@@ -38,6 +38,10 @@ world/New()
 	var/mob/npc/enemy/pirata = new /mob/npc/enemy(null, "dummy_pirate")
 	pirata.real_x = 4 
 	pirata.real_z = 4 
+
+	var/mob/npc/enemy/marinheiro = new /mob/npc/enemy(null, "marine_shooter")
+	marinheiro.real_x = 6
+	marinheiro.real_z = 6 
 	
 	new /mob/npc/vendor()
 	new /mob/npc/nurse()

@@ -41,7 +41,7 @@
         },
         "combat": {
             "skills": [
-                { "id": "basic_gun", "cooldown": 30 }
+                { "id": "basic_gun", "cooldown": 100 }
             ]
         },
         "loot": [
