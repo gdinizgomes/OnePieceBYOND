@@ -171,8 +171,34 @@ const EntityManager = {
                     
                     if (originMesh) {
                         if (evt.is_proj === 1 && typeof CombatVisualSystem !== 'undefined') {
-                            // --- INÍCIO DA MELHORIA: Cliente passa os status da arma para o motor 3D ---
-                            CombatVisualSystem.fireSkillProjectile(originMesh, evt.skill, evt.caster, evt.spd, evt.rng);
+                            // --- INÍCIO DA MELHORIA: Sincronização da Arma do Mob ---
+                            const sDef = window.GameSkills ? window.GameSkills[evt.skill] : null;
+                            let fired = false;
+
+                            if (sDef) {
+                                if (sDef.visualDef) {
+                                    // Magias puras (bolas de fogo, gelo, etc)
+                                    CombatVisualSystem.fireSkillProjectile(originMesh, evt.skill, evt.caster, evt.spd, evt.rng);
+                                    fired = true;
+                                } else if (sDef.requiresWeaponTag === "gun") {
+                                    // Disparos com armas equipadas! Lemos a arma do Mob/Player.
+                                    const equippedItem = originMesh.userData.lastItem;
+                                    let projData = null;
+                                    if(equippedItem && GameDefinitions[equippedItem] && GameDefinitions[equippedItem].gameplay) {
+                                        projData = GameDefinitions[equippedItem].gameplay.projectile;
+                                    }
+                                    if(projData) {
+                                        // Usa o mesmo construtor de balas visuais que o Jogador
+                                        CombatVisualSystem.fireProjectile(originMesh, projData, false, evt.skill, evt.caster, evt.spd, evt.rng);
+                                        fired = true;
+                                    }
+                                }
+                            }
+                            
+                            // Fallback caso a arma esteja corrompida
+                            if (!fired) {
+                                CombatVisualSystem.fireSkillProjectile(originMesh, evt.skill, evt.caster, evt.spd, evt.rng);
+                            }
                             // --- FIM DA MELHORIA ---
                         }
                         else if (evt.is_proj === 0 && typeof CombatVisualSystem !== 'undefined') {

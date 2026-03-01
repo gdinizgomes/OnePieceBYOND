@@ -70,11 +70,15 @@ const CombatVisualSystem = {
         setTimeout(() => { div.remove(); }, 1000);
     },
 
-    fireProjectile: function(originMesh, projectileDef, isMine, skillId, ownerRef) {
+    // --- INÍCIO DA MELHORIA: A bala nativa herda velocidade e alcance ---
+    fireProjectile: function(originMesh, projectileDef, isMine, skillId, ownerRef, overrideSpeed, overrideRange) {
         const s = projectileDef.scale || [0.1, 0.1, 0.1];
         const bullet = this.getProjectile(projectileDef.color, s);
         
         if(!originMesh) return; 
+        
+        const finalSpeed = (overrideSpeed !== undefined && overrideSpeed !== null) ? overrideSpeed : projectileDef.speed;
+        const finalRange = (overrideRange !== undefined && overrideRange !== null) ? overrideRange : (projectileDef.range || 10);
         
         const bodyRot = originMesh.rotation.y; 
         const sin = Math.sin(bodyRot); 
@@ -93,11 +97,12 @@ const CombatVisualSystem = {
         
         this.activeProjectiles.push({ 
             mesh: bullet, dirX: dX, dirY: dY, dirZ: dZ, 
-            speed: projectileDef.speed, distTraveled: 0, 
-            maxDist: projectileDef.range || 10, isMine: isMine,
+            speed: finalSpeed, distTraveled: 0, 
+            maxDist: finalRange, isMine: isMine,
             skillId: skillId, ownerRef: ownerRef
         });
     },
+    // --- FIM DA MELHORIA ---
 
     spawnHitbox: function(playerMesh, size, forwardOffset, lifetime, customData, yOffset, isVisualOnly = false) {
         if(!playerMesh) return;
@@ -120,7 +125,6 @@ const CombatVisualSystem = {
         });
     },
 
-    // --- INÍCIO DA MELHORIA: Substitui os Atributos Dinâmicos da Arma ---
     fireSkillProjectile: function(originMesh, skillId, ownerRef, overrideSpeed, overrideRange) {
         const def = window.GameSkills ? window.GameSkills[skillId] : null;
         if(!def || !originMesh) return;
@@ -173,7 +177,6 @@ const CombatVisualSystem = {
             actualRange: pRange
         });
     },
-    // --- FIM DA MELHORIA ---
 
     destroyProjectileFrom: function(ownerRef, skillId) {
         if (!ownerRef) return;
@@ -269,6 +272,7 @@ const CombatVisualSystem = {
                 }
                 
                 if(type === "projectile") { 
+                    // Correção: Apaga fisicamente a malha 1x, em vez de enganar a pool!
                     this.releaseProjectile(objRef.mesh); 
                     objRef.distTraveled = 99999; 
                     break; 
@@ -294,8 +298,33 @@ const CombatVisualSystem = {
             p.mesh.position.z += p.dirZ * moveStep; 
             p.distTraveled += moveStep;
             
-            if (p.isMine) { this.checkCollisions("projectile", p); }
-            if (p.distTraveled >= p.maxDist) { this.releaseProjectile(p.mesh); this.activeProjectiles.splice(i, 1); }
+            // --- INÍCIO DA MELHORIA: Colisão contra o Cenário (Árvores e Paredes) ---
+            if(typeof PhysicsSystem !== 'undefined' && PhysicsSystem.checkCollision(p.mesh.position.x, p.mesh.position.y, p.mesh.position.z)) {
+                this.releaseProjectile(p.mesh);
+                this.activeProjectiles.splice(i, 1);
+                continue;
+            }
+            // --- FIM DA MELHORIA ---
+
+            if (p.isMine) { 
+                this.checkCollisions("projectile", p); 
+            } else if (p.ownerRef && EntityManager.otherPlayers[p.ownerRef] && EntityManager.otherPlayers[p.ownerRef].isNPC) {
+                // A bala generica disparada por NPCs que nos atinge
+                if (this.checkAccurateCollision(p, EntityManager.playerGroup)) {
+                    if (typeof BYOND_REF !== 'undefined') {
+                        NetworkSystem.queueCommand(`action=mob_projectile_hit&caster_ref=${p.ownerRef}&skill_id=${p.skillId}`);
+                    }
+                    this.releaseProjectile(p.mesh); 
+                    this.activeProjectiles.splice(i, 1);
+                    continue;
+                }
+            }
+            
+            // Limpeza natural por distância
+            if (p.distTraveled >= p.maxDist) { 
+                this.releaseProjectile(p.mesh); 
+                this.activeProjectiles.splice(i, 1); 
+            }
         }
 
         for (let i = this.activeSkillProjectiles.length - 1; i >= 0; i--) {
@@ -307,7 +336,14 @@ const CombatVisualSystem = {
             p.mesh.position.z += p.dirZ * moveStep; 
             p.distTraveled += moveStep;
             
-            // --- INÍCIO DA MELHORIA: O fim do "Projétil que Atravessa" ---
+            // --- INÍCIO DA MELHORIA: Física do cenário p/ Magias Complexas ---
+            if(typeof PhysicsSystem !== 'undefined' && PhysicsSystem.checkCollision(p.mesh.position.x, p.mesh.position.y, p.mesh.position.z)) {
+                this.releaseProjectile(p.mesh);
+                this.activeSkillProjectiles.splice(i, 1);
+                continue;
+            }
+            // --- FIM DA MELHORIA ---
+            
             if (p.isMine) { 
                 for (let id in EntityManager.otherPlayers) {
                     if(p.hasHit.includes(id)) continue;
@@ -321,8 +357,7 @@ const CombatVisualSystem = {
                         
                         const pVal = p.def.pierce;
                         if (pVal !== true && pVal !== 1 && pVal !== "1") {
-                            // Removido o this.releaseProjectile(p.mesh) duplicado para salvar a memória RAM (Object Pool). 
-                            // Ele marca a distância como 99999 e deixa o despawner natural debaixo tratar a limpeza.
+                            // Correção da gestão de RAM: Removido o release duplo!
                             p.distTraveled = 99999; 
                             break; 
                         }
@@ -337,13 +372,11 @@ const CombatVisualSystem = {
                         }
                         const pVal = p.def.pierce;
                         if (pVal !== true && pVal !== 1 && pVal !== "1") {
-                            // Removido a duplicata visual!
                             p.distTraveled = 99999; 
                         }
                     }
                 }
             }
-            // --- FIM DA MELHORIA ---
             
             if (p.distTraveled >= p.actualRange) { 
                 this.releaseProjectile(p.mesh); 

@@ -105,8 +105,6 @@ const CombatSystem = {
             return;
         }
         
-        // CORREÇÃO CRÍTICA (Prevenção de Ataques Inválidos Front-End): 
-        // Impede que atalhos residuais no teclado disparem magias que o jogador não tem mais direito!
         if(skillDef.macro === null && typeof UISystem !== 'undefined' && !UISystem.unlockedSkills.includes(skillId)) {
             UISystem.addLog("<span style='color:#e74c3c'>Você esqueceu como usar esta habilidade.</span>", "log-miss");
             return;
@@ -192,7 +190,9 @@ const CombatSystem = {
                         if(equippedItem && GameDefinitions[equippedItem] && GameDefinitions[equippedItem].gameplay) {
                             projData = GameDefinitions[equippedItem].gameplay.projectile;
                         }
-                        if(projData) CombatVisualSystem.fireProjectile(EntityManager.playerGroup, projData, true, skillId);
+                        // --- INÍCIO DA CORREÇÃO: Enviamos o EntityManager.myID no último parâmetro ---
+                        if(projData) CombatVisualSystem.fireProjectile(EntityManager.playerGroup, projData, true, skillId, EntityManager.myID);
+                        // --- FIM DA CORREÇÃO ---
                     }
                 } 
                 else if (skillDef.type === "melee" && hitboxData) {
