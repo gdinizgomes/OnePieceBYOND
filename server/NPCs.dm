@@ -72,7 +72,7 @@ mob/npc/enemy
 	var/mob_id = ""
 	var/mob_rank = "normal"
 	var/mob_speed = 0.05
-	var/mob_exp = 10 // --- INÍCIO DA MELHORIA: XP Dinâmica ---
+	var/mob_exp = 10 
 	
 	var/mob/aggro_target = null
 	var/aggro_range = 6.0
@@ -113,6 +113,13 @@ mob/npc/enemy
 			src.calc_atk = data["stats"]["atk"]
 			src.calc_def = data["stats"]["def"]
 			src.calc_flee = data["stats"]["flee"]
+			
+			// Remoção de Hardcodes de Stats
+			if(!isnull(data["stats"]["hit"])) src.calc_hit = data["stats"]["hit"]
+			else src.calc_hit = 100
+			if(!isnull(data["stats"]["crit"])) src.calc_crit = data["stats"]["crit"]
+			else src.calc_crit = 5
+			
 			if(!isnull(data["stats"]["exp"])) src.mob_exp = data["stats"]["exp"]
 			else src.mob_exp = src.level * 5
 		
@@ -145,11 +152,10 @@ mob/npc/enemy
 					for(var/list/sk in mob_skills)
 						var/s_id = sk["id"]
 						
-						// --- INÍCIO DA MELHORIA: Busca o alcance real da Habilidade ---
 						var/list/s_data = GlobalSkillsData[s_id]
 						if(!s_data) continue
 						
-						var/s_range = 1.5 // Range default se a skill for cega
+						var/s_range = 1.5 
 						if(!isnull(s_data["range"])) s_range = s_data["range"]
 						
 						if(dist <= s_range)
@@ -158,9 +164,8 @@ mob/npc/enemy
 							next_attack_time = world.time + sk["cooldown"]
 							attacked = 1
 							break
-						// --- FIM DA MELHORIA ---
 				
-				if(!attacked && dist > 1.5) 
+				if(!attacked && dist > 1.5 && src.is_attacking == 0) 
 					var/dx = aggro_target.real_x - src.real_x
 					var/dz = aggro_target.real_z - src.real_z
 					var/len = sqrt(dx*dx + dz*dz)
@@ -203,21 +208,108 @@ mob/npc/enemy
 		src.is_attacking = 1
 		src.attack_type = skill_id
 		src.combo_step = 1
-		spawn(3) src.is_attacking = 0
 		
+		// O Mob "mira" no jogador perfeitamente para que a Hitbox Retangular fique na direção certa
+		var/dx_face = target.real_x - src.real_x
+		var/dz_face = target.real_z - src.real_z
+		src.real_rot = GetDirAngleInRadians(dx_face, dz_face)
+		
+		// Despacha o sinal visual para todos verem a animação a começar
 		if(SSserver)
 			SSserver.global_events += list(list("type" = "action", "skill" = skill_id, "caster" = "\ref[src]", "step" = 1, "is_proj" = is_proj))
 		
 		if(!is_proj)
-			var/damage = calc_atk
-			if(skill_data["power"]) damage += skill_data["power"]
-			
-			target.current_hp -= damage
-			target << output("<span class='log-hit' style='color:red'>[src.name] acertou-te com um golpe! (-[damage] HP)</span>", "map3d:addLog")
-			if(target.current_hp <= 0) target.GoFaint()
-			
-			if(SSserver)
-				SSserver.global_events += list(list("type" = "hit", "skill" = skill_id, "caster" = "\ref[src]", "target" = "\ref[target]", "dmg" = damage, "crit" = 0))
+			// --- INÍCIO DA MELHORIA ABSOLUTA: Windup & OBB Validation ---
+			spawn(3) // Delay de 300ms. Dá tempo para o jogador usar um Dash ou sair de perto!
+				src.is_attacking = 0
+				
+				if(!src || !target || target.current_hp <= 0 || src.current_hp <= 0) return
+				
+				var/dist = get_dist_euclid(src.real_x, src.real_z, target.real_x, target.real_z)
+				
+				// Checagem 1: Distância máxima absoluta
+				var/max_dist = 5.0
+				if(!isnull(skill_data["range"])) max_dist = skill_data["range"]
+				
+				if(dist > max_dist + 1.0) return // Jogador escapou!
+				
+				// Checagem 2: OBB Matemática Exata (Retângulo da Hitbox)
+				var/list/combos = skill_data["combos"]
+				if(combos && combos.len >= 1)
+					var/list/combo = combos[1] 
+					var/list/hb = combo["hitbox"]
+					
+					if(hb)
+						var/box_wid = hb["x"]
+						var/box_len = hb["z"]
+						var/fwd_off = combo["offset"]
+
+						var/dx = target.real_x - src.real_x
+						var/dz = target.real_z - src.real_z
+
+						var/rot_deg = src.real_rot * 57.2957795
+						var/s = sin(rot_deg)
+						var/c = cos(rot_deg)
+
+						var/local_z = (dx * s) + (dz * c)
+						var/local_x = (dx * c) - (dz * s)
+
+						var/pad_w = 1.0 
+						var/pad_l = 1.5 
+						var/half_l = (box_len / 2) + pad_l
+						var/half_w = (box_wid / 2) + pad_w
+
+						// Se estiver fora do retângulo OBB, o ataque é anulado!
+						if(abs(local_z - fwd_off) > half_l || abs(local_x) > half_w)
+							return 
+				
+				// O Jogador não desviou. Processa o Dano:
+				var/target_flee = target.calc_flee
+				var/target_def = target.calc_def
+				
+				var/hit_chance = src.calc_hit - target_flee
+				if(hit_chance < 5) hit_chance = 5
+				if(hit_chance > 100) hit_chance = 100
+				if(rand(1, 100) > hit_chance)
+					target << output("<span class='log-hit' style='color:#95a5a6'>Esquivaste do ataque de [src.name]!</span>", "map3d:addLog")
+					return 
+				
+				var/base_dmg = skill_data["power"]
+				if(!base_dmg) base_dmg = 0
+				
+				var/raw_damage = src.calc_atk + base_dmg
+				
+				var/damage_mult = 1.0
+				if(combos && combos.len >= 1 && combos[1]["damageMult"]) 
+					damage_mult = combos[1]["damageMult"]
+
+				var/damage = round((raw_damage * damage_mult) + rand(0, 3))
+				
+				var/is_crit = 0
+				if(rand(1, 100) <= src.calc_crit)
+					is_crit = 1
+					damage = round(damage * 1.5) 
+					
+				var/def_reduction = round(target_def * (skill_data["scaling"] == "magical" ? 0.4 : 0.5))
+				damage -= def_reduction
+				if(damage < 1) damage = 1
+
+				var/crit_txt = is_crit ? " <b style='color:#f1c40f'>CRÍTICO!</b>" : ""
+				
+				target.current_hp -= damage
+				target << output("<span class='log-hit' style='color:red'>Recebeste [damage] de dano de [src.name]![crit_txt]</span>", "map3d:addLog")
+				
+				if(SSserver)
+					SSserver.global_events += list(list("type" = "hit", "skill" = skill_id, "caster" = "\ref[src]", "target" = "\ref[target]", "dmg" = damage, "crit" = is_crit))
+				
+				target.UpdateVisuals()
+				if(target.current_hp <= 0)
+					target.GoFaint()
+					src.aggro_target = null
+			// --- FIM DA MELHORIA ---
+		else
+			// Para projeteis (ainda não suportado 100% pelos mobs), reset basico
+			spawn(3) src.is_attacking = 0
 
 	Die(mob/killer)
 		killer << output("<span class='log-hit' style='color:#f1c40f'><b>Eliminaste [src.name]!</b></span>", "map3d:addLog")
