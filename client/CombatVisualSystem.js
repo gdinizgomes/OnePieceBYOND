@@ -99,7 +99,6 @@ const CombatVisualSystem = {
         });
     },
 
-    // --- INÍCIO DA MELHORIA: Armazena o ownerMesh para evitar auto-hit ---
     spawnHitbox: function(playerMesh, size, forwardOffset, lifetime, customData, yOffset, isVisualOnly = false) {
         if(!playerMesh) return;
         const hitbox = this.getHitbox(size, 0xFF0000);
@@ -120,7 +119,6 @@ const CombatVisualSystem = {
             ownerMesh: playerMesh 
         });
     },
-    // --- FIM DA MELHORIA ---
 
     fireSkillProjectile: function(originMesh, skillId, ownerRef) {
         const def = window.GameSkills ? window.GameSkills[skillId] : null;
@@ -222,16 +220,13 @@ const CombatVisualSystem = {
         return false;
     },
 
-    // --- INÍCIO DA MELHORIA: Lógica Universal de Alvos ---
     checkCollisions: function(type, objRef) {
         let targets = [];
         
-        // 1. Adiciona o próprio jogador local (nós mesmos) à lista de possíveis alvos
         if (EntityManager.isCharacterReady && EntityManager.playerGroup) {
             targets.push({ id: EntityManager.myID, mesh: EntityManager.playerGroup });
         }
         
-        // 2. Adiciona todos os outros do servidor (Jogadores e Mobs)
         for (let id in EntityManager.otherPlayers) {
             const other = EntityManager.otherPlayers[id];
             if (other && other.mesh) {
@@ -243,11 +238,9 @@ const CombatVisualSystem = {
             let targetId = targets[i].id;
             let targetMesh = targets[i].mesh;
 
-            // Previne que o Caster (Mob ou Player) acerte a si mesmo!
             if (type === "melee" && objRef.ownerMesh === targetMesh) continue;
             if (type === "projectile" && objRef.ownerRef === targetId) continue;
             
-            // Previne double hit visual
             if (objRef.hasHit && objRef.hasHit.includes(targetId)) continue;
 
             if (this.checkAccurateCollision(objRef, targetMesh)) {
@@ -262,8 +255,6 @@ const CombatVisualSystem = {
                     sId = objRef.skillId;
                 }
 
-                // O pacote de rede SÓ É ENVIADO se a ação for nossa (!isVisualOnly)
-                // e se não estivermos a bater em nós mesmos (targetId !== myID)
                 if(!objRef.isVisualOnly && typeof BYOND_REF !== 'undefined') {
                     if(targetId !== EntityManager.myID) {
                         NetworkSystem.queueCommand(`action=register_hit&target_ref=${targetId}&skill_id=${sId}&step=${step}`);
@@ -278,7 +269,6 @@ const CombatVisualSystem = {
                     if (!objRef.hasHit) objRef.hasHit = [];
                     objRef.hasHit.push(targetId); 
                     
-                    // O Feedback visual branco ocorre para TODOS os golpes (Nossos ou de Mobs)!
                     if(Config.DEBUG_HITBOXES && objRef.mesh && objRef.mesh.material) {
                         objRef.mesh.material.color.setHex(0xFFFFFF); 
                     }
@@ -286,7 +276,6 @@ const CombatVisualSystem = {
             }
         }
     },
-    // --- FIM DA MELHORIA ---
 
     update: function(timeScale) { 
         for (let i = this.activeProjectiles.length - 1; i >= 0; i--) {
@@ -311,17 +300,16 @@ const CombatVisualSystem = {
             p.mesh.position.z += p.dirZ * moveStep; 
             p.distTraveled += moveStep;
             
+            // --- INÍCIO DA MELHORIA: O Projétil do Mob reconhece que acertou em ti! ---
             if (p.isMine) { 
                 for (let id in EntityManager.otherPlayers) {
                     if(p.hasHit.includes(id)) continue;
                     if(!EntityManager.otherPlayers[id] || !EntityManager.otherPlayers[id].mesh) continue;
 
                     if (this.checkAccurateCollision(p, EntityManager.otherPlayers[id].mesh)) {
-                        
                         if(typeof BYOND_REF !== 'undefined') {
                             NetworkSystem.queueCommand(`action=register_hit&target_ref=${id}&skill_id=${p.skillId}&step=1`);
                         }
-                        
                         p.hasHit.push(id);
                         
                         const pVal = p.def.pierce;
@@ -332,7 +320,23 @@ const CombatVisualSystem = {
                         }
                     }
                 }
+            } else if (p.ownerRef && EntityManager.otherPlayers[p.ownerRef] && EntityManager.otherPlayers[p.ownerRef].isNPC) {
+                // Se o projétil pertencer a um NPC e bater em nós, enviamos o pacote especial ao servidor
+                if (this.checkAccurateCollision(p, EntityManager.playerGroup)) {
+                    if (!p.hasHit.includes(EntityManager.myID)) {
+                        p.hasHit.push(EntityManager.myID);
+                        if (typeof BYOND_REF !== 'undefined') {
+                            NetworkSystem.queueCommand(`action=mob_projectile_hit&caster_ref=${p.ownerRef}&skill_id=${p.skillId}`);
+                        }
+                        const pVal = p.def.pierce;
+                        if (pVal !== true && pVal !== 1 && pVal !== "1") {
+                            this.releaseProjectile(p.mesh); 
+                            p.distTraveled = 99999; 
+                        }
+                    }
+                }
             }
+            // --- FIM DA MELHORIA ---
             
             if (p.distTraveled >= p.def.range) { 
                 this.releaseProjectile(p.mesh); 
@@ -349,7 +353,6 @@ const CombatVisualSystem = {
                 continue; 
             }
             
-            // O update agora passa TODAS as hitboxes pela checagem.
             this.checkCollisions("melee", hb);
         }
     }

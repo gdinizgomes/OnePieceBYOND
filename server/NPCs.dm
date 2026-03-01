@@ -77,6 +77,7 @@ mob/npc/enemy
 	var/mob/aggro_target = null
 	var/aggro_range = 6.0
 	var/chase_range = 12.0
+	var/mob_max_range = 1.5 // --- INÍCIO DA MELHORIA: Alcance ideal de combate ---
 	
 	var/list/mob_skills = list()
 	var/list/mob_loot = list()
@@ -130,6 +131,15 @@ mob/npc/enemy
 		if(data["combat"] && data["combat"]["skills"])
 			src.mob_skills = data["combat"]["skills"]
 			
+			// --- INÍCIO DA MELHORIA: Determinar o maior alcance de tiro ---
+			for(var/list/sk in src.mob_skills)
+				var/s_id = sk["id"]
+				var/list/s_data = GlobalSkillsData[s_id]
+				if(s_data && !isnull(s_data["range"]))
+					if(s_data["range"] > src.mob_max_range)
+						src.mob_max_range = s_data["range"]
+			// --- FIM DA MELHORIA ---
+			
 		if(data["loot"])
 			src.mob_loot = data["loot"]
 
@@ -150,7 +160,6 @@ mob/npc/enemy
 				if(world.time > next_attack_time && mob_skills.len > 0)
 					for(var/list/sk in mob_skills)
 						var/s_id = sk["id"]
-						
 						var/list/s_data = GlobalSkillsData[s_id]
 						if(!s_data) continue
 						
@@ -164,7 +173,10 @@ mob/npc/enemy
 							attacked = 1
 							break
 				
-				if(!attacked && dist > 1.5 && src.is_attacking == 0) 
+				// --- INÍCIO DA MELHORIA: O Mob respeita o próprio alcance ---
+				var/ideal_dist = max(1.5, src.mob_max_range * 0.8) // Se for atirador, vai manter 80% da distância máxima para atirar
+				
+				if(!attacked && dist > ideal_dist && src.is_attacking == 0) 
 					var/dx = aggro_target.real_x - src.real_x
 					var/dz = aggro_target.real_z - src.real_z
 					var/len = sqrt(dx*dx + dz*dz)
@@ -175,6 +187,7 @@ mob/npc/enemy
 						src.real_rot = GetDirAngleInRadians(dx, dz)
 						src.real_x = clamp(src.real_x, -29, 29)
 						src.real_z = clamp(src.real_z, -29, 29)
+				// --- FIM DA MELHORIA ---
 
 				sleep(2) 
 			else
@@ -218,45 +231,29 @@ mob/npc/enemy
 		if(!is_proj)
 			spawn(3) 
 				src.is_attacking = 0
-				
 				if(!src || !target || target.current_hp <= 0 || src.current_hp <= 0) return
 				
 				var/dist = get_dist_euclid(src.real_x, src.real_z, target.real_x, target.real_z)
-				
 				var/max_dist = 5.0
 				if(!isnull(skill_data["range"])) max_dist = skill_data["range"]
-				
 				if(dist > max_dist + 1.0) return 
 				
 				var/list/combos = skill_data["combos"]
 				if(combos && combos.len >= 1)
 					var/list/combo = combos[1] 
 					var/list/hb = combo["hitbox"]
-					
 					if(hb)
-						var/box_wid = hb["x"]
-						var/box_len = hb["z"]
-						var/fwd_off = combo["offset"]
-
-						var/dx = target.real_x - src.real_x
-						var/dz = target.real_z - src.real_z
-
+						var/box_wid = hb["x"]; var/box_len = hb["z"]; var/fwd_off = combo["offset"]
+						var/dx = target.real_x - src.real_x; var/dz = target.real_z - src.real_z
 						var/rot_deg = src.real_rot * 57.2957795
-						var/s = sin(rot_deg)
-						var/c = cos(rot_deg)
-
+						var/s = sin(rot_deg); var/c = cos(rot_deg)
 						var/local_z = (dx * s) + (dz * c)
 						var/local_x = (dx * c) - (dz * s)
 
-						// --- INÍCIO DA MELHORIA: Hitbox Autoritativa sem "Gordura" ---
-						var/pad_w = 0.4 // Reduzido drasticamente para bater com a malha
-						var/pad_l = 0.5 // Reduzido drasticamente para bater com a malha
-						var/half_l = (box_len / 2) + pad_l
-						var/half_w = (box_wid / 2) + pad_w
+						var/pad_w = 0.4; var/pad_l = 0.5 
+						var/half_l = (box_len / 2) + pad_l; var/half_w = (box_wid / 2) + pad_w
 
-						if(abs(local_z - fwd_off) > half_l || abs(local_x) > half_w)
-							return 
-						// --- FIM DA MELHORIA ---
+						if(abs(local_z - fwd_off) > half_l || abs(local_x) > half_w) return 
 				
 				var/target_flee = target.calc_flee
 				var/target_def = target.calc_def
@@ -268,21 +265,15 @@ mob/npc/enemy
 					target << output("<span class='log-hit' style='color:#95a5a6'>Esquivaste do ataque de [src.name]!</span>", "map3d:addLog")
 					return 
 				
-				var/base_dmg = skill_data["power"]
-				if(!base_dmg) base_dmg = 0
-				
+				var/base_dmg = skill_data["power"]; if(!base_dmg) base_dmg = 0
 				var/raw_damage = src.calc_atk + base_dmg
-				
 				var/damage_mult = 1.0
-				if(combos && combos.len >= 1 && combos[1]["damageMult"]) 
-					damage_mult = combos[1]["damageMult"]
+				if(combos && combos.len >= 1 && combos[1]["damageMult"]) damage_mult = combos[1]["damageMult"]
 
 				var/damage = round((raw_damage * damage_mult) + rand(0, 3))
 				
 				var/is_crit = 0
-				if(rand(1, 100) <= src.calc_crit)
-					is_crit = 1
-					damage = round(damage * 1.5) 
+				if(rand(1, 100) <= src.calc_crit) { is_crit = 1; damage = round(damage * 1.5) }
 					
 				var/def_reduction = round(target_def * (skill_data["scaling"] == "magical" ? 0.4 : 0.5))
 				damage -= def_reduction
@@ -293,15 +284,16 @@ mob/npc/enemy
 				target.current_hp -= damage
 				target << output("<span class='log-hit' style='color:red'>Recebeste [damage] de dano de [src.name]![crit_txt]</span>", "map3d:addLog")
 				
-				if(SSserver)
-					SSserver.global_events += list(list("type" = "hit", "skill" = skill_id, "caster" = "\ref[src]", "target" = "\ref[target]", "dmg" = damage, "crit" = is_crit))
+				if(SSserver) SSserver.global_events += list(list("type" = "hit", "skill" = skill_id, "caster" = "\ref[src]", "target" = "\ref[target]", "dmg" = damage, "crit" = is_crit))
 				
 				target.UpdateVisuals()
-				if(target.current_hp <= 0)
-					target.GoFaint()
-					src.aggro_target = null
+				if(target.current_hp <= 0) { target.GoFaint(); src.aggro_target = null }
 		else
+			// --- INÍCIO DA MELHORIA: Delegação do Projétil para a Física do Cliente JS ---
 			spawn(3) src.is_attacking = 0
+			// Para ataques à distância, o servidor lança apenas a animação visual. 
+			// A Deteção do Dano fica a cargo do Three.js (No CombatVisualSystem) que enviará a resposta à rede!
+			// --- FIM DA MELHORIA ---
 
 	Die(mob/killer)
 		killer << output("<span class='log-hit' style='color:#f1c40f'><b>Eliminaste [src.name]!</b></span>", "map3d:addLog")

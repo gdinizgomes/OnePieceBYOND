@@ -224,6 +224,54 @@ mob
 					del(I)
 					RequestInventoryUpdate()
 
+		// --- INÍCIO DA MELHORIA: Hit de Projétil vindo do Mobs ---
+		if(action == "mob_projectile_hit" && in_game && !is_fainted)
+			var/caster = locate(href_list["caster_ref"])
+			var/s_id = href_list["skill_id"]
+			
+			if(!caster || !istype(caster, /mob/npc/enemy)) return
+			var/mob/npc/enemy/E = caster
+			
+			var/list/skill_data = GlobalSkillsData[s_id]
+			if(!skill_data) return
+			
+			// Validação local de segurança (Anti-Snipe Hack)
+			var/dist = get_dist_euclid(src.real_x, src.real_z, E.real_x, E.real_z)
+			var/max_dist = skill_data["range"] ? skill_data["range"] + 5.0 : 20.0
+			if(dist > max_dist) return
+			
+			var/target_flee = src.calc_flee
+			var/target_def = src.calc_def
+			
+			var/hit_chance = E.calc_hit - target_flee
+			if(hit_chance < 5) hit_chance = 5
+			if(hit_chance > 100) hit_chance = 100
+			if(rand(1, 100) > hit_chance)
+				src << output("<span class='log-hit' style='color:#95a5a6'>Esquivaste do projétil de [E.name]!</span>", "map3d:addLog")
+				return 
+				
+			var/base_dmg = skill_data["power"]; if(!base_dmg) base_dmg = 0
+			var/raw_damage = E.calc_atk + base_dmg
+			
+			var/damage = round(raw_damage + rand(0, 3))
+			var/is_crit = 0
+			if(rand(1, 100) <= E.calc_crit) { is_crit = 1; damage = round(damage * 1.5) }
+				
+			var/def_reduction = round(target_def * (skill_data["scaling"] == "magical" ? 0.4 : 0.5))
+			damage -= def_reduction
+			if(damage < 1) damage = 1
+
+			var/crit_txt = is_crit ? " <b style='color:#f1c40f'>CRÍTICO!</b>" : ""
+			
+			src.current_hp -= damage
+			src << output("<span class='log-hit' style='color:red'>Recebeste [damage] de dano de [E.name]![crit_txt]</span>", "map3d:addLog")
+			
+			if(SSserver) SSserver.global_events += list(list("type" = "hit", "skill" = s_id, "caster" = "\ref[E]", "target" = "\ref[src]", "dmg" = damage, "crit" = is_crit))
+			
+			src.UpdateVisuals()
+			if(src.current_hp <= 0) { src.GoFaint(); E.aggro_target = null }
+		// --- FIM DA MELHORIA ---
+
 		if(action == "execute_skill" && in_game)
 			if(is_resting || is_fainted) return
 			
@@ -330,7 +378,6 @@ mob
 					var/local_z = (dx * s) + (dz * c)
 					var/local_x = (dx * c) - (dz * s)
 
-					// --- INÍCIO DA MELHORIA: Hitbox Autoritativa Justa ---
 					var/pad_w = 0.4 
 					var/pad_l = 0.5 
 					var/half_l = (box_len / 2) + pad_l
@@ -339,7 +386,6 @@ mob
 					if(abs(local_z - fwd_off) > half_l || abs(local_x) > half_w)
 						src << output("<span style='color:red'><b>Servidor:</b> Hit Negado - OBB Matemática.</span>", "map3d:addLog")
 						return 
-					// --- FIM DA MELHORIA ---
 				else return
 
 			var/list/already_hit = active_skill_hits["[s_id]"]

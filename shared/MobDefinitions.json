@@ -10,7 +10,7 @@
         "visuals": { "skin": "FFE0BD", "cloth": "8B0000", "hand": "weapon_sword_wood", "head": "armor_head_bandana" },
         "rank": "normal",
         "level": 5,
-        "stats": { "max_hp": 150, "atk": 10, "def": 2, "speed": 0.05, "flee": 2, "exp": 25 },
+        "stats": { "max_hp": 150, "atk": 10, "def": 2, "speed": 0.05, "flee": 2, "exp": 250 },
         "behavior": {
             "type": "aggressive",
             "aggro_range": 6.0,
@@ -32,7 +32,7 @@
         "visuals": { "skin": "FFCCAA", "cloth": "FFFFFF", "hand": "weapon_gun_wood" },
         "rank": "normal",
         "level": 8,
-        "stats": { "max_hp": 100, "atk": 20, "def": 1, "speed": 0.04, "flee": 5, "exp": 45 },
+        "stats": { "max_hp": 100, "atk": 5, "def": 1, "speed": 0.04, "flee": 40, "exp": 1000 },
         "behavior": {
             "type": "aggressive",
             "aggro_range": 10.0,
@@ -41,7 +41,7 @@
         },
         "combat": {
             "skills": [
-                { "id": "basic_gun", "cooldown": 100 }
+                { "id": "basic_gun", "cooldown": 10 }
             ]
         },
         "loot": [
