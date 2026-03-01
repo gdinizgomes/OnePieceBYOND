@@ -211,7 +211,6 @@ mob
 			else 
 				src << output("Ouro insuficiente!", "map3d:mostrarNotificacao")
 
-		// --- INÍCIO DA MELHORIA: Venda usando o Preço de Venda do JSON ---
 		if(action == "sell_item" && in_game)
 			var/ref_id = href_list["ref"]
 			var/obj/item/I = locate(ref_id)
@@ -224,7 +223,6 @@ mob
 					src << output("Vendeu [I.name] por [val] Berries.", "map3d:mostrarNotificacao")
 					del(I)
 					RequestInventoryUpdate()
-		// --- FIM DA MELHORIA ---
 
 		if(action == "execute_skill" && in_game)
 			if(is_resting || is_fainted) return
@@ -435,15 +433,17 @@ mob
 					GainExperience(5)
 					if(xp_type != "") GainWeaponExp(xp_type, 3)
 					else GainSkillExp(s_id, 3) 
-				else
-					src << output("<span class='log-hit'>HIT em [N.name]! Dano: [damage][crit_txt]</span>", "map3d:addLog")
-					N.current_hp -= damage
-					if(N.current_hp <= 0)
-						src << output("<span class='log-hit' style='color:red'>[N.name] eliminado!</span>", "map3d:addLog")
-						N.current_hp = N.max_hp; N.real_x = rand(-10, 10); N.real_z = rand(-10, 10)
-					GainExperience(10)
-					if(xp_type != "") GainWeaponExp(xp_type, 5)
-					else GainSkillExp(s_id, 5)
+				else if(N.npc_type == "enemy")
+					var/mob/npc/enemy/E = N
+					src << output("<span class='log-hit'>HIT em [E.name]! Dano: [damage][crit_txt]</span>", "map3d:addLog")
+					E.current_hp -= damage
+					E.aggro_target = src 
+					
+					if(E.current_hp <= 0)
+						E.Die(src) 
+						GainExperience(10)
+						if(xp_type != "") GainWeaponExp(xp_type, 5)
+						else GainSkillExp(s_id, 5)
 			else 
 				var/mob/T = target
 				src << output("<span class='log-hit'>HIT em [T.name]! Dano: [damage][crit_txt]</span>", "map3d:addLog")

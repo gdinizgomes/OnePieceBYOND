@@ -29,12 +29,21 @@ world/New()
 	
 	LoadWorldState()
 	LoadItemDefinitions()
+	
+	// --- INÍCIO DA MELHORIA: Carga do JSON de Mobs ---
+	LoadMobDefinitions()
+	// --- FIM DA MELHORIA ---
 		
 	if(!SSserver)
 		SSserver = new()
 		spawn(5) SSserver.Heartbeat()
 
-	new /mob/npc/dummy() 
+	// --- INÍCIO DA MELHORIA: Spawn Data-Driven de Inimigos ---
+	var/mob/npc/enemy/pirata = new /mob/npc/enemy(null, "dummy_pirate")
+	pirata.real_x = 4 // Posição X no mapa 3D
+	pirata.real_z = 4 // Posição Z no mapa 3D
+	// ---------------------------------------------------------
+	
 	new /mob/npc/vendor()
 	new /mob/npc/nurse()
 	new /mob/npc/prop/log()
@@ -209,7 +218,6 @@ mob
 	var/obj/item/slot_hand = null; var/obj/item/slot_head = null; var/obj/item/slot_body = null; var/obj/item/slot_legs = null; var/obj/item/slot_feet = null 
 	var/list/pending_visuals = list()
 
-	// CORREÇÃO CRÍTICA (A Poda Absoluta): As magias resetam sempre que forem negadas.
 	proc/CheckSkillUnlocks()
 		if(!in_game) return
 		var/skills_changed = 0
@@ -265,7 +273,6 @@ mob
 					var/s_name = s_data["name"]
 					src << output("<span class='log-hit' style='color:#e74c3c'>Você esqueceu como usar a habilidade [s_name]. O nível dela foi perdido.</span>", "map3d:addLog")
 
-				// Poda de Força Bruta
 				if(istype(skill_levels, /list)) skill_levels[sid] = 1
 				if(istype(skill_exps, /list)) skill_exps[sid] = 0
 				

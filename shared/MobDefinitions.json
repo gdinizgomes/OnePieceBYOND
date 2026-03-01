@@ -1,0 +1,53 @@
+{
+    "_COMMENT_DOCUMENTATION": {
+        "rank": "normal, elite ou boss (Para UI futura)",
+        "behavior": "aggro_range (Visão), chase_range (Até onde persegue), attack_cooldown (Tempo mínimo entre qualquer ataque)",
+        "combat": "Lista de skills que o monstro pode usar (Lê do SkillDefinitions.json)",
+        "loot": "Lista de drops. chance: 100.0 = 100%, 0.5 = 0.5%"
+    },
+
+    "dummy_pirate": {
+        "name": "Pirata Capanga",
+        "visuals": { "skin": "FFE0BD", "cloth": "8B0000" },
+        "rank": "normal",
+        "level": 5,
+        "stats": { "max_hp": 150, "atk": 10, "def": 2, "speed": 0.1, "flee": 2 },
+        "behavior": {
+            "type": "aggressive",
+            "aggro_range": 15.0,
+            "chase_range": 12.0,
+            "patrol_radius": 5.0
+        },
+        "combat": {
+            "skills": [
+                { "id": "basic_sword", "range": 2.5, "cooldown": 20 }
+            ]
+        },
+        "loot": [
+            { "item_id": "sword_wood", "chance": 15.0 },
+            { "item_id": "head_bandana", "chance": 5.0 }
+        ]
+    },
+
+    "marine_shooter": {
+        "name": "Atirador da Marinha",
+        "visuals": { "skin": "FFCCAA", "cloth": "FFFFFF" },
+        "rank": "normal",
+        "level": 8,
+        "stats": { "max_hp": 100, "atk": 20, "def": 1, "speed": 0.04, "flee": 5 },
+        "behavior": {
+            "type": "aggressive",
+            "aggro_range": 10.0,
+            "chase_range": 15.0,
+            "patrol_radius": 3.0
+        },
+        "combat": {
+            "skills": [
+                { "id": "basic_gun", "range": 10.0, "cooldown": 30 }
+            ]
+        },
+        "loot": [
+            { "item_id": "gun_wood", "chance": 20.0 }
+        ]
+    }
+}
