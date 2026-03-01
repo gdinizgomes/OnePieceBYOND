@@ -5,16 +5,15 @@
         "combat": "Lista de skills que o monstro pode usar (Lê do SkillDefinitions.json)",
         "loot": "Lista de drops. chance: 100.0 = 100%, 0.5 = 0.5%"
     },
-
     "dummy_pirate": {
         "name": "Pirata Capanga",
-        "visuals": { "skin": "FFE0BD", "cloth": "8B0000" },
+        "visuals": { "skin": "FFE0BD", "cloth": "8B0000", "hand": "weapon_sword_wood", "head": "armor_head_bandana" },
         "rank": "normal",
         "level": 5,
-        "stats": { "max_hp": 150, "atk": 10, "def": 2, "speed": 0.1, "flee": 2 },
+        "stats": { "max_hp": 150, "atk": 10, "def": 2, "speed": 0.05, "flee": 2 },
         "behavior": {
             "type": "aggressive",
-            "aggro_range": 15.0,
+            "aggro_range": 6.0,
             "chase_range": 12.0,
             "patrol_radius": 5.0
         },
@@ -28,10 +27,9 @@
             { "item_id": "head_bandana", "chance": 5.0 }
         ]
     },
-
     "marine_shooter": {
         "name": "Atirador da Marinha",
-        "visuals": { "skin": "FFCCAA", "cloth": "FFFFFF" },
+        "visuals": { "skin": "FFCCAA", "cloth": "FFFFFF", "hand": "weapon_gun_wood" },
         "rank": "normal",
         "level": 8,
         "stats": { "max_hp": 100, "atk": 20, "def": 1, "speed": 0.04, "flee": 5 },

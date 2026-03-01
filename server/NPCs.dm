@@ -32,6 +32,14 @@ mob/npc
 	var/patrol_z = 0
 	var/patrol_radius = 5.0  
 
+	// --- INÍCIO DA MELHORIA: Equipamentos Visuais Base ---
+	var/equip_hand = ""
+	var/equip_head = ""
+	var/equip_body = ""
+	var/equip_legs = ""
+	var/equip_feet = ""
+	// --- FIM DA MELHORIA ---
+
 	New()
 		..()
 		real_y = 0
@@ -49,6 +57,7 @@ mob/npc
 			var/dir = pick(0, 90, 180, 270)
 			real_rot = (dir * 3.14159 / 180)
 			for(var/i=1 to 10)
+				src.is_running = 1 // Ativa a animação de perna!
 				if(dir==0)   real_z-=0.1
 				if(dir==180) real_z+=0.1
 				if(dir==90)  real_x+=0.1
@@ -56,6 +65,7 @@ mob/npc
 				real_x = clamp(real_x, max(patrol_x - patrol_radius, -29), min(patrol_x + patrol_radius, 29))
 				real_z = clamp(real_z, max(patrol_z - patrol_radius, -29), min(patrol_z + patrol_radius, 29))
 				sleep(1)
+			src.is_running = 0 // Repouso
 			sleep(rand(20, 50))
 
 
@@ -87,6 +97,14 @@ mob/npc/enemy
 		if(data["visuals"])
 			src.skin_color = data["visuals"]["skin"]
 			src.cloth_color = data["visuals"]["cloth"]
+			
+			// --- INÍCIO DA MELHORIA: Lê as roupas do Mob ---
+			if(data["visuals"]["hand"]) src.equip_hand = data["visuals"]["hand"]
+			if(data["visuals"]["head"]) src.equip_head = data["visuals"]["head"]
+			if(data["visuals"]["body"]) src.equip_body = data["visuals"]["body"]
+			if(data["visuals"]["legs"]) src.equip_legs = data["visuals"]["legs"]
+			if(data["visuals"]["feet"]) src.equip_feet = data["visuals"]["feet"]
+			// --- FIM DA MELHORIA ---
 		
 		src.mob_rank = data["rank"]
 		src.level = data["level"]
@@ -120,6 +138,7 @@ mob/npc/enemy
 				
 				if(aggro_target.is_fainted || aggro_target.current_hp <= 0 || dist > chase_range)
 					aggro_target = null
+					src.is_running = 0
 					sleep(10)
 					continue
 				
@@ -127,6 +146,7 @@ mob/npc/enemy
 				if(world.time > next_attack_time && mob_skills.len > 0)
 					for(var/list/sk in mob_skills)
 						if(dist <= sk["range"])
+							src.is_running = 0 // Pára para atacar!
 							ExecuteSkill(sk["id"], aggro_target)
 							next_attack_time = world.time + sk["cooldown"]
 							attacked = 1
@@ -137,6 +157,7 @@ mob/npc/enemy
 					var/dz = aggro_target.real_z - src.real_z
 					var/len = sqrt(dx*dx + dz*dz)
 					if(len > 0)
+						src.is_running = 1 // Perseguindo intensamente!
 						src.real_x += (dx/len) * mob_speed * 2 
 						src.real_z += (dz/len) * mob_speed * 2
 						src.real_rot = GetDirAngleInRadians(dx, dz)
@@ -154,6 +175,7 @@ mob/npc/enemy
 					var/dir = pick(0, 90, 180, 270)
 					real_rot = (dir * 3.14159 / 180)
 					for(var/i=1 to 5)
+						src.is_running = 1 // Patrulhando
 						if(dir==0)   real_z-=0.1
 						if(dir==180) real_z+=0.1
 						if(dir==90)  real_x+=0.1
@@ -161,6 +183,7 @@ mob/npc/enemy
 						real_x = clamp(real_x, max(patrol_x - patrol_radius, -29), min(patrol_x + patrol_radius, 29))
 						real_z = clamp(real_z, max(patrol_z - patrol_radius, -29), min(patrol_z + patrol_radius, 29))
 						sleep(2)
+					src.is_running = 0 // Parado a observar
 					sleep(rand(20, 40)) 
 
 	proc/ExecuteSkill(skill_id, mob/target)
@@ -169,12 +192,10 @@ mob/npc/enemy
 		
 		var/is_proj = (skill_data["type"] == "projectile") ? 1 : 0
 		
-		// --- INÍCIO DA MELHORIA: Ativar a animação para a Rede ---
 		src.is_attacking = 1
 		src.attack_type = skill_id
 		src.combo_step = 1
 		spawn(3) src.is_attacking = 0
-		// --- FIM DA MELHORIA ---
 		
 		if(SSserver)
 			SSserver.global_events += list(list("type" = "action", "skill" = skill_id, "caster" = "\ref[src]", "step" = 1, "is_proj" = is_proj))

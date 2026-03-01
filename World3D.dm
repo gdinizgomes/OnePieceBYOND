@@ -92,13 +92,16 @@ datum/game_controller
 
 				for(var/mob/npc/N in global_npcs)
 					var/nid = "\ref[N]"
-					// --- INÍCIO DA MELHORIA: Enviar estado de combate real do NPC ---
-					var/list/nData = list("x"=N.R2(N.real_x),"y"=N.R2(N.real_y),"z"=N.R2(N.real_z),"rot"=N.R2(N.real_rot),"a"=N.is_attacking,"at"=N.attack_type,"cs"=N.combo_step,"rn"=0,"rest"=0,"ft"=0,"hp"=N.current_hp,"npc"=1)
+					// --- INÍCIO DA MELHORIA: Animação de Movimento Correta (rn = N.is_running) ---
+					var/list/nData = list("x"=N.R2(N.real_x),"y"=N.R2(N.real_y),"z"=N.R2(N.real_z),"rot"=N.R2(N.real_rot),"a"=N.is_attacking,"at"=N.attack_type,"cs"=N.combo_step,"rn"=N.is_running,"rest"=0,"ft"=0,"hp"=N.current_hp,"npc"=1)
 					// --- FIM DA MELHORIA ---
-					
+
 					var/send_visuals = full_sync || (N.last_visual_update >= server_tick - VISUAL_LAG)
 					if(send_visuals)
 						nData["type"]=N.npc_type; nData["name"]=N.name; nData["skin"]=N.skin_color; nData["cloth"]=N.cloth_color; nData["mhp"]=N.max_hp; nData["gen"]=N.char_gender
+						// --- INÍCIO DA MELHORIA: Equipamentos nos NPCs ---
+						nData["it"]=N.equip_hand; nData["eq_h"]=N.equip_head; nData["eq_b"]=N.equip_body; nData["eq_l"]=N.equip_legs; nData["eq_f"]=N.equip_feet
+						// --- FIM DA MELHORIA ---
 						if(N.npc_type == "prop") nData["prop_id"] = N:prop_id
 					all_entity_data[nid] = nData
 
@@ -174,7 +177,6 @@ datum/game_controller
 				world.log << "HEARTBEAT ERRO: [e.name] | [e.desc] | [e.file]:[e.line]"
 			
 			sleep(tick_rate)
-
 
 mob
 	var/current_slot = 0
