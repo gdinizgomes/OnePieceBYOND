@@ -29,20 +29,15 @@ world/New()
 	
 	LoadWorldState()
 	LoadItemDefinitions()
-	
-	// --- INÍCIO DA MELHORIA: Carga do JSON de Mobs ---
 	LoadMobDefinitions()
-	// --- FIM DA MELHORIA ---
 		
 	if(!SSserver)
 		SSserver = new()
 		spawn(5) SSserver.Heartbeat()
 
-	// --- INÍCIO DA MELHORIA: Spawn Data-Driven de Inimigos ---
 	var/mob/npc/enemy/pirata = new /mob/npc/enemy(null, "dummy_pirate")
-	pirata.real_x = 4 // Posição X no mapa 3D
-	pirata.real_z = 4 // Posição Z no mapa 3D
-	// ---------------------------------------------------------
+	pirata.real_x = 4 
+	pirata.real_z = 4 
 	
 	new /mob/npc/vendor()
 	new /mob/npc/nurse()
@@ -97,8 +92,10 @@ datum/game_controller
 
 				for(var/mob/npc/N in global_npcs)
 					var/nid = "\ref[N]"
-					var/list/nData = list("x"=N.R2(N.real_x),"y"=N.R2(N.real_y),"z"=N.R2(N.real_z),"rot"=N.R2(N.real_rot),"a"=0,"at"="","cs"=0,"rn"=0,"rest"=0,"ft"=0,"hp"=N.current_hp,"npc"=1)
-
+					// --- INÍCIO DA MELHORIA: Enviar estado de combate real do NPC ---
+					var/list/nData = list("x"=N.R2(N.real_x),"y"=N.R2(N.real_y),"z"=N.R2(N.real_z),"rot"=N.R2(N.real_rot),"a"=N.is_attacking,"at"=N.attack_type,"cs"=N.combo_step,"rn"=0,"rest"=0,"ft"=0,"hp"=N.current_hp,"npc"=1)
+					// --- FIM DA MELHORIA ---
+					
 					var/send_visuals = full_sync || (N.last_visual_update >= server_tick - VISUAL_LAG)
 					if(send_visuals)
 						nData["type"]=N.npc_type; nData["name"]=N.name; nData["skin"]=N.skin_color; nData["cloth"]=N.cloth_color; nData["mhp"]=N.max_hp; nData["gen"]=N.char_gender

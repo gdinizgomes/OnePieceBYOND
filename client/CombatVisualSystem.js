@@ -99,7 +99,8 @@ const CombatVisualSystem = {
         });
     },
 
-    spawnHitbox: function(playerMesh, size, forwardOffset, lifetime, customData, yOffset) {
+    // --- INÍCIO DA MELHORIA: Aceita Hitboxes Puramente Visuais (De Inimigos) ---
+    spawnHitbox: function(playerMesh, size, forwardOffset, lifetime, customData, yOffset, isVisualOnly = false) {
         if(!playerMesh) return;
         const hitbox = this.getHitbox(size, 0xFF0000);
         hitbox.position.copy(playerMesh.position); 
@@ -109,8 +110,9 @@ const CombatVisualSystem = {
         hitbox.position.x += sin * forwardOffset; hitbox.position.z += cos * forwardOffset; hitbox.rotation.y = bodyRot;
         
         Engine.scene.add(hitbox);
-        this.activeHitboxes.push({ mesh: hitbox, startTime: Date.now(), duration: lifetime, hasHit: [], data: customData || {} });
+        this.activeHitboxes.push({ mesh: hitbox, startTime: Date.now(), duration: lifetime, hasHit: [], data: customData || {}, isVisualOnly: isVisualOnly });
     },
+    // --- FIM DA MELHORIA ---
 
     fireSkillProjectile: function(originMesh, skillId, ownerRef) {
         const def = window.GameSkills ? window.GameSkills[skillId] : null;
@@ -165,9 +167,8 @@ const CombatVisualSystem = {
         
         if (skillId && window.GameSkills && window.GameSkills[skillId]) {
             const pVal = window.GameSkills[skillId].pierce;
-            // Correção Vital: BYOND envia booleanos via JSON como '1' ou '0'. O comparador restrito quebrava a lógica.
             if (pVal === true || pVal === 1 || pVal === "1") {
-                return; // Ignora a destruição se a magia perfura.
+                return; 
             }
         }
 
@@ -284,7 +285,6 @@ const CombatVisualSystem = {
                         
                         p.hasHit.push(id);
                         
-                        // Fix preventivo para a predição local usando a mesma lógica relaxada de tipo
                         const pVal = p.def.pierce;
                         if (pVal !== true && pVal !== 1 && pVal !== "1") {
                             this.releaseProjectile(p.mesh); 
@@ -309,7 +309,10 @@ const CombatVisualSystem = {
                 this.activeHitboxes.splice(i, 1); 
                 continue; 
             }
-            this.checkCollisions("melee", hb);
+            // --- Só checa colisão se a Hitbox for REAL, ignora as de Inimigos ---
+            if(!hb.isVisualOnly) {
+                this.checkCollisions("melee", hb);
+            }
         }
     }
 };

@@ -156,9 +156,8 @@ const EntityManager = {
         if(packet.t && packet.evts) {
             packet.evts.forEach(evt => {
 
-                // INÍCIO DA MELHORIA ARQUITETURAL
                 if (evt.type === "action") {
-                    if (evt.caster === this.myID) return; // O atirador cria a própria magia preditivamente.
+                    if (evt.caster === this.myID) return; 
                     let originMesh = null;
                     if (this.otherPlayers[evt.caster]) originMesh = this.otherPlayers[evt.caster].mesh;
                     
@@ -166,6 +165,19 @@ const EntityManager = {
                         if (evt.is_proj === 1 && typeof CombatVisualSystem !== 'undefined') {
                             CombatVisualSystem.fireSkillProjectile(originMesh, evt.skill, evt.caster);
                         }
+                        // --- INÍCIO DA MELHORIA: Hitboxes Visuais de Inimigos ---
+                        else if (evt.is_proj === 0 && typeof CombatVisualSystem !== 'undefined') {
+                            const sDef = window.GameSkills ? window.GameSkills[evt.skill] : null;
+                            if (sDef && sDef.combos) {
+                                const combo = sDef.combos[(evt.step || 1) - 1];
+                                if (combo && combo.hitbox) {
+                                    const size = { x: combo.hitbox.x, y: 1.5, z: combo.hitbox.z };
+                                    // A flag "true" no final garante que é isVisualOnly e não causa dano falso!
+                                    CombatVisualSystem.spawnHitbox(originMesh, size, combo.offset, 200, null, 1.0, true);
+                                }
+                            }
+                        }
+                        // --- FIM DA MELHORIA ---
                     }
                 }
 
@@ -173,17 +185,12 @@ const EntityManager = {
                     if (typeof CombatVisualSystem !== 'undefined') {
                         if (evt.caster !== this.myID) {
                             CombatVisualSystem.spawnDamageNumber(evt.target, evt.dmg);
-                            
-                            // Apenas os Observers confiam no servidor para DESTRUIR a malha visual
                             CombatVisualSystem.destroyProjectileFrom(evt.caster, evt.skill);
                         } else {
-                            // Se nós formos o atirador, apenas mostramos o dano! 
-                            // O código de colisão local já gerencia a vida útil e perfuração das nossas magias!
                             CombatVisualSystem.spawnDamageNumber(evt.target, evt.dmg);
                         }
                     }
                 }
-                // FIM DA MELHORIA ARQUITETURAL
             });
         }
         

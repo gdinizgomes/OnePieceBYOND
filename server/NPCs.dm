@@ -11,7 +11,6 @@ proc/LoadMobDefinitions()
 	else
 		world.log << "❌ Falha ao carregar MobDefinitions.json"
 
-// Auxiliar de Matemática para calcular a rotação em Radianos sem o atan2 do JS
 proc/GetDirAngleInRadians(dx, dz)
 	if(dx == 0 && dz == 0) return 0
 	var/deg = 0
@@ -60,7 +59,6 @@ mob/npc
 			sleep(rand(20, 50))
 
 
-// --- A MENTE DATA-DRIVEN DO MONSTRO ---
 mob/npc/enemy
 	npc_type = "enemy"
 	var/mob_id = ""
@@ -113,7 +111,6 @@ mob/npc/enemy
 		if(data["loot"])
 			src.mob_loot = data["loot"]
 
-	// O Cérebro Subscrito (Predador)
 	AI_Loop()
 		while(src)
 			if(current_hp <= 0) { sleep(10); continue } 
@@ -121,14 +118,12 @@ mob/npc/enemy
 			if(aggro_target)
 				var/dist = get_dist_euclid(src.real_x, src.real_z, aggro_target.real_x, aggro_target.real_z)
 				
-				// Reset do Aggro se o alvo fugir
 				if(aggro_target.is_fainted || aggro_target.current_hp <= 0 || dist > chase_range)
 					aggro_target = null
 					sleep(10)
 					continue
 				
 				var/attacked = 0
-				// Combate
 				if(world.time > next_attack_time && mob_skills.len > 0)
 					for(var/list/sk in mob_skills)
 						if(dist <= sk["range"])
@@ -137,7 +132,6 @@ mob/npc/enemy
 							attacked = 1
 							break
 				
-				// Movimentação Perseguição
 				if(!attacked && dist > 1.5) 
 					var/dx = aggro_target.real_x - src.real_x
 					var/dz = aggro_target.real_z - src.real_z
@@ -145,19 +139,17 @@ mob/npc/enemy
 					if(len > 0)
 						src.real_x += (dx/len) * mob_speed * 2 
 						src.real_z += (dz/len) * mob_speed * 2
-						src.real_rot = GetDirAngleInRadians(dx, dz) // Chamada corrigida
+						src.real_rot = GetDirAngleInRadians(dx, dz)
 						src.real_x = clamp(src.real_x, -29, 29)
 						src.real_z = clamp(src.real_z, -29, 29)
 
 				sleep(2) 
 			else
-				// Radares de Busca
 				for(var/mob/M in world)
 					if(M.client && !M.is_fainted && get_dist_euclid(src.real_x, src.real_z, M.real_x, M.real_z) <= aggro_range)
 						aggro_target = M
 						break
 				
-				// Patrulha
 				if(!aggro_target)
 					var/dir = pick(0, 90, 180, 270)
 					real_rot = (dir * 3.14159 / 180)
@@ -177,6 +169,13 @@ mob/npc/enemy
 		
 		var/is_proj = (skill_data["type"] == "projectile") ? 1 : 0
 		
+		// --- INÍCIO DA MELHORIA: Ativar a animação para a Rede ---
+		src.is_attacking = 1
+		src.attack_type = skill_id
+		src.combo_step = 1
+		spawn(3) src.is_attacking = 0
+		// --- FIM DA MELHORIA ---
+		
 		if(SSserver)
 			SSserver.global_events += list(list("type" = "action", "skill" = skill_id, "caster" = "\ref[src]", "step" = 1, "is_proj" = is_proj))
 		
@@ -191,7 +190,6 @@ mob/npc/enemy
 			if(SSserver)
 				SSserver.global_events += list(list("type" = "hit", "skill" = skill_id, "caster" = "\ref[src]", "target" = "\ref[target]", "dmg" = damage, "crit" = 0))
 
-	// Sobrescreve a função sem a keyword 'proc/' para não dar erro de duplicata!
 	Die(mob/killer)
 		killer << output("<span class='log-hit' style='color:#f1c40f'><b>Eliminaste [src.name]!</b></span>", "map3d:addLog")
 		
