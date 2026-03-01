@@ -159,25 +159,35 @@ const EntityManager = {
                 if (evt.type === "action") {
                     if (evt.caster === this.myID) return; 
                     let originMesh = null;
-                    if (this.otherPlayers[evt.caster]) originMesh = this.otherPlayers[evt.caster].mesh;
+                    let otherData = this.otherPlayers[evt.caster];
+                    
+                    if (otherData) {
+                        originMesh = otherData.mesh;
+                        
+                        // --- INÍCIO DA MELHORIA: Snap Instantâneo de Rotação ---
+                        // Quando um inimigo ataca, ele fixa a mira na direção final para a hitbox desenhar perfeita
+                        if(originMesh) {
+                            originMesh.rotation.y = otherData.targetRot;
+                            otherData.startRot = otherData.targetRot; // Quebra o Lerp temporariamente
+                        }
+                        // --- FIM DA MELHORIA ---
+                    }
                     
                     if (originMesh) {
                         if (evt.is_proj === 1 && typeof CombatVisualSystem !== 'undefined') {
                             CombatVisualSystem.fireSkillProjectile(originMesh, evt.skill, evt.caster);
                         }
-                        // --- INÍCIO DA MELHORIA: Hitboxes Visuais de Inimigos ---
                         else if (evt.is_proj === 0 && typeof CombatVisualSystem !== 'undefined') {
                             const sDef = window.GameSkills ? window.GameSkills[evt.skill] : null;
                             if (sDef && sDef.combos) {
                                 const combo = sDef.combos[(evt.step || 1) - 1];
                                 if (combo && combo.hitbox) {
                                     const size = { x: combo.hitbox.x, y: 1.5, z: combo.hitbox.z };
-                                    // A flag "true" no final garante que é isVisualOnly e não causa dano falso!
-                                    CombatVisualSystem.spawnHitbox(originMesh, size, combo.offset, 200, null, 1.0, true);
+                                    // Aumentado para 300ms para casar perfeitamente com o servidor
+                                    CombatVisualSystem.spawnHitbox(originMesh, size, combo.offset, 300, null, 1.0, true);
                                 }
                             }
                         }
-                        // --- FIM DA MELHORIA ---
                     }
                 }
 

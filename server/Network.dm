@@ -330,14 +330,16 @@ mob
 					var/local_z = (dx * s) + (dz * c)
 					var/local_x = (dx * c) - (dz * s)
 
-					var/pad_w = 1.0 
-					var/pad_l = 1.5 
+					// --- INÍCIO DA MELHORIA: Hitbox Autoritativa Justa ---
+					var/pad_w = 0.4 
+					var/pad_l = 0.5 
 					var/half_l = (box_len / 2) + pad_l
 					var/half_w = (box_wid / 2) + pad_w
 
 					if(abs(local_z - fwd_off) > half_l || abs(local_x) > half_w)
 						src << output("<span style='color:red'><b>Servidor:</b> Hit Negado - OBB Matemática.</span>", "map3d:addLog")
 						return 
+					// --- FIM DA MELHORIA ---
 				else return
 
 			var/list/already_hit = active_skill_hits["[s_id]"]
@@ -347,16 +349,14 @@ mob
 			active_skill_hits["[s_id]"] = already_hit
 			hit_targets_this_swing += target
 
-			// --- INÍCIO DA MELHORIA: Defesa e Flee Lidos Corretamente ---
 			var/target_flee = target.calc_flee
 			var/target_def = target.calc_def
 			
 			if(istype(target, /mob/npc))
 				var/mob/npc/N = target
 				if(N.npc_type != "enemy")
-					target_flee = N.level * 2 // Prop/Vendor não têm stats no JSON, usamos level base.
+					target_flee = N.level * 2 
 					target_def = N.level * 2
-			// --- FIM DA MELHORIA ---
 			
 			if(skill_data["scaling"] == "physical" || skill_data["scaling"] == "ranged")
 				var/hit_chance = calc_hit - target_flee
@@ -430,12 +430,11 @@ mob
 			else if(s_id == "basic_fist") xp_type = "fist"
 			else if(s_id == "basic_gun") xp_type = "gun"
 
-			// --- INÍCIO DA MELHORIA: Distribuição de EXP Dinâmica (Data-Driven) ---
 			if(istype(target, /mob/npc))
 				var/mob/npc/N = target
 				if(N.npc_type == "prop")
 					src << output("<span class='log-hit' style='color:orange'>TREINO: [damage] dmg[crit_txt]</span>", "map3d:addLog")
-					GainExperience(1) // Troncos não devem farmar o player eternamente.
+					GainExperience(1) 
 					if(xp_type != "") GainWeaponExp(xp_type, 1)
 					else GainSkillExp(s_id, 1) 
 				else if(N.npc_type == "enemy")
@@ -448,7 +447,7 @@ mob
 						E.Die(src) 
 						
 						var/base_exp = E.mob_exp
-						var/wep_exp = max(1, round(base_exp / 4)) // Dá 25% da exp total para a arma/proficiência
+						var/wep_exp = max(1, round(base_exp / 4))
 						GainExperience(base_exp)
 						if(xp_type != "") GainWeaponExp(xp_type, wep_exp)
 						else GainSkillExp(s_id, wep_exp)
@@ -462,13 +461,11 @@ mob
 					if(src.lethality_mode == 1) T.Die(src)
 					else { src << output("<span class='log-hit' style='color:orange'>Você derrotou [T.name]! Ele está desmaiado.</span>", "map3d:addLog"); T.GoFaint() }
 				
-					// EXP PVP
 					var/pvp_exp = T.level * 10
 					GainExperience(pvp_exp)
 					if(xp_type != "") GainWeaponExp(xp_type, max(1, round(pvp_exp / 4)))
 					else GainSkillExp(s_id, max(1, round(pvp_exp / 4)))
 				T.UpdateVisuals()
-			// --- FIM DA MELHORIA ---
 
 		if(action == "add_stat" && in_game)
 			if(stat_points > 0)

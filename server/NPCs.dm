@@ -114,7 +114,6 @@ mob/npc/enemy
 			src.calc_def = data["stats"]["def"]
 			src.calc_flee = data["stats"]["flee"]
 			
-			// Remoção de Hardcodes de Stats
 			if(!isnull(data["stats"]["hit"])) src.calc_hit = data["stats"]["hit"]
 			else src.calc_hit = 100
 			if(!isnull(data["stats"]["crit"])) src.calc_crit = data["stats"]["crit"]
@@ -209,31 +208,26 @@ mob/npc/enemy
 		src.attack_type = skill_id
 		src.combo_step = 1
 		
-		// O Mob "mira" no jogador perfeitamente para que a Hitbox Retangular fique na direção certa
 		var/dx_face = target.real_x - src.real_x
 		var/dz_face = target.real_z - src.real_z
 		src.real_rot = GetDirAngleInRadians(dx_face, dz_face)
 		
-		// Despacha o sinal visual para todos verem a animação a começar
 		if(SSserver)
 			SSserver.global_events += list(list("type" = "action", "skill" = skill_id, "caster" = "\ref[src]", "step" = 1, "is_proj" = is_proj))
 		
 		if(!is_proj)
-			// --- INÍCIO DA MELHORIA ABSOLUTA: Windup & OBB Validation ---
-			spawn(3) // Delay de 300ms. Dá tempo para o jogador usar um Dash ou sair de perto!
+			spawn(3) 
 				src.is_attacking = 0
 				
 				if(!src || !target || target.current_hp <= 0 || src.current_hp <= 0) return
 				
 				var/dist = get_dist_euclid(src.real_x, src.real_z, target.real_x, target.real_z)
 				
-				// Checagem 1: Distância máxima absoluta
 				var/max_dist = 5.0
 				if(!isnull(skill_data["range"])) max_dist = skill_data["range"]
 				
-				if(dist > max_dist + 1.0) return // Jogador escapou!
+				if(dist > max_dist + 1.0) return 
 				
-				// Checagem 2: OBB Matemática Exata (Retângulo da Hitbox)
 				var/list/combos = skill_data["combos"]
 				if(combos && combos.len >= 1)
 					var/list/combo = combos[1] 
@@ -254,16 +248,16 @@ mob/npc/enemy
 						var/local_z = (dx * s) + (dz * c)
 						var/local_x = (dx * c) - (dz * s)
 
-						var/pad_w = 1.0 
-						var/pad_l = 1.5 
+						// --- INÍCIO DA MELHORIA: Hitbox Autoritativa sem "Gordura" ---
+						var/pad_w = 0.4 // Reduzido drasticamente para bater com a malha
+						var/pad_l = 0.5 // Reduzido drasticamente para bater com a malha
 						var/half_l = (box_len / 2) + pad_l
 						var/half_w = (box_wid / 2) + pad_w
 
-						// Se estiver fora do retângulo OBB, o ataque é anulado!
 						if(abs(local_z - fwd_off) > half_l || abs(local_x) > half_w)
 							return 
+						// --- FIM DA MELHORIA ---
 				
-				// O Jogador não desviou. Processa o Dano:
 				var/target_flee = target.calc_flee
 				var/target_def = target.calc_def
 				
@@ -306,9 +300,7 @@ mob/npc/enemy
 				if(target.current_hp <= 0)
 					target.GoFaint()
 					src.aggro_target = null
-			// --- FIM DA MELHORIA ---
 		else
-			// Para projeteis (ainda não suportado 100% pelos mobs), reset basico
 			spawn(3) src.is_attacking = 0
 
 	Die(mob/killer)
